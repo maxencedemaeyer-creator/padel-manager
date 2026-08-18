@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithGoogle, signInWithGoogleRedirect, signInGuest, logOut, auth } from '../firebase';
 import { Player, UserRole } from '../types';
-import { listenPlayers } from '../services/padelService';
+import { listenPlayers, linkPlayerAuth, unlinkPlayerAuth } from '../services/padelService';
 
 export interface AuthContextType {
   user: User | null;
@@ -17,6 +17,7 @@ export interface AuthContextType {
   loginWithGoogleRedirect: () => Promise<void>;
   loginAsGuest: () => Promise<User | null>;
   logout: () => Promise<void>;
+  unlinkPlayer: () => Promise<void>;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
   openAuthModal: () => void;
@@ -66,25 +67,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
 
   const activePlayers = propPlayers !== undefined ? propPlayers : internalPlayers;
 
-  // Determine linked player from players list
+  // Determine linked player strictly from players list with userId match
   const linkedPlayer = useMemo<Player | null>(() => {
-    if (!user) return null;
+    if (!user || user.isAnonymous) return null;
     const userEmail = user.email?.toLowerCase().trim();
     const userUid = user.uid;
 
-    const matched = activePlayers.find((p) => {
+    // 1. Strict primary match by userId / linkedUid / authUid
+    let matched = activePlayers.find((p) => {
+      if (p.userId && p.userId === userUid) return true;
       if (p.linkedUid && p.linkedUid === userUid) return true;
       if (p.authUid && p.authUid === userUid) return true;
-      if (userEmail) {
-        if (p.linkedEmail && p.linkedEmail.toLowerCase().trim() === userEmail) return true;
-        if (p.authEmail && p.authEmail.toLowerCase().trim() === userEmail) return true;
-        if (p.email && p.email.toLowerCase().trim() === userEmail) return true;
-      }
       return false;
     });
 
+    // 2. Secondary match by verified email if not already matched
+    if (!matched && userEmail) {
+      matched = activePlayers.find((p) => {
+        if (p.linkedEmail && p.linkedEmail.toLowerCase().trim() === userEmail) return true;
+        if (p.authEmail && p.authEmail.toLowerCase().trim() === userEmail) return true;
+        if (p.email && p.email.toLowerCase().trim() === userEmail) return true;
+        return false;
+      });
+    }
+
+    // 3. Fallback to localStorage cache if players are loaded
+    if (!matched && activePlayers.length > 0) {
+      try {
+        const cachedId = localStorage.getItem(`padel_linked_uid_${userUid}`);
+        if (cachedId) {
+          const cachedMatch = activePlayers.find((p) => p.id === cachedId);
+          if (cachedMatch) matched = cachedMatch;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     return matched || null;
   }, [user, activePlayers]);
+
+  // Auto-sync Firestore if matched by email or cache but userId wasn't set yet
+  useEffect(() => {
+    if (user && !user.isAnonymous && linkedPlayer && (!linkedPlayer.userId || linkedPlayer.userId !== user.uid)) {
+      linkPlayerAuth(linkedPlayer.id, user.uid, user.email || undefined).catch((err) => {
+        console.warn('Auto-healing player userId in Firestore:', err);
+      });
+    }
+  }, [user, linkedPlayer]);
 
   // Determine RBAC permissions
   const { role, isAdmin, isUser, isGuest, isCreditor } = useMemo(() => {
@@ -146,12 +176,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
 
   const handleLogout = async (): Promise<void> => {
     try {
+      if (user?.uid) {
+        try {
+          localStorage.removeItem(`padel_linked_uid_${user.uid}`);
+        } catch (e) {}
+      }
       await logOut();
     } catch (err) {
       console.error('Logout error:', err);
       throw err;
     }
   };
+
+  const handleUnlinkPlayer = useCallback(async (): Promise<void> => {
+    if (!linkedPlayer) return;
+    try {
+      await unlinkPlayerAuth(linkedPlayer.id, user?.uid);
+      setIsAuthModalOpen(true);
+    } catch (err) {
+      console.error('Erreur déliaison profil:', err);
+      throw err;
+    }
+  }, [linkedPlayer, user?.uid]);
 
   const value = useMemo(
     () => ({
@@ -168,6 +214,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
       loginWithGoogleRedirect: handleLoginWithGoogleRedirect,
       loginAsGuest: handleLoginAsGuest,
       logout: handleLogout,
+      unlinkPlayer: handleUnlinkPlayer,
       isAuthModalOpen,
       setIsAuthModalOpen,
       openAuthModal: () => setIsAuthModalOpen(true),
@@ -183,6 +230,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
       isCreditor,
       currentUserPlayerId,
       linkedPlayer,
+      handleUnlinkPlayer,
       isAuthModalOpen
     ]
   );

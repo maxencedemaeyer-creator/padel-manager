@@ -1,5 +1,6 @@
 import React from 'react';
-import { User, signInWithGoogle, signInGuest, logOut } from '../firebase';
+import { User, signInWithGoogle, signInGuest } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import { ClubSettings, Player } from '../types';
 import { LogIn, LogOut, Menu, UserCheck, Sparkles } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   onOpenAuthModal
 }) => {
+  const { logout } = useAuth();
   return (
     <header className="bg-white border-b border-slate-200/90 py-3 sm:py-4 px-3 sm:px-6 lg:px-8 sticky top-0 z-30 shadow-2xs">
       <div className="flex items-center justify-between gap-2 sm:gap-4 max-w-7xl mx-auto">
@@ -112,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <button
-                onClick={() => logOut()}
+                onClick={() => logout()}
                 title="Se déconnecter"
                 aria-label="Se déconnecter"
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 transition-colors"

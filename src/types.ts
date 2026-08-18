@@ -19,6 +19,7 @@ export interface Player {
   email?: string;
   phone?: string;
   avatarColor?: string;
+  userId?: string | null; // ID Firebase Auth / Google
   linkedUid?: string | null; // ID Google du joueur
   linkedEmail?: string | null; // Email Google du joueur
   authUid?: string; // Compatibilité authUid

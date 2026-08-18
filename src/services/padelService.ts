@@ -93,6 +93,9 @@ export function listenPlayers(
         ? Number(data.advanceAmount) 
         : (data.creditAmount !== undefined ? Number(data.creditAmount) : 0);
 
+      const userId = data.userId || data.linkedUid || data.authUid || null;
+      const userEmail = data.linkedEmail || data.authEmail || data.email || null;
+
       players.push({
         id: d.id,
         name: data.name || '',
@@ -102,10 +105,11 @@ export function listenPlayers(
         email: data.email || '',
         phone: data.phone || '',
         avatarColor: data.avatarColor || '#E0F2FE',
-        linkedUid: data.linkedUid || data.authUid || null,
-        linkedEmail: data.linkedEmail || data.authEmail || null,
-        authUid: data.authUid || data.linkedUid || '',
-        authEmail: data.authEmail || data.linkedEmail || '',
+        userId: userId,
+        linkedUid: userId,
+        linkedEmail: userEmail,
+        authUid: userId || '',
+        authEmail: userEmail || '',
         isAdmin: data.isAdmin || false,
         createdAt: data.createdAt || 0
       } as Player);
@@ -138,6 +142,7 @@ export async function updatePlayer(
     phone?: string;
     email?: string;
     avatarColor?: string;
+    userId?: string | null;
   }
 ): Promise<void> {
   const playerRef = doc(db, 'players', playerId);
@@ -160,6 +165,11 @@ export async function updatePlayer(
   if (data.phone !== undefined) updateData.phone = data.phone.trim();
   if (data.email !== undefined) updateData.email = data.email.trim();
   if (data.avatarColor !== undefined) updateData.avatarColor = data.avatarColor;
+  if (data.userId !== undefined) {
+    updateData.userId = data.userId;
+    updateData.linkedUid = data.userId;
+    updateData.authUid = data.userId || '';
+  }
 
   await updateDoc(playerRef, updateData);
 }
@@ -188,13 +198,16 @@ export async function savePlayer(player: Partial<Player> & { name: string; isCre
     createdAt: player.createdAt || Date.now()
   };
 
-  if (player.linkedUid) {
-    payload.linkedUid = player.linkedUid;
-    payload.authUid = player.linkedUid;
+  const uid = player.userId || player.linkedUid || player.authUid;
+  if (uid) {
+    payload.userId = uid;
+    payload.linkedUid = uid;
+    payload.authUid = uid;
   }
-  if (player.linkedEmail) {
-    payload.linkedEmail = player.linkedEmail;
-    payload.authEmail = player.linkedEmail;
+  const email = player.linkedEmail || player.authEmail || player.email;
+  if (email) {
+    payload.linkedEmail = email;
+    payload.authEmail = email;
   }
 
   if (player.id) {
@@ -210,22 +223,45 @@ export async function savePlayer(player: Partial<Player> & { name: string; isCre
 
 export async function linkPlayerAuth(playerId: string, authUid: string, authEmail?: string): Promise<void> {
   const playerDocRef = doc(db, 'players', playerId);
-  await updateDoc(playerDocRef, {
+  const updatePayload: Record<string, any> = {
+    userId: authUid,
     linkedUid: authUid,
-    linkedEmail: authEmail || '',
-    authUid,
-    authEmail: authEmail || ''
-  });
+    authUid: authUid
+  };
+  if (authEmail) {
+    updatePayload.linkedEmail = authEmail;
+    updatePayload.authEmail = authEmail;
+  }
+  await updateDoc(playerDocRef, updatePayload);
+
+  // Local caching to avoid any flicker on instant page reload
+  try {
+    localStorage.setItem(`padel_linked_uid_${authUid}`, playerId);
+    if (authEmail) {
+      localStorage.setItem(`padel_linked_email_${authEmail.toLowerCase().trim()}`, playerId);
+    }
+  } catch (e) {
+    // Ignore storage issues
+  }
 }
 
-export async function unlinkPlayerAuth(playerId: string): Promise<void> {
+export async function unlinkPlayerAuth(playerId: string, authUid?: string): Promise<void> {
   const playerDocRef = doc(db, 'players', playerId);
   await updateDoc(playerDocRef, {
+    userId: null,
     linkedUid: null,
     linkedEmail: null,
     authUid: '',
     authEmail: ''
   });
+
+  if (authUid) {
+    try {
+      localStorage.removeItem(`padel_linked_uid_${authUid}`);
+    } catch (e) {
+      // Ignore
+    }
+  }
 }
 
 export async function removePlayer(playerId: string): Promise<void> {

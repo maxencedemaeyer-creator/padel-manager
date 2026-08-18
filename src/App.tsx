@@ -178,13 +178,28 @@ function AppContent() {
     }
   }, [dataLoading, authChecked, user, players.length, matches.length, settings]);
 
-  // Trigger Auth modal when user signs in and is not linked
+  // Trigger Auth modal only when user signs in and has no linked player in Firestore
   useEffect(() => {
-    if (!dataLoading && user && !user.isAnonymous && !linkedPlayer && !hasPromptedAuthModal && players.length > 0) {
-      setIsAuthModalOpen(true);
+    if (!dataLoading && authChecked && user && !user.isAnonymous && players.length > 0 && !hasPromptedAuthModal) {
+      const userUid = user.uid;
+      const userEmail = user.email?.toLowerCase().trim();
+      const hasMatchingPlayer = players.some(p => 
+        (p.userId && p.userId === userUid) ||
+        (p.linkedUid && p.linkedUid === userUid) ||
+        (p.authUid && p.authUid === userUid) ||
+        (userEmail && (
+          (p.linkedEmail && p.linkedEmail.toLowerCase().trim() === userEmail) ||
+          (p.authEmail && p.authEmail.toLowerCase().trim() === userEmail) ||
+          (p.email && p.email.toLowerCase().trim() === userEmail)
+        ))
+      );
+
+      if (!hasMatchingPlayer && !linkedPlayer) {
+        setIsAuthModalOpen(true);
+      }
       setHasPromptedAuthModal(true);
     }
-  }, [user, linkedPlayer, dataLoading, hasPromptedAuthModal, players.length, setIsAuthModalOpen]);
+  }, [user, linkedPlayer, dataLoading, authChecked, hasPromptedAuthModal, players, setIsAuthModalOpen]);
 
   // Handle Profile Linking
   const handleLinkPlayer = async (playerId: string) => {
@@ -194,6 +209,7 @@ function AppContent() {
     } catch (err: any) {
       console.error("Erreur liaison profil:", err);
       alert("Erreur lors de la liaison du profil : " + (err?.message || err));
+      throw err;
     }
   };
 
@@ -206,6 +222,7 @@ function AppContent() {
         status: role === 'creditor' ? 'crediteur' : 'actif',
         advanceAmount: role === 'creditor' ? 1000 : 0,
         email: user.email || '',
+        userId: user.uid,
         linkedUid: user.uid,
         linkedEmail: user.email || '',
         authUid: user.uid,
@@ -213,7 +230,8 @@ function AppContent() {
       });
     } catch (err: any) {
       console.error("Erreur création et liaison joueur:", err);
-      alert("Erreur lors de la création du joueur : " + (err?.message || err));
+      alert("Erreur lors de la création du profil : " + (err?.message || err));
+      throw err;
     }
   };
 
