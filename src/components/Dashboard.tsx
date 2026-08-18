@@ -1,5 +1,6 @@
 import React from 'react';
-import { Match, Player, ClubSettings, CourtSlot, User } from '../types';
+import { Match, Player, ClubSettings, CourtSlot } from '../types';
+import { User } from '../firebase';
 import { PadelCourt } from './PadelCourt';
 import { calculatePlayerDebts, calculateCreditorsSummary } from '../services/padelService';
 import { 
@@ -90,8 +91,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Linked current user in Firestore players
   const currentPlayer = players.find(p => 
-    (user?.uid && p.authUid === user.uid) ||
+    (user?.uid && (p.linkedUid === user.uid || p.authUid === user.uid)) ||
     (user?.email && (
+      (p.linkedEmail && p.linkedEmail.toLowerCase() === user.email.toLowerCase()) ||
       (p.authEmail && p.authEmail.toLowerCase() === user.email.toLowerCase()) ||
       (p.email && p.email.toLowerCase() === user.email.toLowerCase())
     ))

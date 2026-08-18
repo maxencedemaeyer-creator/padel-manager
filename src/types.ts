@@ -12,11 +12,14 @@ export interface Player {
   id: string;
   name: string;
   role: PlayerRole;
+  status?: string; // 'actif', 'inactif', etc.
   advanceAmount: number; // Montant total avancé en € pour un créancier (0 pour joueur)
   email?: string;
   phone?: string;
   avatarColor?: string;
-  authUid?: string;
+  linkedUid?: string | null; // ID Google du joueur
+  linkedEmail?: string | null; // Email Google du joueur
+  authUid?: string; // Compatibilité authUid
   authEmail?: string;
   createdAt?: number;
 }

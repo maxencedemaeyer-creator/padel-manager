@@ -148,8 +148,9 @@ export default function App() {
 
   // Check if authenticated user is linked to any player in Firestore
   const linkedPlayer = players.find(p => 
-    (user?.uid && p.authUid === user.uid) ||
+    (user?.uid && (p.linkedUid === user.uid || p.authUid === user.uid)) ||
     (user?.email && (
+      (p.linkedEmail && p.linkedEmail.toLowerCase() === user.email.toLowerCase()) ||
       (p.authEmail && p.authEmail.toLowerCase() === user.email.toLowerCase()) ||
       (p.email && p.email.toLowerCase() === user.email.toLowerCase())
     ))
@@ -170,13 +171,16 @@ export default function App() {
     setIsAuthModalOpen(false);
   };
 
-  const handleCreateAndLinkPlayer = async (name: string) => {
+  const handleCreateAndLinkPlayer = async (name: string, role: PlayerRole = 'player') => {
     if (!user) return;
     await savePlayer({
       name,
-      role: 'player',
-      advanceAmount: 0,
+      role,
+      status: role === 'creditor' ? 'crediteur' : 'actif',
+      advanceAmount: role === 'creditor' ? 1000 : 0,
       email: user.email || '',
+      linkedUid: user.uid,
+      linkedEmail: user.email || '',
       authUid: user.uid,
       authEmail: user.email || ''
     });

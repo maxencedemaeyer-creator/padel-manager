@@ -102,6 +102,7 @@ export async function savePlayer(player: Partial<Player> & { name: string }): Pr
     id: playerId,
     name: player.name.trim(),
     role: player.role || 'player',
+    status: player.status || (player.role === 'creditor' ? 'crediteur' : 'actif'),
     advanceAmount: Number(player.advanceAmount) || 0,
     email: player.email || '',
     phone: player.phone || '',
@@ -109,8 +110,21 @@ export async function savePlayer(player: Partial<Player> & { name: string }): Pr
     createdAt: player.createdAt || Date.now()
   };
 
-  if (player.authUid !== undefined) payload.authUid = player.authUid;
-  if (player.authEmail !== undefined) payload.authEmail = player.authEmail;
+  if (player.linkedUid !== undefined) {
+    payload.linkedUid = player.linkedUid;
+    payload.authUid = player.linkedUid || '';
+  } else if (player.authUid !== undefined) {
+    payload.linkedUid = player.authUid;
+    payload.authUid = player.authUid;
+  }
+
+  if (player.linkedEmail !== undefined) {
+    payload.linkedEmail = player.linkedEmail;
+    payload.authEmail = player.linkedEmail || '';
+  } else if (player.authEmail !== undefined) {
+    payload.linkedEmail = player.authEmail;
+    payload.authEmail = player.authEmail;
+  }
 
   await setDoc(doc(db, 'players', playerId), payload, { merge: true });
   return playerId;
@@ -119,6 +133,8 @@ export async function savePlayer(player: Partial<Player> & { name: string }): Pr
 export async function linkPlayerAuth(playerId: string, authUid: string, authEmail?: string): Promise<void> {
   const playerDocRef = doc(db, 'players', playerId);
   await updateDoc(playerDocRef, {
+    linkedUid: authUid,
+    linkedEmail: authEmail || '',
     authUid,
     authEmail: authEmail || ''
   });
@@ -127,6 +143,8 @@ export async function linkPlayerAuth(playerId: string, authUid: string, authEmai
 export async function unlinkPlayerAuth(playerId: string): Promise<void> {
   const playerDocRef = doc(db, 'players', playerId);
   await updateDoc(playerDocRef, {
+    linkedUid: null,
+    linkedEmail: null,
     authUid: '',
     authEmail: ''
   });
