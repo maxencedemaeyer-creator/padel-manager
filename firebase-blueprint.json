@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "Club player or creditor member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["player", "creditor"] },
+        "advanceAmount": { "type": "number" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "authUid": { "type": "string" },
+        "authEmail": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "role", "advanceAmount"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Scheduled or played padel match",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "matchNumber": { "type": "number" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "type": { "type": "string", "enum": ["regular", "friendly"] },
+        "courtCount": { "type": "number" },
+        "pricePerPlayer": { "type": "number" },
+        "status": { "type": "string", "enum": ["upcoming", "in_progress", "completed"] },
+        "courts": { "type": "array" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "date", "type", "courtCount", "pricePerPlayer", "status", "courts"]
+    },
+    "ClubSettings": {
+      "title": "ClubSettings",
+      "description": "Club settings and configuration",
+      "type": "object",
+      "properties": {
+        "courtNames": { "type": "array" },
+        "seasonMatchesCount": { "type": "number" },
+        "defaultPricePerPlayer": { "type": "number" },
+        "seasonDayOfWeek": { "type": "number" },
+        "seasonDefaultTime": { "type": "string" },
+        "clubName": { "type": "string" },
+        "currency": { "type": "string" }
+      },
+      "required": ["courtNames", "seasonMatchesCount", "defaultPricePerPlayer"]
+    }
+  },
+  "firestore": {
+    "/players/{playerId}": {
+      "schema": "Player",
+      "description": "Club player and creditor profiles"
+    },
+    "/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Season and friendly matches"
+    },
+    "/settings/config": {
+      "schema": "ClubSettings",
+      "description": "Global club configuration"
+    }
+  }
+}
