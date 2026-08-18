@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Player, Match, PlayerRole } from '../types';
+import { db } from '../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { 
   Users, 
   UserPlus, 
@@ -115,20 +117,36 @@ export const Players: React.FC<PlayersProps> = ({
 
     const isCreditor = formData.role === 'creditor';
     const amount = isCreditor ? Number(formData.advanceAmount) || 0 : 0;
-
-    const payload = {
-      id: editingPlayer ? editingPlayer.id : undefined,
-      name: formData.name.trim(),
-      role: formData.role,
-      isCreditor: isCreditor,
-      advanceAmount: amount,
-      creditAmount: amount,
-      phone: formData.phone.trim(),
-      email: formData.email.trim()
-    };
+    const updatedName = formData.name.trim();
 
     try {
-      await onSavePlayer(payload);
+      if (editingPlayer && editingPlayer.id) {
+        // Strict Firestore updateDoc on real doc.id
+        const playerRef = doc(db, "players", editingPlayer.id);
+        await updateDoc(playerRef, {
+          name: updatedName,
+          isCreditor: isCreditor,
+          role: isCreditor ? 'creditor' : 'player',
+          status: isCreditor ? 'crediteur' : 'actif',
+          advanceAmount: amount,
+          creditAmount: amount,
+          phone: formData.phone.trim(),
+          email: formData.email.trim()
+        });
+      } else {
+        // Creation of new player
+        await onSavePlayer({
+          name: updatedName,
+          role: formData.role,
+          isCreditor: isCreditor,
+          advanceAmount: amount,
+          creditAmount: amount,
+          phone: formData.phone.trim(),
+          email: formData.email.trim()
+        });
+      }
+
+      // Close modal ONLY when Firestore write succeeds
       setIsModalOpen(false);
       setEditingPlayer(null);
       setFormData({
@@ -138,10 +156,11 @@ export const Players: React.FC<PlayersProps> = ({
         phone: '',
         email: ''
       });
-    } catch (err: any) {
-      console.error("Erreur de sauvegarde Firebase :", err);
-      alert("Erreur de sauvegarde Firebase : " + (err?.message || err));
+    } catch (error: any) {
+      console.error("Erreur Firestore updateDoc :", error);
+      alert("Échec de l'enregistrement dans la base de données : " + (error?.message || error));
     } finally {
+      // Always unblock the submit button
       setIsSubmitting(false);
     }
   };

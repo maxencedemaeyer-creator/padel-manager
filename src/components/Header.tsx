@@ -122,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           ) : (
             <button
-              onClick={() => signInWithGoogle().catch(() => signInGuest())}
+              onClick={() => signInWithGoogle(true).catch(() => signInGuest())}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-2xl text-xs font-bold shadow-xs transition-all min-h-[44px]"
             >
               <LogIn className="w-4 h-4" />

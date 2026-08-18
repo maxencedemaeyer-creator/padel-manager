@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { User, onAuthStateChanged, signInWithGoogle, signInGuest, logOut, auth } from '../firebase';
+import { User, onAuthStateChanged, signInWithGoogle, signInWithGoogleRedirect, signInGuest, logOut, auth } from '../firebase';
 import { Player, UserRole } from '../types';
 import { listenPlayers } from '../services/padelService';
 
@@ -13,7 +13,8 @@ export interface AuthContextType {
   isCreditor: boolean;
   currentUserPlayerId: string | null;
   linkedPlayer: Player | null;
-  loginWithGoogle: () => Promise<User | null>;
+  loginWithGoogle: (autoFallback?: boolean) => Promise<User | null>;
+  loginWithGoogleRedirect: () => Promise<void>;
   loginAsGuest: () => Promise<User | null>;
   logout: () => Promise<void>;
   isAuthModalOpen: boolean;
@@ -114,12 +115,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
 
   const currentUserPlayerId = linkedPlayer?.id || null;
 
-  const handleLoginWithGoogle = async (): Promise<User | null> => {
+  const handleLoginWithGoogle = async (autoFallback = true): Promise<User | null> => {
     try {
-      const loggedUser = await signInWithGoogle();
+      const loggedUser = await signInWithGoogle(autoFallback);
       return loggedUser;
     } catch (err) {
       console.error('Login with Google error:', err);
+      throw err;
+    }
+  };
+
+  const handleLoginWithGoogleRedirect = async (): Promise<void> => {
+    try {
+      await signInWithGoogleRedirect();
+    } catch (err) {
+      console.error('Login with Google Redirect error:', err);
       throw err;
     }
   };
@@ -155,6 +165,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: p
       currentUserPlayerId,
       linkedPlayer,
       loginWithGoogle: handleLoginWithGoogle,
+      loginWithGoogleRedirect: handleLoginWithGoogleRedirect,
       loginAsGuest: handleLoginAsGuest,
       logout: handleLogout,
       isAuthModalOpen,

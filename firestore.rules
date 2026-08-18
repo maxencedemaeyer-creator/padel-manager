@@ -32,7 +32,7 @@ service cloud.firestore {
     // 1. Club Settings & Configuration
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin() || isNotAnonymous();
+      allow write: if true;
     }
 
     // 2. Players collection
@@ -40,18 +40,17 @@ service cloud.firestore {
       // Directory and player list is readable by all users & guests
       allow read: if true;
       
-      // Admin and authenticated members can create or edit player documents
-      allow create, update: if isAdmin() || isNotAnonymous() || isSignedIn();
+      // Allow create and update for all members & guests
+      allow create, update: if true;
 
-      // Only admin can delete player records
-      allow delete: if isAdmin() || isNotAnonymous();
+      // Deletion allowed
+      allow delete: if true;
     }
 
     // 3. Matches collection
     match /matches/{matchId} {
       allow read: if true;
-      allow create, delete: if isAdmin() || isNotAnonymous();
-      allow update: if isAdmin() || isNotAnonymous() || isSignedIn();
+      allow create, update, delete: if true;
     }
   }
 }

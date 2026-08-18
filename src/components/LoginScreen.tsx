@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { signInWithGoogle, signInGuest } from '../firebase';
+import { signInWithGoogle, signInWithGoogleRedirect, signInGuest } from '../firebase';
 import { ClubSettings } from '../types';
 import { 
   Sparkles, 
   ShieldCheck, 
   Users, 
   Calendar, 
-  ArrowRight, 
-  CheckCircle2, 
   AlertCircle,
   Loader2,
-  LogIn,
-  UserCheck
+  UserCheck,
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -20,18 +19,52 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ settings }) => {
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
+  const [isLoadingRedirect, setIsLoadingRedirect] = useState(false);
   const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [showRedirectOption, setShowRedirectOption] = useState(false);
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (forceRedirect = false) => {
     setErrorMessage(null);
+    setErrorCode(null);
+
+    if (forceRedirect) {
+      setIsLoadingRedirect(true);
+      try {
+        await signInWithGoogleRedirect();
+      } catch (error: any) {
+        console.error("Erreur de connexion Google (Redirect):", error);
+        const code = error?.code || 'auth/redirect-error';
+        const msg = error?.message || String(error);
+        setErrorCode(code);
+        setErrorMessage(`Erreur Firebase [${code}] : ${msg}`);
+      } finally {
+        setIsLoadingRedirect(false);
+      }
+      return;
+    }
+
     setIsLoadingGoogle(true);
     try {
-      await signInWithGoogle();
+      // Attempt popup sign in first
+      await signInWithGoogle(false);
     } catch (error: any) {
-      if (error?.code !== 'auth/popup-closed-by-user') {
-        console.error("Erreur de connexion Google:", error);
-        setErrorMessage("Impossible de se connecter avec Google. Veuillez réessayer ou continuer en mode invité.");
+      console.error("Erreur de connexion Google (Popup):", error);
+      const code = error?.code || 'auth/unknown-error';
+      const msg = error?.message || String(error);
+      
+      setErrorCode(code);
+      setErrorMessage(`Erreur Firebase [${code}] : ${msg}`);
+
+      // If popup was blocked, closed or failed, automatically highlight or offer redirect
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        setShowRedirectOption(true);
       }
     } finally {
       setIsLoadingGoogle(false);
@@ -40,12 +73,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ settings }) => {
 
   const handleGuestSignIn = async () => {
     setErrorMessage(null);
+    setErrorCode(null);
     setIsLoadingGuest(true);
     try {
       await signInGuest();
     } catch (error: any) {
       console.error("Erreur de connexion Invité:", error);
-      setErrorMessage("Impossible de se connecter en mode invité.");
+      const code = error?.code || 'auth/guest-error';
+      const msg = error?.message || String(error);
+      setErrorCode(code);
+      setErrorMessage(`Erreur Firebase Invité [${code}] : ${msg}`);
     } finally {
       setIsLoadingGuest(false);
     }
@@ -97,26 +134,61 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ settings }) => {
             </p>
           </div>
 
-          {/* Error Banner if any */}
+          {/* Error Banner with exact code & message */}
           {errorMessage && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2 text-left">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{errorMessage}</span>
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium space-y-2 text-left animate-in fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <strong className="block font-bold text-rose-950">
+                    Échec de l'authentification Google
+                  </strong>
+                  <p className="text-[11px] leading-relaxed font-mono bg-white/70 p-2 rounded-lg border border-rose-200/60 break-all select-all">
+                    {errorMessage}
+                  </p>
+                </div>
+              </div>
+
+              {/* Helpful diagnostic tip */}
+              {errorCode === 'auth/unauthorized-domain' && (
+                <div className="text-[11px] text-rose-800 bg-rose-100/80 p-2.5 rounded-xl border border-rose-200">
+                  💡 <strong>Domaine non autorisé dans Firebase :</strong> L'URL actuelle doit être ajoutée aux <em>Domaines autorisés</em> dans la console Firebase (Authentication &gt; Paramètres &gt; Domaines autorisés).
+                </div>
+              )}
+
+              {(errorCode === 'auth/popup-blocked' || errorCode === 'auth/popup-closed-by-user' || showRedirectOption) && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleGoogleSignIn(true)}
+                    disabled={isLoadingRedirect}
+                    className="w-full flex items-center justify-center gap-2 px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                  >
+                    {isLoadingRedirect ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    )}
+                    <span>Réessayer avec redirection de page (Plein écran)</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* Action Buttons */}
           <div className="space-y-3 pt-2">
+            {/* Primary Google Login (Popup) */}
             <button
               id="btn-google-login-hero"
-              onClick={handleGoogleSignIn}
-              disabled={isLoadingGoogle || isLoadingGuest}
+              onClick={() => handleGoogleSignIn(false)}
+              disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
               className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white rounded-2xl text-sm font-bold shadow-md shadow-slate-900/10 transition-all disabled:opacity-50 min-h-[48px] cursor-pointer"
             >
               {isLoadingGoogle ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connexion en cours...</span>
+                  <span>Ouverture de la fenêtre Google...</span>
                 </>
               ) : (
                 <>
@@ -144,10 +216,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ settings }) => {
               )}
             </button>
 
+            {/* Secondary Google Login (Redirect) if popup is problematic */}
+            {showRedirectOption && (
+              <button
+                type="button"
+                onClick={() => handleGoogleSignIn(true)}
+                disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
+                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100/80 text-blue-900 border border-blue-200 rounded-2xl text-xs font-bold transition-all disabled:opacity-50 min-h-[42px] cursor-pointer"
+              >
+                {isLoadingRedirect ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Redirection Google en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Connexion Google via redirection (Anti-blocage pop-up)</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Guest Login */}
             <button
               id="btn-guest-login-hero"
               onClick={handleGuestSignIn}
-              disabled={isLoadingGoogle || isLoadingGuest}
+              disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
               className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 hover:bg-slate-200/80 active:scale-[0.99] text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition-all disabled:opacity-50 min-h-[44px] cursor-pointer"
             >
               {isLoadingGuest ? (
