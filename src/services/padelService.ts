@@ -52,7 +52,10 @@ export function createEmptyCourt(courtId: string, courtName: string): MatchCourt
 
 // ---------------- Settings Service ---------------- //
 
-export function listenSettings(callback: (settings: ClubSettings) => void) {
+export function listenSettings(
+  callback: (settings: ClubSettings) => void,
+  onError?: (error: any) => void
+) {
   const settingsDocRef = doc(db, 'settings', 'config');
   return onSnapshot(settingsDocRef, (docSnap) => {
     if (docSnap.exists()) {
@@ -65,6 +68,7 @@ export function listenSettings(callback: (settings: ClubSettings) => void) {
   }, (error) => {
     console.error("Erreur lors de l'écoute des settings:", error);
     callback(DEFAULT_SETTINGS);
+    if (onError) onError(error);
   });
 }
 
@@ -75,7 +79,10 @@ export async function saveSettings(settings: ClubSettings): Promise<void> {
 
 // ---------------- Players Service ---------------- //
 
-export function listenPlayers(callback: (players: Player[]) => void) {
+export function listenPlayers(
+  callback: (players: Player[]) => void,
+  onError?: (error: any) => void
+) {
   const playersRef = collection(db, 'players');
   return onSnapshot(playersRef, (querySnap) => {
     const players: Player[] = [];
@@ -91,6 +98,8 @@ export function listenPlayers(callback: (players: Player[]) => void) {
     callback(players);
   }, (error) => {
     console.error("Erreur lors de l'écoute des joueurs:", error);
+    callback([]);
+    if (onError) onError(error);
   });
 }
 
@@ -156,7 +165,10 @@ export async function removePlayer(playerId: string): Promise<void> {
 
 // ---------------- Matches Service ---------------- //
 
-export function listenMatches(callback: (matches: Match[]) => void) {
+export function listenMatches(
+  callback: (matches: Match[]) => void,
+  onError?: (error: any) => void
+) {
   const matchesRef = collection(db, 'matches');
   return onSnapshot(matchesRef, (querySnap) => {
     const matches: Match[] = [];
@@ -173,6 +185,8 @@ export function listenMatches(callback: (matches: Match[]) => void) {
     callback(matches);
   }, (error) => {
     console.error("Erreur lors de l'écoute des matchs:", error);
+    callback([]);
+    if (onError) onError(error);
   });
 }
 

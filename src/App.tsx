@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   auth, 
   onAuthStateChanged, 
@@ -43,15 +43,20 @@ import { Settings } from './components/Settings';
 import { AssignPlayerModal } from './components/AssignPlayerModal';
 import { NewMatchModal } from './components/NewMatchModal';
 import { AuthModal } from './components/AuthModal';
+import { LoginScreen } from './components/LoginScreen';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
+  // Auth state
   const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // App data state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [settings, setSettings] = useState<ClubSettings>(DEFAULT_SETTINGS);
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Match detail state for Matches view
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -81,6 +86,89 @@ export default function App() {
   // Mobile Drawer Menu State
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
+  // Ref to track if initial demo seed has already run
+  const hasSeededRef = useRef(false);
+
+  // 1. Initial Auth Check (Auth First)
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecked(true);
+      if (!currentUser) {
+        setHasPromptedAuthModal(false);
+        setDataLoading(false);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 2. Real-time Firestore Listeners (executed ONLY when user is authenticated)
+  useEffect(() => {
+    if (!authChecked || !user) {
+      return;
+    }
+
+    setDataLoading(true);
+
+    let settingsLoaded = false;
+    let playersLoaded = false;
+    let matchesLoaded = false;
+
+    const checkAllLoaded = () => {
+      if (settingsLoaded && playersLoaded && matchesLoaded) {
+        setDataLoading(false);
+      }
+    };
+
+    // Safety timeout: Never stay stuck on spinner more than 2.5 seconds
+    const timeoutId = setTimeout(() => {
+      setDataLoading(false);
+    }, 2500);
+
+    const unsubSettings = listenSettings(
+      (loadedSettings) => {
+        setSettings(loadedSettings);
+        settingsLoaded = true;
+        checkAllLoaded();
+      },
+      () => {
+        settingsLoaded = true;
+        checkAllLoaded();
+      }
+    );
+
+    const unsubPlayers = listenPlayers(
+      (loadedPlayers) => {
+        setPlayers(loadedPlayers);
+        playersLoaded = true;
+        checkAllLoaded();
+      },
+      () => {
+        playersLoaded = true;
+        checkAllLoaded();
+      }
+    );
+
+    const unsubMatches = listenMatches(
+      (loadedMatches) => {
+        setMatches(loadedMatches);
+        matchesLoaded = true;
+        checkAllLoaded();
+      },
+      () => {
+        matchesLoaded = true;
+        checkAllLoaded();
+      }
+    );
+
+    return () => {
+      clearTimeout(timeoutId);
+      unsubSettings();
+      unsubPlayers();
+      unsubMatches();
+    };
+  }, [authChecked, user?.uid]);
+
   // Keep selectedMatch updated if matches change
   useEffect(() => {
     if (selectedMatch) {
@@ -89,62 +177,15 @@ export default function App() {
         setSelectedMatch(updated);
       }
     }
-  }, [matches]);
+  }, [matches, selectedMatch?.id]);
 
-  // Auth Listener
+  // Auto-seed if database is empty on first authenticated load
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) {
-        setHasPromptedAuthModal(false);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
-
-  // Real-time Firestore Listeners
-  useEffect(() => {
-    let settingsLoaded = false;
-    let playersLoaded = false;
-    let matchesLoaded = false;
-
-    const checkAllLoaded = () => {
-      if (settingsLoaded && playersLoaded && matchesLoaded) {
-        setLoading(false);
-      }
-    };
-
-    const unsubSettings = listenSettings((loadedSettings) => {
-      setSettings(loadedSettings);
-      settingsLoaded = true;
-      checkAllLoaded();
-    });
-
-    const unsubPlayers = listenPlayers((loadedPlayers) => {
-      setPlayers(loadedPlayers);
-      playersLoaded = true;
-      checkAllLoaded();
-    });
-
-    const unsubMatches = listenMatches((loadedMatches) => {
-      setMatches(loadedMatches);
-      matchesLoaded = true;
-      checkAllLoaded();
-    });
-
-    return () => {
-      unsubSettings();
-      unsubPlayers();
-      unsubMatches();
-    };
-  }, []);
-
-  // Auto-seed if database is empty on first load
-  useEffect(() => {
-    if (!loading && players.length === 0 && matches.length === 0) {
+    if (!dataLoading && authChecked && user && players.length === 0 && matches.length === 0 && !hasSeededRef.current) {
+      hasSeededRef.current = true;
       seedInitialDemoData(settings).catch(console.error);
     }
-  }, [loading, players.length, matches.length]);
+  }, [dataLoading, authChecked, user, players.length, matches.length, settings]);
 
   // Check if authenticated user is linked to any player in Firestore
   const linkedPlayer = players.find(p => 
@@ -158,11 +199,11 @@ export default function App() {
 
   // Trigger Auth modal when user signs in and is not linked
   useEffect(() => {
-    if (!loading && user && !linkedPlayer && !hasPromptedAuthModal && players.length > 0) {
+    if (!dataLoading && user && !user.isAnonymous && !linkedPlayer && !hasPromptedAuthModal && players.length > 0) {
       setIsAuthModalOpen(true);
       setHasPromptedAuthModal(true);
     }
-  }, [user, linkedPlayer, loading, hasPromptedAuthModal, players.length]);
+  }, [user, linkedPlayer, dataLoading, hasPromptedAuthModal, players.length]);
 
   // Handle Profile Linking
   const handleLinkPlayer = async (playerId: string) => {
@@ -220,7 +261,7 @@ export default function App() {
     match: Match, 
     courtId: string, 
     slot: CourtSlot,
-    e: React.MouseEvent
+    _e: React.MouseEvent
   ) => {
     if (!slot.playerId) return;
     const player = players.find(p => p.id === slot.playerId);
@@ -285,20 +326,27 @@ export default function App() {
     setActiveTab('matches');
   };
 
-  if (loading) {
+  // 1. Initial instant auth loading (under 50ms)
+  if (!authChecked) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-lg animate-bounce">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-3">
+        <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center justify-center text-xl shadow-2xs">
           🎾
         </div>
-        <div className="flex items-center gap-2 text-slate-600 text-sm font-bold">
-          <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
-          Chargement de Padel Manager...
+        <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+          <span>Initialisation...</span>
         </div>
       </div>
     );
   }
 
+  // 2. Unauthenticated user -> Instant Login Landing Screen (No Firestore query executed)
+  if (!user) {
+    return <LoginScreen settings={settings} />;
+  }
+
+  // 3. Authenticated user -> Main App with smooth data transition
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col antialiased selection:bg-sky-100 selection:text-sky-900">
       {/* Header */}
@@ -330,66 +378,81 @@ export default function App() {
           setIsMobileDrawerOpen={setIsMobileDrawerOpen}
         />
 
-        {/* Tab Views */}
-        <div>
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              user={user}
-              matches={matches}
-              players={players}
-              settings={settings}
-              onSelectTab={setActiveTab}
-              onSlotClick={handleSlotClick}
-              onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
-              onQuickTogglePayment={handleQuickTogglePayment}
-              onOpenMatchDetail={handleOpenMatchDetail}
-              onOpenAuthModal={() => setIsAuthModalOpen(true)}
-            />
-          )}
+        {/* Dynamic Loading Indicator for Initial Data sync */}
+        {dataLoading && players.length === 0 && matches.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-12 text-center my-6 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-800">
+              Synchronisation des données du club...
+            </h3>
+            <p className="text-xs text-slate-400">
+              Chargement instantané des terrains, joueurs et trésorerie.
+            </p>
+          </div>
+        ) : (
+          /* Tab Views */
+          <div>
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                user={user}
+                matches={matches}
+                players={players}
+                settings={settings}
+                onSelectTab={setActiveTab}
+                onSlotClick={handleSlotClick}
+                onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
+                onQuickTogglePayment={handleQuickTogglePayment}
+                onOpenMatchDetail={handleOpenMatchDetail}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
+              />
+            )}
 
-          {activeTab === 'matches' && (
-            <Matches
-              matches={matches}
-              players={players}
-              settings={settings}
-              selectedMatch={selectedMatch}
-              onSelectMatch={setSelectedMatch}
-              onSlotClick={handleSlotClick}
-              onQuickTogglePayment={handleQuickTogglePayment}
-              onSaveMatch={saveMatch}
-              onDeleteMatch={removeMatch}
-              onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
-            />
-          )}
+            {activeTab === 'matches' && (
+              <Matches
+                matches={matches}
+                players={players}
+                settings={settings}
+                selectedMatch={selectedMatch}
+                onSelectMatch={setSelectedMatch}
+                onSlotClick={handleSlotClick}
+                onQuickTogglePayment={handleQuickTogglePayment}
+                onSaveMatch={saveMatch}
+                onDeleteMatch={removeMatch}
+                onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
+              />
+            )}
 
-          {activeTab === 'players' && (
-            <Players
-              players={players}
-              matches={matches}
-              onSavePlayer={savePlayer}
-              onDeletePlayer={removePlayer}
-              onSeedDemoPlayers={() => seedInitialDemoData(settings)}
-            />
-          )}
+            {activeTab === 'players' && (
+              <Players
+                players={players}
+                matches={matches}
+                onSavePlayer={savePlayer}
+                onDeletePlayer={removePlayer}
+                onSeedDemoPlayers={() => seedInitialDemoData(settings)}
+              />
+            )}
 
-          {activeTab === 'finances' && (
-            <Finances
-              players={players}
-              matches={matches}
-              settings={settings}
-              onSettleDebt={handleSettleDebt}
-            />
-          )}
+            {activeTab === 'finances' && (
+              <Finances
+                players={players}
+                matches={matches}
+                settings={settings}
+                onSettleDebt={handleSettleDebt}
+              />
+            )}
 
-          {activeTab === 'settings' && (
-            <Settings
-              settings={settings}
-              onSaveSettings={saveSettings}
-              onGenerateSeason={(startDate) => generateFullSeasonSchedule(settings, startDate)}
-              onSeedDemo={() => seedInitialDemoData(settings)}
-            />
-          )}
-        </div>
+            {activeTab === 'settings' && (
+              <Settings
+                settings={settings}
+                onSaveSettings={saveSettings}
+                onGenerateSeason={(startDate) => generateFullSeasonSchedule(settings, startDate)}
+                onSeedDemo={() => seedInitialDemoData(settings)}
+              />
+            )}
+          </div>
+        )}
       </main>
 
       {/* Assign Player Modal */}
