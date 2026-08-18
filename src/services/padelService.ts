@@ -6,6 +6,7 @@ import {
   getDocs, 
   updateDoc, 
   deleteDoc, 
+  addDoc,
   onSnapshot, 
   query, 
   orderBy,
@@ -15,6 +16,7 @@ import { db } from '../firebase';
 import { 
   ClubSettings, 
   Player, 
+  PlayerRole,
   Match, 
   MatchCourt, 
   CourtSlot, 
@@ -61,12 +63,10 @@ export function listenSettings(
     if (docSnap.exists()) {
       callback({ ...DEFAULT_SETTINGS, ...docSnap.data() } as ClubSettings);
     } else {
-      // Initialize default settings in firestore
-      setDoc(settingsDocRef, DEFAULT_SETTINGS).catch(console.error);
       callback(DEFAULT_SETTINGS);
     }
   }, (error) => {
-    console.error("Erreur lors de l'écoute des settings:", error);
+    console.warn("Erreur lors de l'écoute des settings:", error);
     callback(DEFAULT_SETTINGS);
     if (onError) onError(error);
   });
@@ -87,7 +87,28 @@ export function listenPlayers(
   return onSnapshot(playersRef, (querySnap) => {
     const players: Player[] = [];
     querySnap.forEach((d) => {
-      players.push({ id: d.id, ...d.data() } as Player);
+      const data = d.data();
+      const isCreditor = data.isCreditor === true || data.role === 'creditor';
+      const advance = data.advanceAmount !== undefined 
+        ? Number(data.advanceAmount) 
+        : (data.creditAmount !== undefined ? Number(data.creditAmount) : 0);
+
+      players.push({
+        id: d.id,
+        name: data.name || '',
+        role: isCreditor ? 'creditor' : 'player',
+        status: data.status || (isCreditor ? 'crediteur' : 'actif'),
+        advanceAmount: isCreditor ? advance : 0,
+        email: data.email || '',
+        phone: data.phone || '',
+        avatarColor: data.avatarColor || '#E0F2FE',
+        linkedUid: data.linkedUid || data.authUid || null,
+        linkedEmail: data.linkedEmail || data.authEmail || null,
+        authUid: data.authUid || data.linkedUid || '',
+        authEmail: data.authEmail || data.linkedEmail || '',
+        isAdmin: data.isAdmin || false,
+        createdAt: data.createdAt || 0
+      } as Player);
     });
     // Sort creditors first, then alphabetical by name
     players.sort((a, b) => {
@@ -103,40 +124,88 @@ export function listenPlayers(
   });
 }
 
-export async function savePlayer(player: Partial<Player> & { name: string }): Promise<string> {
-  const playersRef = collection(db, 'players');
-  const playerId = player.id || doc(playersRef).id;
-  
-  const payload: Partial<Player> = {
-    id: playerId,
+/**
+ * Direct Update Player in Firestore with updateDoc
+ */
+export async function updatePlayer(
+  playerId: string,
+  data: {
+    name: string;
+    role?: 'player' | 'creditor';
+    isCreditor?: boolean;
+    advanceAmount?: number;
+    creditAmount?: number;
+    phone?: string;
+    email?: string;
+    avatarColor?: string;
+  }
+): Promise<void> {
+  const playerRef = doc(db, 'players', playerId);
+  const isCreditor = data.isCreditor !== undefined 
+    ? data.isCreditor 
+    : data.role === 'creditor';
+  const amount = data.advanceAmount !== undefined 
+    ? Number(data.advanceAmount) 
+    : (data.creditAmount !== undefined ? Number(data.creditAmount) : 0);
+
+  const updateData: Record<string, any> = {
+    name: data.name.trim(),
+    role: isCreditor ? 'creditor' : 'player',
+    isCreditor: isCreditor,
+    status: isCreditor ? 'crediteur' : 'actif',
+    advanceAmount: isCreditor ? amount : 0,
+    creditAmount: isCreditor ? amount : 0
+  };
+
+  if (data.phone !== undefined) updateData.phone = data.phone.trim();
+  if (data.email !== undefined) updateData.email = data.email.trim();
+  if (data.avatarColor !== undefined) updateData.avatarColor = data.avatarColor;
+
+  await updateDoc(playerRef, updateData);
+}
+
+/**
+ * Save / Create / Update player
+ */
+export async function savePlayer(player: Partial<Player> & { name: string; isCreditor?: boolean; creditAmount?: number }): Promise<string> {
+  const isCreditor = player.isCreditor !== undefined 
+    ? player.isCreditor 
+    : player.role === 'creditor';
+  const advance = player.advanceAmount !== undefined 
+    ? Number(player.advanceAmount) 
+    : (player.creditAmount !== undefined ? Number(player.creditAmount) : 0);
+
+  const payload: Record<string, any> = {
     name: player.name.trim(),
-    role: player.role || 'player',
-    status: player.status || (player.role === 'creditor' ? 'crediteur' : 'actif'),
-    advanceAmount: Number(player.advanceAmount) || 0,
+    role: isCreditor ? 'creditor' : 'player',
+    isCreditor: isCreditor,
+    status: isCreditor ? 'crediteur' : 'actif',
+    advanceAmount: isCreditor ? advance : 0,
+    creditAmount: isCreditor ? advance : 0,
     email: player.email || '',
     phone: player.phone || '',
     avatarColor: player.avatarColor || getRandomPastelColor(),
     createdAt: player.createdAt || Date.now()
   };
 
-  if (player.linkedUid !== undefined) {
+  if (player.linkedUid) {
     payload.linkedUid = player.linkedUid;
-    payload.authUid = player.linkedUid || '';
-  } else if (player.authUid !== undefined) {
-    payload.linkedUid = player.authUid;
-    payload.authUid = player.authUid;
+    payload.authUid = player.linkedUid;
   }
-
-  if (player.linkedEmail !== undefined) {
+  if (player.linkedEmail) {
     payload.linkedEmail = player.linkedEmail;
-    payload.authEmail = player.linkedEmail || '';
-  } else if (player.authEmail !== undefined) {
-    payload.linkedEmail = player.authEmail;
-    payload.authEmail = player.authEmail;
+    payload.authEmail = player.linkedEmail;
   }
 
-  await setDoc(doc(db, 'players', playerId), payload, { merge: true });
-  return playerId;
+  if (player.id) {
+    const playerDocRef = doc(db, 'players', player.id);
+    await updateDoc(playerDocRef, payload);
+    return player.id;
+  } else {
+    const playersRef = collection(db, 'players');
+    const docRef = await addDoc(playersRef, payload);
+    return docRef.id;
+  }
 }
 
 export async function linkPlayerAuth(playerId: string, authUid: string, authEmail?: string): Promise<void> {
@@ -467,81 +536,41 @@ export function calculatePlayerDebts(
 // ---------------- Demo Seeding ---------------- //
 
 export async function seedInitialDemoData(settings: ClubSettings): Promise<void> {
-  const batch = writeBatch(db);
+  const playersRef = collection(db, 'players');
+  const matchesRef = collection(db, 'matches');
 
-  // 1. Create sample creditors and players
-  const demoPlayers: Player[] = [
-    {
-      id: 'creditor_maxence',
-      name: 'Maxence (Créancier)',
-      role: 'creditor',
-      advanceAmount: 1100,
-      email: 'maxence@padel.club',
-      avatarColor: '#E0F2FE', // pastel sky
-      createdAt: Date.now()
-    },
-    {
-      id: 'creditor_thomas',
-      name: 'Thomas (Créancier)',
-      role: 'creditor',
-      advanceAmount: 1100,
-      email: 'thomas@padel.club',
-      avatarColor: '#F3E8FF', // pastel purple
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_alex',
-      name: 'Alexandre',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#DCFCE7', // pastel emerald
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_julien',
-      name: 'Julien B.',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#FEF9C3', // pastel amber
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_romain',
-      name: 'Romain L.',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#FCE7F3', // pastel rose
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_david',
-      name: 'David K.',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#E0E7FF', // pastel indigo
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_lucas',
-      name: 'Lucas M.',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#CCFBF1', // pastel teal
-      createdAt: Date.now()
-    },
-    {
-      id: 'player_nicolas',
-      name: 'Nicolas V.',
-      role: 'player',
-      advanceAmount: 0,
-      avatarColor: '#FFEDD5', // pastel orange
-      createdAt: Date.now()
-    }
+  const demoPlayersDefs = [
+    { name: 'Maxence (Créancier)', role: 'creditor' as PlayerRole, isCreditor: true, advanceAmount: 1100, email: 'maxence@padel.club', avatarColor: '#E0F2FE' },
+    { name: 'Thomas (Créancier)', role: 'creditor' as PlayerRole, isCreditor: true, advanceAmount: 1100, email: 'thomas@padel.club', avatarColor: '#F3E8FF' },
+    { name: 'Alexandre', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#DCFCE7' },
+    { name: 'Julien B.', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#FEF9C3' },
+    { name: 'Romain L.', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#FCE7F3' },
+    { name: 'David K.', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#E0E7FF' },
+    { name: 'Lucas M.', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#CCFBF1' },
+    { name: 'Nicolas V.', role: 'player' as PlayerRole, isCreditor: false, advanceAmount: 0, email: '', avatarColor: '#FFEDD5' }
   ];
 
-  demoPlayers.forEach(p => {
-    batch.set(doc(db, 'players', p.id), p);
-  });
+  const batch = writeBatch(db);
+  const createdPlayers: { [key: string]: { id: string; name: string } } = {};
+
+  for (const def of demoPlayersDefs) {
+    const newDocRef = doc(playersRef);
+    const playerObj = {
+      id: newDocRef.id,
+      name: def.name,
+      role: def.role,
+      isCreditor: def.isCreditor,
+      status: def.isCreditor ? 'crediteur' : 'actif',
+      advanceAmount: def.advanceAmount,
+      creditAmount: def.advanceAmount,
+      email: def.email || '',
+      phone: '',
+      avatarColor: def.avatarColor,
+      createdAt: Date.now()
+    };
+    batch.set(newDocRef, playerObj);
+    createdPlayers[def.name] = { id: newDocRef.id, name: def.name };
+  }
 
   // 2. Ensure settings
   batch.set(doc(db, 'settings', 'config'), {
@@ -554,7 +583,16 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
     currency: "€"
   });
 
-  // 3. Create first 6 season matches with some realistic attendances
+  // 3. Create first 6 season matches with authentic Firestore IDs
+  const maxenceId = createdPlayers['Maxence (Créancier)']?.id;
+  const thomasId = createdPlayers['Thomas (Créancier)']?.id;
+  const alexId = createdPlayers['Alexandre']?.id;
+  const julienId = createdPlayers['Julien B.']?.id;
+  const romainId = createdPlayers['Romain L.']?.id;
+  const davidId = createdPlayers['David K.']?.id;
+  const lucasId = createdPlayers['Lucas M.']?.id;
+  const nicolasId = createdPlayers['Nicolas V.']?.id;
+
   const today = new Date();
   const nextMonday = new Date(today);
   const day = today.getDay();
@@ -566,7 +604,7 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
     matchDate.setDate(nextMonday.getDate() + (i - 1) * 7);
     const dateFormatted = matchDate.toISOString().split('T')[0];
 
-    const matchId = `match_demo_${i}`;
+    const matchDocRef = doc(matchesRef);
     const courts: MatchCourt[] = [
       {
         courtId: 'court_1',
@@ -574,31 +612,31 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
         slots: [
           {
             position: 'teamA_left',
-            playerId: 'creditor_maxence',
+            playerId: maxenceId,
             playerName: 'Maxence (Créancier)',
             paymentStatus: 'paid',
-            paidToCreditorId: 'creditor_maxence',
+            paidToCreditorId: maxenceId,
             paidAt: Date.now()
           },
           {
             position: 'teamA_right',
-            playerId: 'player_alex',
+            playerId: alexId,
             playerName: 'Alexandre',
             paymentStatus: i === 1 ? 'paid' : 'pending',
-            paidToCreditorId: i === 1 ? 'creditor_maxence' : null,
+            paidToCreditorId: i === 1 ? maxenceId : null,
             paidAt: i === 1 ? Date.now() : null
           },
           {
             position: 'teamB_left',
-            playerId: 'player_julien',
+            playerId: julienId,
             playerName: 'Julien B.',
             paymentStatus: i <= 2 ? 'paid' : 'pending',
-            paidToCreditorId: i <= 2 ? 'creditor_maxence' : null,
+            paidToCreditorId: i <= 2 ? maxenceId : null,
             paidAt: i <= 2 ? Date.now() : null
           },
           {
             position: 'teamB_right',
-            playerId: 'player_romain',
+            playerId: romainId,
             playerName: 'Romain L.',
             paymentStatus: 'pending',
             paidToCreditorId: null,
@@ -612,15 +650,15 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
         slots: [
           {
             position: 'teamA_left',
-            playerId: 'creditor_thomas',
+            playerId: thomasId,
             playerName: 'Thomas (Créancier)',
             paymentStatus: 'paid',
-            paidToCreditorId: 'creditor_thomas',
+            paidToCreditorId: thomasId,
             paidAt: Date.now()
           },
           {
             position: 'teamA_right',
-            playerId: 'player_david',
+            playerId: davidId,
             playerName: 'David K.',
             paymentStatus: 'pending',
             paidToCreditorId: null,
@@ -628,15 +666,15 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
           },
           {
             position: 'teamB_left',
-            playerId: 'player_lucas',
+            playerId: lucasId,
             playerName: 'Lucas M.',
             paymentStatus: i === 1 ? 'paid' : 'pending',
-            paidToCreditorId: i === 1 ? 'creditor_thomas' : null,
+            paidToCreditorId: i === 1 ? thomasId : null,
             paidAt: i === 1 ? Date.now() : null
           },
           {
             position: 'teamB_right',
-            playerId: 'player_nicolas',
+            playerId: nicolasId,
             playerName: 'Nicolas V.',
             paymentStatus: 'pending',
             paidToCreditorId: null,
@@ -647,7 +685,7 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
     ];
 
     const match: Match = {
-      id: matchId,
+      id: matchDocRef.id,
       matchNumber: i,
       date: dateFormatted,
       time: "19:00",
@@ -660,7 +698,7 @@ export async function seedInitialDemoData(settings: ClubSettings): Promise<void>
       createdAt: Date.now() - (7 - i) * 86400000
     };
 
-    batch.set(doc(db, 'matches', matchId), match);
+    batch.set(matchDocRef, match);
   }
 
   await batch.commit();

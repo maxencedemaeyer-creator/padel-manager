@@ -1,5 +1,7 @@
 export type PlayerRole = 'player' | 'creditor';
 
+export type UserRole = 'admin' | 'user' | 'guest';
+
 export type PaymentStatus = 'pending' | 'paid';
 
 export type MatchType = 'regular' | 'friendly';
@@ -21,6 +23,7 @@ export interface Player {
   linkedEmail?: string | null; // Email Google du joueur
   authUid?: string; // Compatibilité authUid
   authEmail?: string;
+  isAdmin?: boolean; // Droits d'administration spécifiques
   createdAt?: number;
 }
 

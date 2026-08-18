@@ -16,6 +16,8 @@ import {
 
 interface SettingsProps {
   settings: ClubSettings;
+  isAdmin?: boolean;
+  isGuest?: boolean;
   onSaveSettings: (settings: ClubSettings) => Promise<void>;
   onGenerateSeason: (startDate: string) => Promise<number>;
   onSeedDemo: () => Promise<void>;
@@ -23,10 +25,13 @@ interface SettingsProps {
 
 export const Settings: React.FC<SettingsProps> = ({
   settings,
+  isAdmin = false,
+  isGuest = false,
   onSaveSettings,
   onGenerateSeason,
   onSeedDemo
 }) => {
+  const isReadOnly = !isAdmin || isGuest;
   const [courtNames, setCourtNames] = useState<string[]>(settings.courtNames || ["Terrain 1", "Terrain 6"]);
   const [newCourtName, setNewCourtName] = useState('');
   const [seasonMatchesCount, setSeasonMatchesCount] = useState<number>(settings.seasonMatchesCount || 44);
@@ -69,8 +74,9 @@ export const Settings: React.FC<SettingsProps> = ({
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Erreur enregistrement paramètres:", err);
+      alert("Erreur lors de l'enregistrement des paramètres : " + (err?.message || err));
     } finally {
       setIsSaving(false);
     }
@@ -85,8 +91,9 @@ export const Settings: React.FC<SettingsProps> = ({
       const count = await onGenerateSeason(seasonStartDate);
       setGeneratedMsg(`${count} matchs de la saison ont été générés avec succès !`);
       setTimeout(() => setGeneratedMsg(null), 4000);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Erreur génération saison:", err);
+      alert("Erreur lors de la génération de la saison : " + (err?.message || err));
     } finally {
       setIsGenerating(false);
     }
@@ -101,12 +108,28 @@ export const Settings: React.FC<SettingsProps> = ({
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
               Configuration du club
             </span>
+            {!isAdmin ? (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800">
+                Lecture seule
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800">
+                Administrateur
+              </span>
+            )}
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
             Paramètres Généraux
           </h2>
         </div>
       </div>
+
+      {!isAdmin && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+          <span>La modification des paramètres globaux, la génération des saisons et la réinitialisation des données sont réservées à l'administrateur du club.</span>
+        </div>
+      )}
 
       {savedSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
@@ -138,35 +161,39 @@ export const Settings: React.FC<SettingsProps> = ({
                   className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl"
                 >
                   <span className="text-xs font-bold text-slate-800">{court}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCourt(idx)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCourt(idx)}
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
 
             {/* Add Court */}
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <input
-                type="text"
-                placeholder="Ex: Terrain 2 ou Terrain Panoramique"
-                value={newCourtName}
-                onChange={(e) => setNewCourtName(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 min-h-[44px] sm:min-h-[38px]"
-              />
-              <button
-                type="button"
-                onClick={handleAddCourt}
-                disabled={!newCourtName.trim()}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 min-h-[44px] flex items-center justify-center"
-              >
-                + Ajouter terrain
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <input
+                  type="text"
+                  placeholder="Ex: Terrain 2 ou Terrain Panoramique"
+                  value={newCourtName}
+                  onChange={(e) => setNewCourtName(e.target.value)}
+                  className="flex-1 px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 min-h-[44px] sm:min-h-[38px]"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCourt}
+                  disabled={!newCourtName.trim()}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 min-h-[44px] flex items-center justify-center"
+                >
+                  + Ajouter terrain
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -188,9 +215,10 @@ export const Settings: React.FC<SettingsProps> = ({
                 type="number"
                 min="1"
                 max="100"
+                disabled={!isAdmin}
                 value={seasonMatchesCount}
                 onChange={(e) => setSeasonMatchesCount(parseInt(e.target.value) || 44)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px]"
+                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
               />
               <span className="text-[11px] text-slate-400">Par défaut : 44 matchs</span>
             </div>
@@ -203,9 +231,10 @@ export const Settings: React.FC<SettingsProps> = ({
                 type="number"
                 step="0.10"
                 min="0"
+                disabled={!isAdmin}
                 value={defaultPrice}
                 onChange={(e) => setDefaultPrice(parseFloat(e.target.value) || 12.50)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px]"
+                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
               />
               <span className="text-[11px] text-slate-400">Par défaut : 12.50 €</span>
             </div>
@@ -217,24 +246,27 @@ export const Settings: React.FC<SettingsProps> = ({
               <input
                 type="text"
                 placeholder="19:00"
+                disabled={!isAdmin}
                 value={defaultTime}
                 onChange={(e) => setDefaultTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px]"
+                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
               />
               <span className="text-[11px] text-slate-400">Ex: 19:00 ou 19h30</span>
             </div>
           </div>
 
-          <div className="pt-3 flex justify-end">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 min-h-[44px]"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="pt-3 flex justify-end">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 min-h-[44px]"
+              >
+                <Save className="w-4 h-4" />
+                {isSaving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
+              </button>
+            </div>
+          )}
         </div>
       </form>
 
@@ -263,54 +295,62 @@ export const Settings: React.FC<SettingsProps> = ({
           Générez instantanément les <strong>{seasonMatchesCount} matchs hebdomadaires</strong> de la saison avec les 2 terrains configurés ({courtNames.join(', ')}).
         </p>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="flex-1 space-y-1">
-            <label className="text-[11px] font-semibold text-slate-500 uppercase">
-              Date du Match #1 (Premier Lundi)
-            </label>
-            <input
-              type="date"
-              value={seasonStartDate}
-              onChange={(e) => setSeasonStartDate(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-semibold min-h-[44px] sm:min-h-[38px]"
-            />
-          </div>
+        {isAdmin ? (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="flex-1 space-y-1">
+              <label className="text-[11px] font-semibold text-slate-500 uppercase">
+                Date du Match #1 (Premier Lundi)
+              </label>
+              <input
+                type="date"
+                value={seasonStartDate}
+                onChange={(e) => setSeasonStartDate(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-semibold min-h-[44px] sm:min-h-[38px]"
+              />
+            </div>
 
-          <button
-            type="button"
-            onClick={handleGenerateSeason}
-            disabled={isGenerating}
-            className="sm:self-end px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 min-h-[44px]"
-          >
-            <Sparkles className="w-4 h-4" />
-            {isGenerating ? 'Génération en cours...' : `Générer les ${seasonMatchesCount} Matchs`}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleGenerateSeason}
+              disabled={isGenerating}
+              className="sm:self-end px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 min-h-[44px]"
+            >
+              <Sparkles className="w-4 h-4" />
+              {isGenerating ? 'Génération en cours...' : `Générer les ${seasonMatchesCount} Matchs`}
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs font-medium text-slate-400 italic">
+            Génération réservée aux administrateurs.
+          </p>
+        )}
       </div>
 
       {/* Section 4: Initialisation Démo */}
-      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
-        <div className="flex items-center gap-2">
-          <RefreshCw className="w-4 h-4 text-slate-500" />
-          <h4 className="text-sm font-bold text-slate-800">
-            Données de Démonstration & Test
-          </h4>
+      {isAdmin && (
+        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-slate-500" />
+            <h4 className="text-sm font-bold text-slate-800">
+              Données de Démonstration & Test
+            </h4>
+          </div>
+          <p className="text-xs text-slate-400">
+            Charge des créanciers d'exemple (Maxence, Thomas avec 1 100 € d'avance), des joueurs et des premiers matchs test.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Recharger les données d'exemple ? Cela ajoutera les joueurs et matchs de test.")) {
+                onSeedDemo();
+              }
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs min-h-[44px] flex items-center justify-center"
+          >
+            Recharger les données de démonstration
+          </button>
         </div>
-        <p className="text-xs text-slate-400">
-          Charge des créanciers d'exemple (Maxence, Thomas avec 1 100 € d'avance), des joueurs et des premiers matchs test.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("Recharger les données d'exemple ? Cela ajoutera les joueurs et matchs de test.")) {
-              onSeedDemo();
-            }
-          }}
-          className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs min-h-[44px] flex items-center justify-center"
-        >
-          Recharger les données de démonstration
-        </button>
-      </div>
+      )}
     </div>
   );
 };

@@ -31,31 +31,36 @@ export const NewMatchModal: React.FC<NewMatchModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    
+    const courtNames = settings.courtNames && settings.courtNames.length >= courtCount 
+      ? settings.courtNames.slice(0, courtCount) 
+      : courtCount === 1 ? ["Terrain 1"] : ["Terrain 1", "Terrain 6"];
+
+    const courts = courtNames.map((name, idx) => createEmptyCourt(`court_${idx + 1}`, name));
+
+    const payload: Partial<Match> = {
+      date,
+      time,
+      type: matchType,
+      matchNumber: matchType === 'regular' ? matchNumber : undefined,
+      courtCount,
+      pricePerPlayer: Number(pricePerPlayer) || 12.50,
+      status: 'upcoming',
+      courts,
+      notes: notes.trim(),
+      createdAt: Date.now()
+    };
+
+    // Close modal immediately and reset saving state
+    onClose();
+    setIsSaving(false);
+    setNotes('');
+
     try {
-      const courtNames = settings.courtNames && settings.courtNames.length >= courtCount 
-        ? settings.courtNames.slice(0, courtCount) 
-        : courtCount === 1 ? ["Terrain 1"] : ["Terrain 1", "Terrain 6"];
-
-      const courts = courtNames.map((name, idx) => createEmptyCourt(`court_${idx + 1}`, name));
-
-      await onSave({
-        date,
-        time,
-        type: matchType,
-        matchNumber: matchType === 'regular' ? matchNumber : undefined,
-        courtCount,
-        pricePerPlayer: Number(pricePerPlayer) || 12.50,
-        status: 'upcoming',
-        courts,
-        notes: notes.trim(),
-        createdAt: Date.now()
-      });
-      onClose();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSaving(false);
+      await onSave(payload);
+    } catch (err: any) {
+      console.error("Erreur création match:", err);
+      alert("Erreur lors de la création du match : " + (err?.message || err));
     }
   };
 

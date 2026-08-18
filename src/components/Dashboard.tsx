@@ -28,6 +28,10 @@ interface DashboardProps {
   matches: Match[];
   players: Player[];
   settings: ClubSettings;
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
+  currentUserPlayerId?: string | null;
   onSelectTab: (tab: string) => void;
   onSlotClick: (match: Match, courtId: string, slot: CourtSlot) => void;
   onOpenNewMatchModal: () => void;
@@ -41,6 +45,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   matches,
   players,
   settings,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
+  currentUserPlayerId = null,
   onSelectTab,
   onSlotClick,
   onOpenNewMatchModal,
@@ -412,16 +420,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            id="btn-new-match-dash"
-            onClick={onOpenNewMatchModal}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-slate-200 transition-all min-h-[44px]"
-          >
-            <Plus className="w-4 h-4" />
-            Nouveau Match
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-new-match-dash"
+              onClick={onOpenNewMatchModal}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-slate-200 transition-all min-h-[44px]"
+            >
+              <Plus className="w-4 h-4" />
+              Nouveau Match
+            </button>
+          </div>
+        )}
       </div>
 
       {/* DYNAMIC SECTION: MON STATUT */}
@@ -549,7 +559,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex items-center justify-between text-xs bg-slate-50 px-4 py-2.5 rounded-2xl text-slate-600 border border-slate-100">
               <span className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-600" />
-                <span><strong>Assignation 1-clic :</strong> Cliquez sur un emplacement pour assigner un joueur ou régler son statut.</span>
+                {isGuest ? (
+                  <span><strong>Consultation :</strong> Le tableau des terrains est en lecture seule pour les invités.</span>
+                ) : (
+                  <span><strong>Assignation 1-clic :</strong> Cliquez sur un emplacement pour assigner un joueur ou régler son statut.</span>
+                )}
               </span>
               <span className="text-slate-400 font-medium hidden sm:inline">
                 {nextMatchAssignedCount}/{nextMatchTotalSlots} assignés
@@ -564,6 +578,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   court={court}
                   matchPrice={nextMatch.pricePerPlayer}
                   players={players}
+                  readOnly={isGuest}
                   onSlotClick={(courtId, slot) => onSlotClick(nextMatch, courtId, slot)}
                   onQuickTogglePayment={(courtId, slot, e) => onQuickTogglePayment(nextMatch, courtId, slot, e)}
                 />
@@ -579,14 +594,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Aucun match programmé
             </h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Générez le calendrier complet des 44 matchs de la saison ou ajoutez un match personnalisé.
+              {isGuest 
+                ? 'Le calendrier de la saison n\'a pas encore été configuré par les administrateurs.' 
+                : 'Générez le calendrier complet des 44 matchs de la saison ou ajoutez un match personnalisé.'}
             </p>
-            <button
-              onClick={() => onSelectTab('settings')}
-              className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-slate-800 min-h-[44px]"
-            >
-              Générer la saison dans les Paramètres
-            </button>
+            {!isGuest && (
+              <button
+                onClick={() => onSelectTab('settings')}
+                className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-slate-800 min-h-[44px]"
+              >
+                Générer la saison dans les Paramètres
+              </button>
+            )}
           </div>
         )}
       </div>

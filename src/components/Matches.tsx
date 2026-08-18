@@ -21,6 +21,10 @@ interface MatchesProps {
   players: Player[];
   settings: ClubSettings;
   selectedMatch: Match | null;
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
+  currentUserPlayerId?: string | null;
   onSelectMatch: (match: Match | null) => void;
   onSlotClick: (match: Match, courtId: string, slot: CourtSlot) => void;
   onQuickTogglePayment: (match: Match, courtId: string, slot: CourtSlot, e: React.MouseEvent) => void;
@@ -34,6 +38,10 @@ export const Matches: React.FC<MatchesProps> = ({
   players,
   settings,
   selectedMatch,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
+  currentUserPlayerId = null,
   onSelectMatch,
   onSlotClick,
   onQuickTogglePayment,
@@ -93,7 +101,23 @@ export const Matches: React.FC<MatchesProps> = ({
   // Toggle match status completed / upcoming
   const handleToggleStatus = async (m: Match) => {
     const newStatus = m.status === 'completed' ? 'upcoming' : 'completed';
-    await onSaveMatch({ ...m, status: newStatus });
+    try {
+      await onSaveMatch({ ...m, status: newStatus });
+    } catch (err: any) {
+      console.error("Erreur statut match:", err);
+      alert("Erreur lors de la mise à jour du match : " + (err?.message || err));
+    }
+  };
+
+  const handleDeleteSelectedMatch = async (matchId: string) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce match ?")) return;
+    onSelectMatch(null);
+    try {
+      await onDeleteMatch(matchId);
+    } catch (err: any) {
+      console.error("Erreur suppression match:", err);
+      alert("Erreur lors de la suppression du match : " + (err?.message || err));
+    }
   };
 
   return (
@@ -114,15 +138,21 @@ export const Matches: React.FC<MatchesProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenNewMatchModal}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            Créer un Match
-          </button>
-        </div>
+        {isAdmin ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenNewMatchModal}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Créer un Match
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-400 font-medium bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-100">
+            {isUser ? "Cliquez sur un match pour voir les terrains et participer" : "Mode Invité • Lecture seule"}
+          </div>
+        )}
       </div>
 
       {/* Main Layout: If a match is selected, show detail view + court representation */}
@@ -155,31 +185,28 @@ export const Matches: React.FC<MatchesProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleToggleStatus(selectedMatch)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                    selectedMatch.status === 'completed'
-                      ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                      : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                  }`}
-                >
-                  {selectedMatch.status === 'completed' ? 'Marquer comme À venir' : 'Marquer comme Terminé'}
-                </button>
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggleStatus(selectedMatch)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      selectedMatch.status === 'completed'
+                        ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {selectedMatch.status === 'completed' ? 'Marquer comme À venir' : 'Marquer comme Terminé'}
+                  </button>
 
-                <button
-                  onClick={() => {
-                    if (window.confirm("Êtes-vous sûr de vouloir supprimer ce match ?")) {
-                      onDeleteMatch(selectedMatch.id);
-                      onSelectMatch(null);
-                    }
-                  }}
-                  className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 border border-rose-100 transition-colors"
-                  title="Supprimer ce match"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+                  <button
+                    onClick={() => handleDeleteSelectedMatch(selectedMatch.id)}
+                    className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 border border-rose-100 transition-colors"
+                    title="Supprimer ce match"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Price & Courts summary */}
@@ -202,6 +229,7 @@ export const Matches: React.FC<MatchesProps> = ({
                 court={court}
                 matchPrice={selectedMatch.pricePerPlayer}
                 players={players}
+                readOnly={isGuest}
                 onSlotClick={(courtId, slot) => onSlotClick(selectedMatch, courtId, slot)}
                 onQuickTogglePayment={(courtId, slot, e) => onQuickTogglePayment(selectedMatch, courtId, slot, e)}
               />

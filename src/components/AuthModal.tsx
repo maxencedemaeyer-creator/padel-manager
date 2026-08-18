@@ -43,28 +43,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleConfirmLink = async () => {
     if (!selectedPlayerId) return;
-    setIsSubmitting(true);
+    const targetId = selectedPlayerId;
+    // Immediate optimistic modal close & state reset
+    onClose();
+    setIsSubmitting(false);
     try {
-      await onLinkPlayer(selectedPlayerId);
-      onClose();
-    } catch (error) {
+      await onLinkPlayer(targetId);
+    } catch (error: any) {
       console.error("Erreur lors de l'association du compte:", error);
-    } finally {
-      setIsSubmitting(false);
+      alert("Erreur lors de l'association du profil : " + (error?.message || error));
     }
   };
 
   const handleCreateAndLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlayerName.trim() || !onCreateAndLinkPlayer) return;
-    setIsSubmitting(true);
+    const name = newPlayerName.trim();
+    const role = newPlayerRole;
+    // Immediate optimistic modal close & state reset
+    onClose();
+    setIsSubmitting(false);
     try {
-      await onCreateAndLinkPlayer(newPlayerName.trim(), newPlayerRole);
-      onClose();
-    } catch (error) {
+      await onCreateAndLinkPlayer(name, role);
+    } catch (error: any) {
       console.error("Erreur lors de la création du joueur:", error);
-    } finally {
-      setIsSubmitting(false);
+      alert("Erreur lors de la création du profil : " + (error?.message || error));
     }
   };
 

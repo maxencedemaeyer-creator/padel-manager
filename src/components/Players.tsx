@@ -19,6 +19,10 @@ import {
 interface PlayersProps {
   players: Player[];
   matches: Match[];
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
+  currentUserPlayerId?: string | null;
   onSavePlayer: (player: Partial<Player> & { name: string }) => Promise<any>;
   onDeletePlayer: (playerId: string) => Promise<void>;
   onSeedDemoPlayers: () => Promise<void>;
@@ -27,6 +31,10 @@ interface PlayersProps {
 export const Players: React.FC<PlayersProps> = ({
   players,
   matches,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
+  currentUserPlayerId = null,
   onSavePlayer,
   onDeletePlayer,
   onSeedDemoPlayers
@@ -104,18 +112,35 @@ export const Players: React.FC<PlayersProps> = ({
     if (!formData.name.trim()) return;
 
     setIsSubmitting(true);
+
+    const isCreditor = formData.role === 'creditor';
+    const amount = isCreditor ? Number(formData.advanceAmount) || 0 : 0;
+
+    const payload = {
+      id: editingPlayer ? editingPlayer.id : undefined,
+      name: formData.name.trim(),
+      role: formData.role,
+      isCreditor: isCreditor,
+      advanceAmount: amount,
+      creditAmount: amount,
+      phone: formData.phone.trim(),
+      email: formData.email.trim()
+    };
+
     try {
-      await onSavePlayer({
-        id: editingPlayer ? editingPlayer.id : undefined,
-        name: formData.name.trim(),
-        role: formData.role,
-        advanceAmount: formData.role === 'creditor' ? Number(formData.advanceAmount) || 0 : 0,
-        phone: formData.phone.trim(),
-        email: formData.email.trim()
-      });
+      await onSavePlayer(payload);
       setIsModalOpen(false);
-    } catch (err) {
-      console.error("Erreur d'enregistrement du joueur:", err);
+      setEditingPlayer(null);
+      setFormData({
+        name: '',
+        role: 'player',
+        advanceAmount: 0,
+        phone: '',
+        email: ''
+      });
+    } catch (err: any) {
+      console.error("Erreur de sauvegarde Firebase :", err);
+      alert("Erreur de sauvegarde Firebase : " + (err?.message || err));
     } finally {
       setIsSubmitting(false);
     }
@@ -145,30 +170,41 @@ export const Players: React.FC<PlayersProps> = ({
             <span className="text-xs text-slate-400 font-medium">
               {players.length} membre(s) • {creditorsCount} créancier(s)
             </span>
+            {isAdmin && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800">
+                👑 Droits Admin
+              </span>
+            )}
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Gestion des Joueurs
+            Annuaire des Joueurs
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          {players.length === 0 && (
+        {isAdmin ? (
+          <div className="flex items-center gap-2">
+            {players.length === 0 && (
+              <button
+                onClick={onSeedDemoPlayers}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Charger joueurs démo
+              </button>
+            )}
             <button
-              onClick={onSeedDemoPlayers}
-              className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              id="btn-add-player"
+              onClick={handleOpenAdd}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all"
             >
-              Charger joueurs démo
+              <UserPlus className="w-4 h-4" />
+              Ajouter un Joueur
             </button>
-          )}
-          <button
-            id="btn-add-player"
-            onClick={handleOpenAdd}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all"
-          >
-            <UserPlus className="w-4 h-4" />
-            Ajouter un Joueur
-          </button>
-        </div>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-400 font-medium bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-100">
+            {isUser ? "Consultation membres • Modifications réservées à l'administrateur" : "Mode Invité • Lecture seule"}
+          </div>
+        )}
       </div>
 
       {/* Filters & Search */}
@@ -227,12 +263,14 @@ export const Players: React.FC<PlayersProps> = ({
           <p className="text-sm font-semibold text-slate-600">
             Aucun joueur trouvé.
           </p>
-          <button
-            onClick={handleOpenAdd}
-            className="text-xs text-blue-600 font-bold hover:underline"
-          >
-            Ajouter votre premier joueur
-          </button>
+          {!isGuest && (
+            <button
+              onClick={handleOpenAdd}
+              className="text-xs text-blue-600 font-bold hover:underline"
+            >
+              Ajouter votre premier joueur
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -244,7 +282,9 @@ export const Players: React.FC<PlayersProps> = ({
               <div
                 key={player.id}
                 className={`p-5 rounded-3xl border transition-all space-y-3 bg-white shadow-sm hover:shadow-md ${
-                  isCreditor 
+                  player.id === currentUserPlayerId
+                    ? 'border-blue-400/80 ring-2 ring-blue-500/10'
+                    : isCreditor 
                     ? 'border-purple-200/80' 
                     : 'border-slate-100'
                 }`}
@@ -259,9 +299,16 @@ export const Players: React.FC<PlayersProps> = ({
                       {player.name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">
-                        {player.name}
-                      </h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-sm font-bold text-slate-900 truncate">
+                          {player.name}
+                        </h4>
+                        {player.id === currentUserPlayerId && (
+                          <span className="px-1.5 py-0.2 rounded-md text-[9px] font-extrabold bg-blue-100 text-blue-800 shrink-0">
+                            C'est vous
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         {isCreditor ? (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 inline-flex items-center gap-1">
@@ -282,28 +329,30 @@ export const Players: React.FC<PlayersProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEdit(player)}
-                      className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                      title="Modifier"
-                      aria-label={`Modifier ${player.name}`}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Supprimer ${player.name} du groupe ?`)) {
-                          onDeletePlayer(player.id);
-                        }
-                      }}
-                      className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 transition-colors"
-                      title="Supprimer"
-                      aria-label={`Supprimer ${player.name}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEdit(player)}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                        title="Modifier"
+                        aria-label={`Modifier ${player.name}`}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Supprimer ${player.name} du groupe ?`)) {
+                            onDeletePlayer(player.id);
+                          }
+                        }}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 transition-colors"
+                        title="Supprimer"
+                        aria-label={`Supprimer ${player.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Key Metrics / Advance & Stats */}

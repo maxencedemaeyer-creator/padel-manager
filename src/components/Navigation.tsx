@@ -7,6 +7,9 @@ interface NavigationProps {
   pendingDebtsCount: number;
   matchesCount: number;
   playersCount: number;
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
   onOpenNewMatchModal?: () => void;
   isMobileDrawerOpen?: boolean;
   setIsMobileDrawerOpen?: (open: boolean) => void;
@@ -18,6 +21,9 @@ export const Navigation: React.FC<NavigationProps> = ({
   pendingDebtsCount,
   matchesCount,
   playersCount,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
   onOpenNewMatchModal,
   isMobileDrawerOpen = false,
   setIsMobileDrawerOpen
@@ -112,7 +118,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           })}
         </div>
 
-        {onOpenNewMatchModal && (
+        {isAdmin && onOpenNewMatchModal && (
           <button
             onClick={onOpenNewMatchModal}
             className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer min-h-[44px]"
@@ -158,7 +164,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
 
             {/* Quick Action Button */}
-            {onOpenNewMatchModal && (
+            {isAdmin && onOpenNewMatchModal && (
               <div className="p-4 border-b border-slate-100">
                 <button
                   onClick={() => {

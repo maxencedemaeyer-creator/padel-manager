@@ -23,6 +23,10 @@ interface FinancesProps {
   players: Player[];
   matches: Match[];
   settings: ClubSettings;
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
+  currentUserPlayerId?: string | null;
   onSettleDebt: (
     matchId: string,
     courtId: string,
@@ -35,12 +39,19 @@ export const Finances: React.FC<FinancesProps> = ({
   players,
   matches,
   settings,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
+  currentUserPlayerId = null,
   onSettleDebt
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'creditors' | 'debts' | 'summary'>('creditors');
   const [copied, setCopied] = useState(false);
   const [selectedCreditorForSettlement, setSelectedCreditorForSettlement] = useState<string>('');
   const [settlingKey, setSettlingKey] = useState<string | null>(null);
+
+  const isCurrentUserCreditor = players.some(p => p.id === currentUserPlayerId && p.role === 'creditor');
+  const canSettle = isAdmin || isCurrentUserCreditor;
 
   const creditors = players.filter(p => p.role === 'creditor');
   const creditorSummaries = calculateCreditorsSummary(creditors, matches);
@@ -66,8 +77,9 @@ export const Finances: React.FC<FinancesProps> = ({
     setSettlingKey(key);
     try {
       await onSettleDebt(matchId, courtId, position, creditorIdToPay);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Erreur règlement:", err);
+      alert("Erreur lors de l'enregistrement du règlement : " + (err?.message || err));
     } finally {
       setSettlingKey(null);
     }
@@ -367,7 +379,7 @@ export const Finances: React.FC<FinancesProps> = ({
       {activeSubTab === 'debts' && (
         <div className="space-y-4">
           {/* Quick settlement target creditor selector */}
-          {creditors.length > 1 && (
+          {canSettle && creditors.length > 1 && (
             <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-xs">
               <span className="font-semibold text-slate-700 flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-blue-600" />
@@ -472,21 +484,27 @@ export const Finances: React.FC<FinancesProps> = ({
                                   </span>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  disabled={isCurrentSettling || !defaultCreditorId}
-                                  onClick={() => {
-                                    const m = matches.find(x => x.id === item.matchId);
-                                    const court = m?.courts.find(c => c.courtName === item.courtName) || m?.courts[0];
-                                    if (court && defaultCreditorId) {
-                                      handleQuickSettle(item.matchId, court.courtId, item.position, defaultCreditorId);
-                                    }
-                                  }}
-                                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all disabled:opacity-50 min-h-[44px]"
-                                >
-                                  <Check className="w-4 h-4" />
-                                  <span>{isCurrentSettling ? 'Règlement...' : 'Marquer réglé'}</span>
-                                </button>
+                                {canSettle ? (
+                                  <button
+                                    type="button"
+                                    disabled={isCurrentSettling || !defaultCreditorId}
+                                    onClick={() => {
+                                      const m = matches.find(x => x.id === item.matchId);
+                                      const court = m?.courts.find(c => c.courtName === item.courtName) || m?.courts[0];
+                                      if (court && defaultCreditorId) {
+                                        handleQuickSettle(item.matchId, court.courtId, item.position, defaultCreditorId);
+                                      }
+                                    }}
+                                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all disabled:opacity-50 min-h-[44px]"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                    <span>{isCurrentSettling ? 'Règlement...' : 'Marquer réglé'}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] font-bold text-amber-700 bg-amber-100/80 px-3 py-1.5 rounded-xl">
+                                    En attente
+                                  </span>
+                                )}
                               </div>
                             );
                           })}

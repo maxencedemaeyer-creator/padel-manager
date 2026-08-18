@@ -5,11 +5,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  auth, 
-  onAuthStateChanged, 
-  User 
-} from './firebase';
-import { 
   Player, 
   Match, 
   ClubSettings, 
@@ -33,6 +28,7 @@ import {
   seedInitialDemoData,
   linkPlayerAuth 
 } from './services/padelService';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
@@ -44,15 +40,24 @@ import { AssignPlayerModal } from './components/AssignPlayerModal';
 import { NewMatchModal } from './components/NewMatchModal';
 import { AuthModal } from './components/AuthModal';
 import { LoginScreen } from './components/LoginScreen';
+import { GuestBanner } from './components/GuestBanner';
 import { Loader2 } from 'lucide-react';
 
-export default function App() {
-  // Auth state
-  const [user, setUser] = useState<User | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
+function AppContent() {
+  const {
+    user,
+    authChecked,
+    isAdmin,
+    isUser,
+    isGuest,
+    currentUserPlayerId,
+    linkedPlayer,
+    isAuthModalOpen,
+    setIsAuthModalOpen
+  } = useAuth();
 
   // App data state
+  const [dataLoading, setDataLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [settings, setSettings] = useState<ClubSettings>(DEFAULT_SETTINGS);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -61,8 +66,7 @@ export default function App() {
   // Match detail state for Matches view
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
 
-  // Auth linking modal state
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  // Auth linking modal prompt state
   const [hasPromptedAuthModal, setHasPromptedAuthModal] = useState(false);
 
   // Slot Assignment Modal State
@@ -89,20 +93,7 @@ export default function App() {
   // Ref to track if initial demo seed has already run
   const hasSeededRef = useRef(false);
 
-  // 1. Initial Auth Check (Auth First)
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthChecked(true);
-      if (!currentUser) {
-        setHasPromptedAuthModal(false);
-        setDataLoading(false);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
-
-  // 2. Real-time Firestore Listeners (executed ONLY when user is authenticated)
+  // 1. Real-time Firestore Listeners (executed ONLY when user is authenticated)
   useEffect(() => {
     if (!authChecked || !user) {
       return;
@@ -187,45 +178,43 @@ export default function App() {
     }
   }, [dataLoading, authChecked, user, players.length, matches.length, settings]);
 
-  // Check if authenticated user is linked to any player in Firestore
-  const linkedPlayer = players.find(p => 
-    (user?.uid && (p.linkedUid === user.uid || p.authUid === user.uid)) ||
-    (user?.email && (
-      (p.linkedEmail && p.linkedEmail.toLowerCase() === user.email.toLowerCase()) ||
-      (p.authEmail && p.authEmail.toLowerCase() === user.email.toLowerCase()) ||
-      (p.email && p.email.toLowerCase() === user.email.toLowerCase())
-    ))
-  );
-
   // Trigger Auth modal when user signs in and is not linked
   useEffect(() => {
     if (!dataLoading && user && !user.isAnonymous && !linkedPlayer && !hasPromptedAuthModal && players.length > 0) {
       setIsAuthModalOpen(true);
       setHasPromptedAuthModal(true);
     }
-  }, [user, linkedPlayer, dataLoading, hasPromptedAuthModal, players.length]);
+  }, [user, linkedPlayer, dataLoading, hasPromptedAuthModal, players.length, setIsAuthModalOpen]);
 
   // Handle Profile Linking
   const handleLinkPlayer = async (playerId: string) => {
     if (!user) return;
-    await linkPlayerAuth(playerId, user.uid, user.email || undefined);
-    setIsAuthModalOpen(false);
+    try {
+      await linkPlayerAuth(playerId, user.uid, user.email || undefined);
+    } catch (err: any) {
+      console.error("Erreur liaison profil:", err);
+      alert("Erreur lors de la liaison du profil : " + (err?.message || err));
+    }
   };
 
   const handleCreateAndLinkPlayer = async (name: string, role: PlayerRole = 'player') => {
     if (!user) return;
-    await savePlayer({
-      name,
-      role,
-      status: role === 'creditor' ? 'crediteur' : 'actif',
-      advanceAmount: role === 'creditor' ? 1000 : 0,
-      email: user.email || '',
-      linkedUid: user.uid,
-      linkedEmail: user.email || '',
-      authUid: user.uid,
-      authEmail: user.email || ''
-    });
-    setIsAuthModalOpen(false);
+    try {
+      await savePlayer({
+        name,
+        role,
+        status: role === 'creditor' ? 'crediteur' : 'actif',
+        advanceAmount: role === 'creditor' ? 1000 : 0,
+        email: user.email || '',
+        linkedUid: user.uid,
+        linkedEmail: user.email || '',
+        authUid: user.uid,
+        authEmail: user.email || ''
+      });
+    } catch (err: any) {
+      console.error("Erreur création et liaison joueur:", err);
+      alert("Erreur lors de la création du joueur : " + (err?.message || err));
+    }
   };
 
   // Calculate pending debt badge count
@@ -246,6 +235,7 @@ export default function App() {
 
   // Slot Click Handler
   const handleSlotClick = (match: Match, courtId: string, slot: CourtSlot) => {
+    if (isGuest) return;
     const court = match.courts.find(c => c.courtId === courtId);
     setActiveSlotModal({
       isOpen: true,
@@ -263,6 +253,7 @@ export default function App() {
     slot: CourtSlot,
     _e: React.MouseEvent
   ) => {
+    if (isGuest || !isAdmin) return;
     if (!slot.playerId) return;
     const player = players.find(p => p.id === slot.playerId);
     if (player?.role === 'creditor') return; // Creditor is always auto-debited
@@ -271,7 +262,12 @@ export default function App() {
     const creditors = players.filter(p => p.role === 'creditor');
     const creditorId = newStatus === 'paid' ? (creditors.length > 0 ? creditors[0].id : null) : null;
 
-    await setSlotPaymentStatus(match.id, courtId, slot.position, newStatus, creditorId);
+    try {
+      await setSlotPaymentStatus(match.id, courtId, slot.position, newStatus, creditorId);
+    } catch (err: any) {
+      console.error("Erreur bascule paiement:", err);
+      alert("Erreur lors de la modification du paiement : " + (err?.message || err));
+    }
   };
 
   // Save Slot Assignment
@@ -282,21 +278,30 @@ export default function App() {
     paymentStatus: 'pending' | 'paid',
     paidToCreditorId: string | null
   ) => {
+    if (isGuest) return;
     if (!activeSlotModal.match) return;
     const creditors = players.filter(p => p.role === 'creditor');
-    await updateSlotInMatch(
-      activeSlotModal.match,
-      courtId,
-      slot.position,
-      player,
-      creditors,
-      paymentStatus,
-      paidToCreditorId
-    );
+    try {
+      await updateSlotInMatch(
+        activeSlotModal.match,
+        courtId,
+        slot.position,
+        player,
+        creditors,
+        paymentStatus,
+        paidToCreditorId
+      );
+    } catch (err: any) {
+      console.error("Erreur assignation slot:", err);
+      alert("Erreur lors de l'assignation du terrain : " + (err?.message || err));
+    }
   };
 
   // Quick Add Player from Modal
   const handleAddNewPlayerQuick = async (name: string, role: PlayerRole): Promise<Player> => {
+    if (!isAdmin) {
+      throw new Error("Action réservée à l'administrateur");
+    }
     const newId = await savePlayer({
       name,
       role,
@@ -317,7 +322,13 @@ export default function App() {
     position: SlotPosition,
     paidToCreditorId: string
   ) => {
-    await setSlotPaymentStatus(matchId, courtId, position, 'paid', paidToCreditorId);
+    if (isGuest) return;
+    try {
+      await setSlotPaymentStatus(matchId, courtId, position, 'paid', paidToCreditorId);
+    } catch (err: any) {
+      console.error("Erreur règlement dette:", err);
+      alert("Erreur lors du règlement de la dette : " + (err?.message || err));
+    }
   };
 
   // Open Match Detail
@@ -355,12 +366,18 @@ export default function App() {
         linkedPlayer={linkedPlayer}
         settings={settings} 
         activeMatchesCount={matches.length} 
+        isGuest={isGuest}
         onOpenMobileMenu={() => setIsMobileDrawerOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
       {/* Main Container with safe area padding for bottom navigation on mobile */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-28 md:pb-12">
+        {/* Guest Mode Banner */}
+        {isGuest && (
+          <GuestBanner onSignedIn={() => setIsAuthModalOpen(false)} />
+        )}
+
         {/* Navigation Tabs (Top pills on desktop + Drawer & Bottom bar on mobile) */}
         <Navigation
           activeTab={activeTab}
@@ -373,7 +390,11 @@ export default function App() {
           pendingDebtsCount={Math.round(pendingDebtsTotal)}
           matchesCount={matches.length}
           playersCount={players.length}
-          onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
+          isAdmin={isAdmin}
+          isGuest={isGuest}
+          onOpenNewMatchModal={() => {
+            if (isAdmin) setIsNewMatchModalOpen(true);
+          }}
           isMobileDrawerOpen={isMobileDrawerOpen}
           setIsMobileDrawerOpen={setIsMobileDrawerOpen}
         />
@@ -400,9 +421,15 @@ export default function App() {
                 matches={matches}
                 players={players}
                 settings={settings}
+                isAdmin={isAdmin}
+                isUser={isUser}
+                isGuest={isGuest}
+                currentUserPlayerId={currentUserPlayerId}
                 onSelectTab={setActiveTab}
                 onSlotClick={handleSlotClick}
-                onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
+                onOpenNewMatchModal={() => {
+                  if (isAdmin) setIsNewMatchModalOpen(true);
+                }}
                 onQuickTogglePayment={handleQuickTogglePayment}
                 onOpenMatchDetail={handleOpenMatchDetail}
                 onOpenAuthModal={() => setIsAuthModalOpen(true)}
@@ -415,12 +442,18 @@ export default function App() {
                 players={players}
                 settings={settings}
                 selectedMatch={selectedMatch}
+                isAdmin={isAdmin}
+                isUser={isUser}
+                isGuest={isGuest}
+                currentUserPlayerId={currentUserPlayerId}
                 onSelectMatch={setSelectedMatch}
                 onSlotClick={handleSlotClick}
                 onQuickTogglePayment={handleQuickTogglePayment}
                 onSaveMatch={saveMatch}
                 onDeleteMatch={removeMatch}
-                onOpenNewMatchModal={() => setIsNewMatchModalOpen(true)}
+                onOpenNewMatchModal={() => {
+                  if (isAdmin) setIsNewMatchModalOpen(true);
+                }}
               />
             )}
 
@@ -428,6 +461,10 @@ export default function App() {
               <Players
                 players={players}
                 matches={matches}
+                isAdmin={isAdmin}
+                isUser={isUser}
+                isGuest={isGuest}
+                currentUserPlayerId={currentUserPlayerId}
                 onSavePlayer={savePlayer}
                 onDeletePlayer={removePlayer}
                 onSeedDemoPlayers={() => seedInitialDemoData(settings)}
@@ -439,6 +476,10 @@ export default function App() {
                 players={players}
                 matches={matches}
                 settings={settings}
+                isAdmin={isAdmin}
+                isUser={isUser}
+                isGuest={isGuest}
+                currentUserPlayerId={currentUserPlayerId}
                 onSettleDebt={handleSettleDebt}
               />
             )}
@@ -446,6 +487,8 @@ export default function App() {
             {activeTab === 'settings' && (
               <Settings
                 settings={settings}
+                isAdmin={isAdmin}
+                isGuest={isGuest}
                 onSaveSettings={saveSettings}
                 onGenerateSeason={(startDate) => generateFullSeasonSchedule(settings, startDate)}
                 onSeedDemo={() => seedInitialDemoData(settings)}
@@ -464,18 +507,24 @@ export default function App() {
         slot={activeSlotModal.slot}
         match={activeSlotModal.match}
         players={players}
+        isAdmin={isAdmin}
+        isUser={isUser}
+        isGuest={isGuest}
+        currentUserPlayerId={currentUserPlayerId}
         onSave={handleSaveSlotAssignment}
         onAddNewPlayerQuick={handleAddNewPlayerQuick}
       />
 
       {/* New Match Modal */}
-      <NewMatchModal
-        isOpen={isNewMatchModalOpen}
-        onClose={() => setIsNewMatchModalOpen(false)}
-        settings={settings}
-        matchesCount={matches.length}
-        onSave={saveMatch}
-      />
+      {isAdmin && (
+        <NewMatchModal
+          isOpen={isNewMatchModalOpen}
+          onClose={() => setIsNewMatchModalOpen(false)}
+          settings={settings}
+          matchesCount={matches.length}
+          onSave={saveMatch}
+        />
+      )}
 
       {/* Auth Profile Linking Modal */}
       <AuthModal
@@ -487,5 +536,13 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

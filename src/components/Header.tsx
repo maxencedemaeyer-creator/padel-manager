@@ -8,6 +8,9 @@ interface HeaderProps {
   linkedPlayer?: Player | null;
   settings: ClubSettings;
   activeMatchesCount: number;
+  isAdmin?: boolean;
+  isUser?: boolean;
+  isGuest?: boolean;
   onOpenMobileMenu?: () => void;
   onOpenAuthModal?: () => void;
 }
@@ -17,6 +20,9 @@ export const Header: React.FC<HeaderProps> = ({
   linkedPlayer,
   settings,
   activeMatchesCount,
+  isAdmin = false,
+  isUser = false,
+  isGuest = false,
   onOpenMobileMenu,
   onOpenAuthModal
 }) => {
@@ -79,15 +85,23 @@ export const Header: React.FC<HeaderProps> = ({
               <div 
                 className="text-left hidden xs:block cursor-pointer"
                 onClick={onOpenAuthModal}
-                title="Cliquer pour changer de profil associé"
+                title={isGuest ? "Mode invité (lecture seule)" : "Cliquer pour changer de profil associé"}
               >
                 <span className="text-xs font-bold text-slate-900 block truncate max-w-[90px] sm:max-w-[130px] leading-tight">
-                  {linkedPlayer ? linkedPlayer.name : (user.displayName || (user.isAnonymous ? 'Invité' : 'Membre'))}
+                  {linkedPlayer ? linkedPlayer.name : (user.displayName || (isGuest ? 'Invité' : 'Membre'))}
                 </span>
                 <div className="flex items-center gap-1 mt-0.5">
-                  {linkedPlayer ? (
+                  {isAdmin ? (
+                    <span className="text-[10px] font-extrabold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded-md flex items-center gap-1">
+                      👑 Admin
+                    </span>
+                  ) : linkedPlayer ? (
                     <span className={`text-[10px] font-bold ${linkedPlayer.role === 'creditor' ? 'text-purple-600' : 'text-emerald-600'}`}>
-                      {linkedPlayer.role === 'creditor' ? '👑 Créancier' : '🎾 Joueur'}
+                      {linkedPlayer.role === 'creditor' ? '💳 Créancier' : '🎾 Joueur'}
+                    </span>
+                  ) : isGuest ? (
+                    <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded-md">
+                      👁️ Invité
                     </span>
                   ) : (
                     <span className="text-[10px] text-blue-600 font-bold hover:underline">

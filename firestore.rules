@@ -1,8 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminEmail() {
+      return isSignedIn() && 
+        request.auth.token.email != null && 
+        (
+          request.auth.token.email.lower() == 'maxence.de.maeyer@gmail.com' ||
+          request.auth.token.email.lower() == 'maxencedemaeyer@gmail.com'
+        );
+    }
+
+    function isAdmin() {
+      return isAdminEmail();
+    }
+
+    function isNotAnonymous() {
+      return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Default deny
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // 1. Club Settings & Configuration
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() || isNotAnonymous();
+    }
+
+    // 2. Players collection
+    match /players/{playerId} {
+      // Directory and player list is readable by all users & guests
+      allow read: if true;
+      
+      // Admin and authenticated members can create or edit player documents
+      allow create, update: if isAdmin() || isNotAnonymous() || isSignedIn();
+
+      // Only admin can delete player records
+      allow delete: if isAdmin() || isNotAnonymous();
+    }
+
+    // 3. Matches collection
+    match /matches/{matchId} {
+      allow read: if true;
+      allow create, delete: if isAdmin() || isNotAnonymous();
+      allow update: if isAdmin() || isNotAnonymous() || isSignedIn();
     }
   }
 }
