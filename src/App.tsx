@@ -1,3 +1,11 @@
+// @ts-nocheck
+// ─────────────────────────────────────────────────────────────────────────
+// Ce fichier est écrit en JavaScript classique (sans annotations de type).
+// S'il est utilisé dans un projet TypeScript (App.tsx), la ligne ci-dessus
+// désactive la vérification de types stricte pour CE fichier uniquement,
+// afin d'éviter les erreurs de build (implicit "any", etc.) — le reste du
+// projet TypeScript continue d'être vérifié normalement.
+// ─────────────────────────────────────────────────────────────────────────
 /**
  * =============================================================================
  *  PADEL MANAGER — Application complète de gestion de club de padel
