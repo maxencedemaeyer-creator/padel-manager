@@ -123,6 +123,11 @@ function GlobalStyles() {
       .pm-scroll::-webkit-scrollbar{ display:none; }
       .pm-scroll{ -ms-overflow-style:none; scrollbar-width:none; }
 
+      .pm-scroll-visible{ scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+      .pm-scroll-visible::-webkit-scrollbar{ width: 6px; }
+      .pm-scroll-visible::-webkit-scrollbar-track{ background: transparent; }
+      .pm-scroll-visible::-webkit-scrollbar-thumb{ background-color: var(--color-border); border-radius: 999px; }
+
       @keyframes pm-pulse{
         0%,100%{ opacity:1; } 50%{ opacity:.45; }
       }
@@ -1485,14 +1490,47 @@ function PaymentModal({ match, participant, onClose }) {
 /* =============================================================================
    11. MATCHS — cartes, création (ponctuel / saison), fin de match
    ========================================================================= */
-function StatusBadge({ status }) {
-  if (status === "En cours")
+const MATCH_DURATION_MINUTES = 60; // un match dure 1h : commence à l'heure encodée, terminé 1h plus tard
+
+function getMatchStart(match) {
+  return new Date(`${match.date}T${match.time || "00:00"}:00`);
+}
+function getMatchEnd(match) {
+  return new Date(getMatchStart(match).getTime() + MATCH_DURATION_MINUTES * 60000);
+}
+// Le statut n'est plus déclenché manuellement par un bouton : il est calculé
+// automatiquement à partir de l'heure de début encodée et de sa durée fixe.
+function getMatchTiming(match, now = new Date()) {
+  const start = getMatchStart(match);
+  const end = getMatchEnd(match);
+  if (now < start) return "upcoming";
+  if (now < end) return "ongoing";
+  return "finished";
+}
+function hasMatchScore(match) {
+  const s = match.scores || {};
+  return Boolean(s.set1 || s.set2 || s.set3);
+}
+// Garde l'affichage à jour minute par minute (un match "à venir" doit basculer
+// tout seul en "terminé" sans que personne n'ait à rafraîchir la page).
+function useNow(intervalMs = 60000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function StatusBadge({ match, now }) {
+  const timing = getMatchTiming(match, now);
+  if (timing === "ongoing")
     return (
       <Badge tone="lime" className="pm-pulse">
         ● En cours
       </Badge>
     );
-  if (status === "Terminé") return <Badge tone="neutral">Terminé</Badge>;
+  if (timing === "finished") return <Badge tone="neutral">Terminé</Badge>;
   return <Badge tone="blue">À venir</Badge>;
 }
 
@@ -1536,13 +1574,17 @@ function EndMatchModal({ match, onClose }) {
   const [type, setType] = useState(match.matchType || "Officiel");
   const [saving, setSaving] = useState(false);
 
+  const isSetScoreSuspicious = (value) => {
+    const nums = String(value || "").match(/\d+/g);
+    return Boolean(nums && nums.some((n) => Number(n) > 7));
+  };
+
   const submit = async () => {
     setSaving(true);
     try {
       await updateDoc(doc(db, "matches", match.id), {
         scores: { set1, set2, set3 },
         matchType: type,
-        status: "Terminé",
       });
       onClose();
     } catch (error) {
@@ -1553,8 +1595,11 @@ function EndMatchModal({ match, onClose }) {
   };
 
   return (
-    <Modal title="Terminer le match" onClose={onClose}>
-      <div className="grid grid-cols-3 gap-2 mb-4">
+    <Modal title="Score du match" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        1, 2 ou 3 sets (jusqu'à 7 jeux chacun). Laissez vide pour un match amical sans score.
+      </p>
+      <div className="grid grid-cols-3 gap-2 mb-1">
         {[
           ["Set 1", set1, setSet1],
           ["Set 2", set2, setSet2],
@@ -1567,6 +1612,11 @@ function EndMatchModal({ match, onClose }) {
               placeholder="6-4"
               onChange={(e) => setter(e.target.value)}
             />
+            {isSetScoreSuspicious(val) && (
+              <p className="text-[var(--color-danger)] text-[10px] font-semibold mt-1">
+                ⚠️ Max 7 jeux
+              </p>
+            )}
           </Field>
         ))}
       </div>
@@ -1578,23 +1628,44 @@ function EndMatchModal({ match, onClose }) {
         </select>
       </Field>
       <Button className="w-full mt-2" onClick={submit} disabled={saving}>
-        {saving ? "Enregistrement..." : "Enregistrer le résultat"}
+        {saving ? "Enregistrement..." : "Enregistrer le score"}
       </Button>
     </Modal>
   );
 }
 
 function AssignPlayersModal({ match, onClose }) {
-  const { players } = useAppData();
+  const { players, matches } = useAppData();
   const [selected, setSelected] = useState(
     (match.participants || []).map((p) => p.playerId)
   );
+  const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const toggle = (id) =>
+  // Joueurs déjà engagés sur un AUTRE match le même jour (double terrain, etc.) :
+  // on retrouve, pour chacun, le match en question afin d'expliquer pourquoi
+  // il est indisponible.
+  const conflictByPlayerId = useMemo(() => {
+    const map = new Map();
+    matches.forEach((m) => {
+      if (m.id === match.id || m.date !== match.date) return;
+      (m.participants || []).forEach((p) => {
+        if (!map.has(p.playerId)) map.set(p.playerId, m);
+      });
+    });
+    return map;
+  }, [matches, match.id, match.date]);
+
+  const toggle = (id) => {
+    if (conflictByPlayerId.has(id)) return; // déjà pris ce jour-là ailleurs
     setSelected((s) =>
       s.includes(id) ? s.filter((x) => x !== id) : s.length >= 4 ? s : [...s, id]
     );
+  };
+
+  const filteredPlayers = players.filter((p) =>
+    p.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   const submit = async () => {
     setSaving(true);
@@ -1617,34 +1688,62 @@ function AssignPlayersModal({ match, onClose }) {
 
   return (
     <Modal title="Assigner les joueurs" onClose={onClose} wide>
-      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
         Sélectionnez jusqu'à 4 joueurs pour le match du {formatDateFR(match.date)}
-        {match.time ? ` à ${match.time}` : ""}.
+        {match.time ? ` à ${match.time}` : ""}. N'importe quel joueur du club peut
+        être choisi, sauf s'il est déjà sur un autre match ce jour-là.
       </p>
-      <Field label={`Joueurs (${selected.length}/4)`}>
-        <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pm-scroll">
-          {players.map((p) => (
-            <label
-              key={p.id}
-              className={cn(
-                "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm cursor-pointer",
-                selected.includes(p.id)
-                  ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
-                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(p.id)}
-                onChange={() => toggle(p.id)}
-                disabled={!selected.includes(p.id) && selected.length >= 4}
-                className="w-4 h-4 accent-[var(--color-lime)]"
-              />
-              <span>
-                {p.emoji} {p.name}
-              </span>
-            </label>
-          ))}
+
+      <input
+        className={cn(inputClass, "mb-3")}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Rechercher un joueur..."
+      />
+
+      <Field label={`Joueurs (${selected.length}/4) — ${filteredPlayers.length} affiché(s)`}>
+        <div className="flex flex-col gap-2 max-h-72 sm:max-h-[26rem] overflow-y-auto pm-scroll-visible pr-1">
+          {filteredPlayers.length === 0 ? (
+            <p className="text-xs text-[var(--color-text-faint)] italic py-2">
+              Aucun joueur ne correspond à cette recherche.
+            </p>
+          ) : (
+            filteredPlayers.map((p) => {
+              const conflict = conflictByPlayerId.get(p.id);
+              const isSelected = selected.includes(p.id);
+              return (
+                <label
+                  key={p.id}
+                  className={cn(
+                    "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm",
+                    conflict
+                      ? "border-[var(--color-border)] bg-[var(--color-surface-2)]/50 opacity-50 cursor-not-allowed"
+                      : "cursor-pointer",
+                    !conflict && isSelected
+                      ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
+                      : !conflict && "border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggle(p.id)}
+                    disabled={Boolean(conflict) || (!isSelected && selected.length >= 4)}
+                    className="w-4 h-4 accent-[var(--color-lime)] shrink-0"
+                  />
+                  <span className="flex-1 min-w-0 truncate">
+                    {p.emoji} {p.name}
+                  </span>
+                  {conflict && (
+                    <span className="text-[10px] text-[var(--color-text-faint)] shrink-0 text-right">
+                      Déjà sur {conflict.location || "un autre terrain"}
+                      {conflict.time ? ` · ${conflict.time}` : ""}
+                    </span>
+                  )}
+                </label>
+              );
+            })
+          )}
         </div>
       </Field>
       <Button className="w-full mt-2" onClick={submit} disabled={saving}>
@@ -1654,20 +1753,15 @@ function AssignPlayersModal({ match, onClose }) {
   );
 }
 
-function MatchCard({ match }) {
+function MatchCard({ match, now }) {
   const { isAdmin, connectedPlayer } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const participants = match.participants || [];
   const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
-
-  const startMatch = async () => {
-    try {
-      await updateDoc(doc(db, "matches", match.id), { status: "En cours" });
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    }
-  };
+  const timing = getMatchTiming(match, now);
+  const finished = timing === "finished";
+  const scoreEntered = hasMatchScore(match);
 
   return (
     <Card
@@ -1685,7 +1779,7 @@ function MatchCard({ match }) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <StatusBadge status={match.status} />
+          <StatusBadge match={match} now={now} />
           <Badge tone="neutral" className="!text-[10px]">
             {match.type}
             {match.matchFeePerPlayer != null
@@ -1712,7 +1806,7 @@ function MatchCard({ match }) {
         </p>
       )}
 
-      {match.status === "Terminé" && match.scores && (
+      {scoreEntered && (
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--color-surface-2)] mb-3">
           <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
           <span className="pm-mono text-sm font-bold">
@@ -1728,40 +1822,23 @@ function MatchCard({ match }) {
         </div>
       )}
 
-      {isAdmin && match.status !== "Terminé" && (
-        <div className="flex gap-2 pt-1 flex-wrap">
-          <Button
-            variant="secondary"
-            className="flex-1 min-w-[130px] !py-2 !text-xs"
-            onClick={() => setShowAssign(true)}
-          >
-            {participants.length > 0 ? "Modifier les joueurs" : "Assigner les joueurs"}
-          </Button>
-          {match.status === "À venir" && (
-            <Button
-              variant="secondary"
-              className="flex-1 min-w-[130px] !py-2 !text-xs"
-              onClick={startMatch}
-            >
-              Démarrer le match
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            className="flex-1 min-w-[130px] !py-2 !text-xs"
-            onClick={() => setShowEnd(true)}
-          >
-            Terminer le match
-          </Button>
-        </div>
-      )}
-      {isAdmin && match.status === "Terminé" && (
-        <button
-          onClick={() => setShowEnd(true)}
-          className="text-xs font-semibold text-[var(--color-text-dim)] underline underline-offset-2"
+      {isAdmin && !finished && (
+        <Button
+          variant="secondary"
+          className="w-full !py-2 !text-xs"
+          onClick={() => setShowAssign(true)}
         >
-          Modifier le score
-        </button>
+          {participants.length > 0 ? "Modifier les joueurs" : "Assigner les joueurs"}
+        </Button>
+      )}
+      {isAdmin && finished && (
+        <Button
+          variant="secondary"
+          className="w-full !py-2 !text-xs"
+          onClick={() => setShowEnd(true)}
+        >
+          {scoreEntered ? "Modifier le score" : "Encoder le score"}
+        </Button>
       )}
 
       {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
@@ -2041,55 +2118,127 @@ function CreateSeasonModal({ onClose }) {
 
 function MatchesView() {
   const { matches, isAdmin } = useAppData();
+  const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
 
-  const filtered = matches.filter((m) =>
-    filter === "upcoming" ? m.status !== "Terminé" : m.status === "Terminé"
+  const sortedByStart = [...matches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
+  const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
+  const finishedDesc = sortedByStart
+    .filter((m) => getMatchTiming(m, now) === "finished")
+    .sort((a, b) => getMatchStart(b) - getMatchStart(a));
+
+  // Prochain match : toutes les rencontres du jour le plus proche à venir
+  // (ex. les 2 terrains du jeudi suivant).
+  const nextDate = notFinished[0]?.date;
+  const nextGroup = nextDate ? notFinished.filter((m) => m.date === nextDate) : [];
+
+  // Dernier match joué : toutes les rencontres du dernier jour déjà terminé.
+  const lastDate = finishedDesc[0]?.date;
+  const lastGroup = lastDate ? finishedDesc.filter((m) => m.date === lastDate) : [];
+
+  const highlightedIds = new Set([...nextGroup, ...lastGroup].map((m) => m.id));
+  const otherMatches = sortedByStart.filter((m) => !highlightedIds.has(m.id));
+  const otherFiltered = otherMatches.filter((m) =>
+    filter === "upcoming"
+      ? getMatchTiming(m, now) !== "finished"
+      : getMatchTiming(m, now) === "finished"
   );
 
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="pm-display font-bold text-xl">Matchs</h2>
-        <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1">
-          {[
-            ["upcoming", "À venir"],
-            ["done", "Terminés"],
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => setFilter(id)}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
-                filter === id
-                  ? "bg-sky-200 text-sky-900"
-                  : "text-[var(--color-text-dim)]"
-              )}
-            >
-              {label}
-            </button>
-          ))}
+      <h2 className="pm-display font-bold text-xl mb-4">Matchs</h2>
+
+      <div className="mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
+            Prochain match
+          </h3>
+          {nextDate && (
+            <span className="text-xs text-[var(--color-text-faint)]">
+              {formatDateFR(nextDate)}
+            </span>
+          )}
         </div>
+        {nextGroup.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {nextGroup.map((m) => (
+              <MatchCard key={m.id} match={m} now={now} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Icon.Calendar className="w-6 h-6" />}
+            title="Aucun match à venir"
+            subtitle={
+              isAdmin
+                ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
+                : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
+            }
+          />
+        )}
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<Icon.Calendar className="w-6 h-6" />}
-          title={filter === "upcoming" ? "Aucun match à venir" : "Aucun match terminé"}
-          subtitle={
-            isAdmin
-              ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
-              : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
-          }
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {filtered.map((m) => (
-            <MatchCard key={m.id} match={m} />
-          ))}
+      {lastGroup.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
+              Dernier match joué
+            </h3>
+            <span className="text-xs text-[var(--color-text-faint)]">
+              {formatDateFR(lastDate)}
+            </span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {lastGroup.map((m) => (
+              <MatchCard key={m.id} match={m} now={now} />
+            ))}
+          </div>
         </div>
       )}
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
+            Reste de la saison
+          </h3>
+          <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1">
+            {[
+              ["upcoming", "À venir"],
+              ["done", "Terminés"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setFilter(id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
+                  filter === id
+                    ? "bg-sky-200 text-sky-900"
+                    : "text-[var(--color-text-dim)]"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {otherFiltered.length === 0 ? (
+          <EmptyState
+            icon={<Icon.Calendar className="w-6 h-6" />}
+            title={
+              filter === "upcoming" ? "Aucun autre match à venir" : "Aucun autre match terminé"
+            }
+            subtitle="Le reste de la saison apparaîtra ici."
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {otherFiltered.map((m) => (
+              <MatchCard key={m.id} match={m} now={now} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {isAdmin && (
         <button
@@ -2114,7 +2263,7 @@ function AdminView() {
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const creditors = players.filter((p) => p.isCreditor);
   const totalBalance = creditors.reduce((s, c) => s + (c.creditBalance || 0), 0);
-  const upcomingCount = matches.filter((m) => m.status !== "Terminé").length;
+  const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
   const unpaidCount = matches.reduce(
     (sum, m) =>
       sum + (m.participants || []).filter((p) => p.paidStatus !== "paid").length,
