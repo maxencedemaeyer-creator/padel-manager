@@ -1220,6 +1220,8 @@ function PlayerRow({ player }) {
           <div className="text-right shrink-0">
             <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
               {adjustedBalance.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
           </div>
         )}
         {canEdit && (
