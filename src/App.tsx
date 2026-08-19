@@ -81,7 +81,7 @@ const SESSION_KEY = "padelManagerSession";
 const ADMIN_MASTER_CODE = "4812"; // Code admin de secours (Maxence)
 
 /* =============================================================================
-   1. DESIGN TOKENS — palette "court de padel" (vert profond / citron / turquoise)
+   1. DESIGN TOKENS — palette "crème pastel élégante" (blanc chaud / bleu doux / sauge)
    ========================================================================= */
 function GlobalStyles() {
   return (
@@ -89,16 +89,16 @@ function GlobalStyles() {
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
       :root{
-        --color-bg: #0E1A15;
-        --color-surface: #16261F;
-        --color-surface-2: #1D3226;
-        --color-border: #2A4235;
-        --color-text: #F4F8F3;
-        --color-text-dim: #9CB3A6;
-        --color-text-faint: #61796D;
-        --color-lime: #C6F135;
-        --color-lime-dim: #8FB024;
-        --color-blue: #35C4D6;
+        --color-bg: #FAF8F5;
+        --color-surface: #FFFFFF;
+        --color-surface-2: #F4EFE7;
+        --color-border: #E8E2D8;
+        --color-text: #1E293B;
+        --color-text-dim: #64748B;
+        --color-text-faint: #94A3B8;
+        --color-lime: #6FA98A;
+        --color-lime-dim: #5B8F73;
+        --color-blue: #7DB8DB;
         --color-paid: #34D399;
         --color-unpaid: #FB923C;
         --color-danger: #F87171;
@@ -110,8 +110,8 @@ function GlobalStyles() {
       .pm-root{
         font-family: var(--font-body);
         background:
-          radial-gradient(circle at 15% 0%, rgba(198,241,53,0.06), transparent 40%),
-          radial-gradient(circle at 100% 20%, rgba(53,196,214,0.08), transparent 45%),
+          radial-gradient(circle at 15% 0%, rgba(111,169,138,0.07), transparent 40%),
+          radial-gradient(circle at 100% 20%, rgba(125,184,219,0.09), transparent 45%),
           var(--color-bg);
         color: var(--color-text);
         min-height: 100vh;
@@ -385,12 +385,12 @@ function useAppData() {
    ========================================================================= */
 function Badge({ children, tone = "neutral", className = "" }) {
   const tones = {
-    neutral: "bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border-[var(--color-border)]",
-    paid: "bg-[var(--color-paid)]/15 text-[var(--color-paid)] border-[var(--color-paid)]/40",
-    unpaid: "bg-[var(--color-unpaid)]/15 text-[var(--color-unpaid)] border-[var(--color-unpaid)]/40",
-    lime: "bg-[var(--color-lime)]/15 text-[var(--color-lime)] border-[var(--color-lime)]/40",
-    blue: "bg-[var(--color-blue)]/15 text-[var(--color-blue)] border-[var(--color-blue)]/40",
-    danger: "bg-[var(--color-danger)]/15 text-[var(--color-danger)] border-[var(--color-danger)]/40",
+    neutral: "bg-stone-100 text-stone-500 border-stone-200",
+    paid: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    unpaid: "bg-orange-100 text-orange-700 border-orange-200",
+    lime: "bg-teal-100 text-teal-700 border-teal-200",
+    blue: "bg-sky-100 text-sky-700 border-sky-200",
+    danger: "bg-rose-100 text-rose-600 border-rose-200",
   };
   return (
     <span
@@ -408,11 +408,11 @@ function Badge({ children, tone = "neutral", className = "" }) {
 function Button({ children, variant = "primary", className = "", ...rest }) {
   const variants = {
     primary:
-      "bg-[var(--color-lime)] text-[#10210B] hover:brightness-95 active:scale-[0.98] shadow-lg shadow-black/20",
+      "bg-sky-200 text-sky-900 hover:bg-sky-300 active:scale-[0.98] shadow-sm shadow-sky-200/60",
     secondary:
-      "bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 active:scale-[0.98]",
+      "bg-white text-[var(--color-text)] border border-stone-200/60 hover:border-sky-300 active:scale-[0.98] shadow-sm",
     ghost: "text-[var(--color-text-dim)] hover:text-[var(--color-text)]",
-    danger: "bg-[var(--color-danger)]/15 text-[var(--color-danger)] border border-[var(--color-danger)]/40",
+    danger: "bg-rose-100 text-rose-700 border border-rose-200",
   };
   return (
     <button
@@ -432,7 +432,7 @@ function Card({ children, className = "" }) {
   return (
     <div
       className={cn(
-        "bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-lg shadow-black/20",
+        "bg-[var(--color-surface)] border border-stone-200/60 rounded-2xl shadow-sm",
         className
       )}
     >
@@ -445,12 +445,12 @@ function Modal({ title, onClose, children, wide = false }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pm-fade">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative w-full sm:rounded-3xl rounded-t-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xl max-h-[92vh] overflow-y-auto pm-scroll pm-rise",
+          "relative w-full sm:rounded-3xl rounded-t-3xl bg-[var(--color-surface)] border border-stone-200/60 shadow-xl max-h-[92vh] overflow-y-auto pm-scroll pm-rise",
           wide ? "sm:max-w-lg" : "sm:max-w-sm"
         )}
       >
@@ -481,7 +481,7 @@ function Field({ label, children }) {
 }
 
 const inputClass =
-  "w-full px-4 py-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-lime)] text-sm";
+  "w-full px-4 py-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100 transition-shadow text-sm";
 
 function Spinner() {
   return (
@@ -840,13 +840,13 @@ function BottomNav({ view, setView }) {
             <IconEl
               className={cn(
                 "w-5 h-5",
-                active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
+                active ? "text-sky-600" : "text-[var(--color-text-faint)]"
               )}
             />
             <span
               className={cn(
                 "text-[11px] font-semibold",
-                active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
+                active ? "text-sky-600" : "text-[var(--color-text-faint)]"
               )}
             >
               {t.label}
@@ -1662,7 +1662,7 @@ function MatchesView() {
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
                 filter === id
-                  ? "bg-[var(--color-lime)] text-[#10210B]"
+                  ? "bg-sky-200 text-sky-900"
                   : "text-[var(--color-text-dim)]"
               )}
             >
@@ -1693,7 +1693,7 @@ function MatchesView() {
       {isAdmin && (
         <button
           onClick={() => setShowChoice(true)}
-          className="fixed bottom-24 right-5 z-20 w-14 h-14 rounded-full bg-[var(--color-lime)] text-[#10210B] flex items-center justify-center shadow-xl shadow-black/30 active:scale-95 transition-all"
+          className="fixed bottom-24 right-5 z-20 w-14 h-14 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center shadow-lg shadow-sky-300/50 active:scale-95 transition-all"
         >
           <Icon.Plus className="w-6 h-6" />
         </button>
