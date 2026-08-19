@@ -32,6 +32,7 @@ import React, {
   createContext,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 import {
@@ -492,7 +493,7 @@ function Card({ children, className = "" }) {
 }
 
 function Modal({ title, onClose, children, footer, wide = false }) {
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto pm-fade">
       <div
         className={cn(
@@ -518,6 +519,10 @@ function Modal({ title, onClose, children, footer, wide = false }) {
       </div>
     </div>
   );
+  // Portail : la fenêtre est attachée directement à <body>, donc jamais
+  // affectée par un parent (transform, filtre, overflow...) qui casserait
+  // son positionnement "fixed".
+  return createPortal(content, document.body);
 }
 
 function Field({ label, children }) {
@@ -1170,9 +1175,9 @@ function PlayerRow({ player }) {
   const [showEdit, setShowEdit] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
   const canEdit = isAdmin || player.id === connectedPlayer.id;
-  const { totalPaidAllTime } = player.isCreditor
-    ? getCreditorAccounting(player.id, matches)
-    : { totalPaidAllTime: 0 };
+  const adjustedBalance = player.isCreditor
+    ? getCreditorAccounting(player.id, matches).totalPaidAllTime + (player.manualAdjustment || 0)
+    : 0;
 
   return (
     <>
@@ -1206,9 +1211,7 @@ function PlayerRow({ player }) {
         {player.isCreditor && (
           <div className="text-right shrink-0">
             <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
-              {totalPaidAllTime.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
+              {adjustedBalance.toLocaleString("fr-FR")} €
           </div>
         )}
         {canEdit && (
@@ -1452,7 +1455,9 @@ function PlayersView() {
   // Tri purement local à l'affichage — ne modifie jamais l'ordre dans Firestore.
   const sorted = useMemo(() => {
     const balanceOf = (p) =>
-      p.isCreditor ? getCreditorAccounting(p.id, matches).totalPaidAllTime : 0;
+      p.isCreditor
+        ? getCreditorAccounting(p.id, matches).totalPaidAllTime + (p.manualAdjustment || 0)
+        : 0;
     const arr = [...players];
     switch (sortBy) {
       case "name-desc":
@@ -1568,7 +1573,8 @@ function PaymentModal({ match, participant, onClose }) {
       ) : (
         <div className="flex flex-col gap-2">
           {creditors.map((c) => {
-            const { totalPaidAllTime } = getCreditorAccounting(c.id, matches);
+            const adjustedBalance =
+              getCreditorAccounting(c.id, matches).totalPaidAllTime + (c.manualAdjustment || 0);
             return (
               <button
                 key={c.id}
@@ -1582,7 +1588,7 @@ function PaymentModal({ match, participant, onClose }) {
                 <span className="flex-1 text-left">
                   <span className="block text-sm font-semibold">{c.name}</span>
                   <span className="block text-xs text-[var(--color-text-dim)]">
-                    Solde actuel : {totalPaidAllTime.toLocaleString("fr-FR")} €
+                    Solde actuel : {adjustedBalance.toLocaleString("fr-FR")} €
                   </span>
                 </span>
                 <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)]" />
@@ -1950,7 +1956,7 @@ function AssignPlayersModal({ match, onClose }) {
             Annuler
           </Button>
           <Button onClick={submit} disabled={saving}>
-            {saving ? "Enregistrement..." : "Enregistrer les joueurs"}
+            {saving ? "Enregistrement..." : "Valider"}
           </Button>
         </>
       }
@@ -2607,14 +2613,21 @@ function CreditorBalanceEditor({ creditor, rawTotal }) {
     />
   );
 }
+
 function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const creditors = players.filter((p) => p.isCreditor);
-  const creditorTotals = new Map(
+  const creditorRawTotals = new Map(
     creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches).totalPaidAllTime])
   );
-  const totalBalance = [...creditorTotals.values()].reduce((s, v) => s + v, 0);
+  const creditorAdjustedTotals = new Map(
+    creditors.map((c) => [
+      c.id,
+      (creditorRawTotals.get(c.id) || 0) + (c.manualAdjustment || 0),
+    ])
+  );
+  const totalBalance = [...creditorAdjustedTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
   const unpaidCount = matches.reduce(
     (sum, m) =>
@@ -2672,14 +2685,14 @@ function AdminView() {
       ) : (
         <div className="flex flex-col gap-2">
           {[...creditors]
-            .sort((a, b) => (creditorTotals.get(b.id) || 0) - (creditorTotals.get(a.id) || 0))
+            .sort((a, b) => (creditorAdjustedTotals.get(b.id) || 0) - (creditorAdjustedTotals.get(a.id) || 0))
             .map((c) => (
               <Card key={c.id} className="p-4 flex items-center gap-3">
                 <span className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-lg">
                   {c.emoji || "🎾"}
                 </span>
                 <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                <CreditorBalanceEditor creditor={c} rawTotal={creditorTotals.get(c.id) || 0} />
+                <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
               </Card>
             ))}
         </div>
@@ -2822,8 +2835,9 @@ function AccountingView() {
   const { connectedPlayer, matches } = useAppData();
   const { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived } =
     getCreditorAccounting(connectedPlayer.id, matches);
+  const adjustedPaidAllTime = totalPaidAllTime + (connectedPlayer.manualAdjustment || 0);
   const advanced = connectedPlayer.advancedAmount || 0;
-  const remaining = advanced - totalPaidAllTime;
+  const remaining = advanced - adjustedPaidAllTime;
 
   const blocks = [
     {
