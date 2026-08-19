@@ -903,25 +903,59 @@ function InfoChip({ children }) {
 }
 
 function EditPlayerModal({ player, onClose }) {
+  const { isAdmin, players } = useAppData();
+
+  // Champs de jeu — modifiables par le joueur lui-même ou par l'admin
   const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
   const [preferredSide, setPreferredSide] = useState(
     normalizeSide(player.preferredSide) || "Polyvalent"
   );
   const [federation, setFederation] = useState(player.federation || "Aucune");
   const [level, setLevel] = useState(player.level || "Pas de niveau");
+
+  // Champs de profil complets — modifiables uniquement par l'administrateur
+  const [name, setName] = useState(player.name || "");
+  const [email, setEmail] = useState(player.email || "");
+  const [emoji, setEmoji] = useState(player.emoji || "🎾");
+  const [accessCode, setAccessCode] = useState(player.accessCode || "");
+  const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
+  const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
+
   const [saving, setSaving] = useState(false);
 
+  const duplicateOwner = useMemo(
+    () => (isAdmin ? findDuplicateOwner(players, accessCode, player.id) : null),
+    [isAdmin, players, accessCode, player.id]
+  );
+  const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
+
+  const canSubmit = isAdmin
+    ? name.trim().length > 0 && accessCode.length === 4 && !duplicateOwner
+    : true;
+
   const submit = async () => {
+    if (!canSubmit) return;
     setSaving(true);
     try {
       const levelInfo = LEVELS.find((l) => l.label === level);
-      await updateDoc(doc(db, "players", player.id), {
+      const payload = {
         dominantHand,
         preferredSide,
         federation,
         level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
-      });
+      };
+      if (isAdmin) {
+        Object.assign(payload, {
+          name: name.trim(),
+          email: email.trim(),
+          emoji,
+          accessCode,
+          isAdmin: playerIsAdmin,
+          isCreditor,
+        });
+      }
+      await updateDoc(doc(db, "players", player.id), payload);
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -932,9 +966,78 @@ function EditPlayerModal({ player, onClose }) {
 
   return (
     <Modal title={`Profil de ${player.name}`} onClose={onClose} wide>
-      <p className="text-xs text-[var(--color-text-dim)] mb-4">
-        Seules les informations de jeu ci-dessous peuvent être modifiées ici.
-      </p>
+      {!isAdmin && (
+        <p className="text-xs text-[var(--color-text-dim)] mb-4">
+          Seules les informations de jeu ci-dessous peuvent être modifiées ici.
+        </p>
+      )}
+
+      {isAdmin && (
+        <>
+          <Field label="Avatar">
+            <div className="flex flex-wrap gap-2">
+              {EMOJI_CHOICES.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setEmoji(e)}
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center text-lg border transition-all",
+                    emoji === e
+                      ? "border-[var(--color-lime)] bg-[var(--color-lime)]/15"
+                      : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                  )}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field label="Nom complet">
+            <input
+              className={inputClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex. Camille Dupuis"
+            />
+          </Field>
+
+          <Field label="Email">
+            <input
+              type="email"
+              className={inputClass}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="camille@email.com"
+            />
+          </Field>
+
+          <Field label="Code PIN (4 chiffres)">
+            <div className="flex gap-2">
+              <input
+                className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+                value={accessCode}
+                maxLength={4}
+                onChange={(e) =>
+                  setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+              />
+              <button
+                onClick={generateCode}
+                className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+              >
+                <Icon.Dice className="w-4 h-4" /> Générer
+              </button>
+            </div>
+            {duplicateOwner && (
+              <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
+                ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
+                choisir un autre.
+              </p>
+            )}
+          </Field>
+        </>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Main dominante">
@@ -983,7 +1086,30 @@ function EditPlayerModal({ player, onClose }) {
         </select>
       </Field>
 
-      <Button className="w-full mt-2" onClick={submit} disabled={saving}>
+      {isAdmin && (
+        <div className="flex flex-col gap-2 mb-2">
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={playerIsAdmin}
+              onChange={(e) => setPlayerIsAdmin(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Administrateur (gestion complète du club)
+          </label>
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={isCreditor}
+              onChange={(e) => setIsCreditor(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Créancier (peut recevoir des paiements de match)
+          </label>
+        </div>
+      )}
+
+      <Button className="w-full mt-2" onClick={submit} disabled={!canSubmit || saving}>
         {saving ? "Enregistrement..." : "Enregistrer les modifications"}
       </Button>
     </Modal>
