@@ -1860,14 +1860,35 @@ function CreateSeasonModal({ onClose }) {
   const [time, setTime] = useState("20:00");
   const [fee, setFee] = useState("");
   const [courtsCount, setCourtsCount] = useState(1);
-  const [courtNumbers, setCourtNumbers] = useState("1");
+  const [courtNumbers, setCourtNumbers] = useState(["1"]);
   const [clubName, setClubName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const canSubmit =
-    Boolean(startDate) && Number(numberOfMatches) > 0 && Number(courtsCount) > 0;
+  // Ajuste automatiquement le nombre de cases "numéro de terrain" pour qu'il
+  // corresponde toujours exactement au nombre de terrains saisi.
+  useEffect(() => {
+    const n = Math.max(1, Number(courtsCount) || 1);
+    setCourtNumbers((prev) => {
+      const next = prev.slice(0, n);
+      while (next.length < n) {
+        next.push(String(next.length + 1));
+      }
+      return next;
+    });
+  }, [courtsCount]);
 
-  const totalMatches = Number(numberOfMatches || 0) * Number(courtsCount || 0);
+  const setCourtNumberAt = (index, value) => {
+    setCourtNumbers((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const canSubmit =
+    Boolean(startDate) && Number(numberOfMatches) > 0 && courtNumbers.length > 0;
+
+  const totalMatches = Number(numberOfMatches || 0) * courtNumbers.length;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -1876,20 +1897,13 @@ function CreateSeasonModal({ onClose }) {
       const interval =
         RECURRENCE_OPTIONS.find((r) => r.label === recurrence)?.days || 7;
       const dates = getRecurringDates(startDate, interval, Number(numberOfMatches));
-
-      const enteredCourts = String(courtNumbers || "")
-        .split(/[,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const courtList = [];
-      for (let i = 0; i < Number(courtsCount); i++) {
-        courtList.push(enteredCourts[i] || String(i + 1));
-      }
+      const courtList = courtNumbers.map((c, i) => (c.trim() ? c.trim() : String(i + 1)));
 
       const parsedFee = parseFeeInput(fee);
       const club = clubName.trim();
 
       const batch = writeBatch(db);
+      let writesQueued = 0;
       dates.forEach((d) => {
         courtList.forEach((court) => {
           const ref = doc(collection(db, "matches"));
@@ -1904,9 +1918,14 @@ function CreateSeasonModal({ onClose }) {
             status: "À venir",
             createdAt: serverTimestamp(),
           });
+          writesQueued += 1;
         });
       });
       await batch.commit();
+      alert(
+        `${writesQueued} match(s) créé(s) avec succès dans Firestore ` +
+          `(${dates.length} date(s) × ${courtList.length} terrain(s)).`
+      );
       onClose();
     } catch (error) {
       alert("Erreur de création : " + error.message);
@@ -1970,25 +1989,32 @@ function CreateSeasonModal({ onClose }) {
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Nombre de terrains">
-          <input
-            type="number"
-            min="1"
-            className={inputClass}
-            value={courtsCount}
-            onChange={(e) => setCourtsCount(e.target.value)}
-          />
-        </Field>
-        <Field label="Numéros des terrains">
-          <input
-            className={inputClass}
-            value={courtNumbers}
-            onChange={(e) => setCourtNumbers(e.target.value)}
-            placeholder="Ex. 1, 2, 3"
-          />
-        </Field>
-      </div>
+      <Field label="Nombre de terrains">
+        <input
+          type="number"
+          min="1"
+          className={inputClass}
+          value={courtsCount}
+          onChange={(e) => setCourtsCount(e.target.value)}
+        />
+      </Field>
+
+      <Field label={`Numéros des terrains (${courtNumbers.length} case${courtNumbers.length > 1 ? "s" : ""})`}>
+        <div className="grid grid-cols-3 gap-2">
+          {courtNumbers.map((val, i) => (
+            <input
+              key={i}
+              className={cn(inputClass, "text-center")}
+              value={val}
+              onChange={(e) => setCourtNumberAt(i, e.target.value)}
+              placeholder={`Terrain ${i + 1}`}
+            />
+          ))}
+        </div>
+        <p className="text-[11px] text-[var(--color-text-faint)] mt-1.5">
+          Une case par terrain — modifiez le nombre ci-dessus pour en ajouter ou en retirer.
+        </p>
+      </Field>
 
       <Field label="Nom du club (optionnel)">
         <input
@@ -2002,7 +2028,7 @@ function CreateSeasonModal({ onClose }) {
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         {totalMatches} match{totalMatches > 1 ? "s" : ""} seront générés (
         {numberOfMatches} date{Number(numberOfMatches) > 1 ? "s" : ""} ×{" "}
-        {courtsCount} terrain{Number(courtsCount) > 1 ? "s" : ""}),{" "}
+        {courtNumbers.length} terrain{courtNumbers.length > 1 ? "s" : ""}),{" "}
         {recurrence.toLowerCase()}, à partir du {formatDateFR(startDate)}. La
         sélection des joueurs se fera ensuite depuis la page d'accueil.
       </p>
