@@ -216,6 +216,19 @@ const Icon = {
       <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
     </svg>
   ),
+  Chart: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M4 20V10M12 20V4M20 20v-7" />
+      <path d="M3 20h18" />
+    </svg>
+  ),
+  Swords: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M5 4l7 7-3 3-7-7V4h3z" />
+      <path d="M19 4l-7 7 3 3 7-7V4h-3z" />
+      <path d="M8 14l-4 4M16 14l4 4" />
+    </svg>
+  ),
   Chevron: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}>
       <path d="M9 18l6-6-6-6" />
@@ -424,7 +437,7 @@ function Badge({ children, tone = "neutral", className = "" }) {
   const tones = {
     neutral: "bg-stone-100 text-stone-500 border-stone-200",
     paid: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    unpaid: "bg-orange-100 text-orange-700 border-orange-200",
+    unpaid: "bg-rose-100 text-rose-700 border-rose-200",
     lime: "bg-teal-100 text-teal-700 border-teal-200",
     blue: "bg-sky-100 text-sky-700 border-sky-200",
     danger: "bg-rose-100 text-rose-600 border-rose-200",
@@ -478,29 +491,30 @@ function Card({ children, className = "" }) {
   );
 }
 
-function Modal({ title, onClose, children, wide = false }) {
+function Modal({ title, onClose, children, footer, wide = false }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pm-fade">
-      <div
-        className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto pm-fade">
       <div
         className={cn(
-          "relative w-full sm:rounded-3xl rounded-t-3xl bg-[var(--color-surface)] border border-stone-200/60 shadow-xl max-h-[92vh] overflow-y-auto pm-scroll pm-rise",
-          wide ? "sm:max-w-lg" : "sm:max-w-sm"
+          "relative w-full max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden pm-rise",
+          wide ? "max-w-lg" : "max-w-sm"
         )}
       >
-        <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur">
-          <h3 className="pm-display font-bold text-lg">{title}</h3>
+        <div className="p-4 border-b border-stone-200 flex justify-between items-center bg-stone-50 shrink-0">
+          <h3 className="pm-display font-bold text-lg text-[var(--color-text)]">{title}</h3>
           <button
             onClick={onClose}
-            className="p-2 rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+            className="p-2 rounded-full bg-white border border-stone-200 text-[var(--color-text-dim)] hover:text-[var(--color-text)] shrink-0"
           >
             <Icon.X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-4 overflow-y-auto space-y-3 flex-1 pm-scroll-visible">{children}</div>
+        {footer && (
+          <div className="p-4 border-t border-stone-200 bg-stone-50 flex justify-end gap-2 shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -858,10 +872,14 @@ function Header() {
 }
 
 function BottomNav({ view, setView }) {
-  const { isAdmin } = useAppData();
+  const { isAdmin, connectedPlayer } = useAppData();
   const tabs = [
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
     { id: "players", label: "Joueurs", icon: Icon.Users },
+    { id: "stats", label: "Stats", icon: Icon.Chart },
+    ...(connectedPlayer.isCreditor
+      ? [{ id: "accounting", label: "Compta", icon: Icon.Coin }]
+      : []),
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
   return (
@@ -925,6 +943,9 @@ function EditPlayerModal({ player, onClose }) {
   const [accessCode, setAccessCode] = useState(player.accessCode || "");
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
+  const [advancedAmount, setAdvancedAmount] = useState(
+    player.advancedAmount != null ? String(player.advancedAmount) : ""
+  );
 
   const [saving, setSaving] = useState(false);
 
@@ -958,6 +979,7 @@ function EditPlayerModal({ player, onClose }) {
           accessCode,
           isAdmin: playerIsAdmin,
           isCreditor,
+          advancedAmount: parseFeeInput(advancedAmount),
         });
       }
       await updateDoc(doc(db, "players", player.id), payload);
@@ -970,7 +992,21 @@ function EditPlayerModal({ player, onClose }) {
   };
 
   return (
-    <Modal title={`Profil de ${player.name}`} onClose={onClose} wide>
+    <Modal
+      title={`Profil de ${player.name}`}
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </Button>
+        </>
+      }
+    >
       {!isAdmin && (
         <p className="text-xs text-[var(--color-text-dim)] mb-4">
           Seules les informations de jeu ci-dessous peuvent être modifiées ici.
@@ -1111,21 +1147,32 @@ function EditPlayerModal({ player, onClose }) {
             />
             Créancier (peut recevoir des paiements de match)
           </label>
+          {isCreditor && (
+            <Field label="Montant avancé au club — € (optionnel)">
+              <input
+                type="text"
+                inputMode="decimal"
+                className={inputClass}
+                value={advancedAmount}
+                onChange={(e) => setAdvancedAmount(e.target.value)}
+                placeholder="Ex. 300"
+              />
+            </Field>
+          )}
         </div>
       )}
-
-      <Button className="w-full mt-2" onClick={submit} disabled={!canSubmit || saving}>
-        {saving ? "Enregistrement..." : "Enregistrer les modifications"}
-      </Button>
     </Modal>
   );
 }
 
 function PlayerRow({ player }) {
-  const { isAdmin, connectedPlayer } = useAppData();
+  const { isAdmin, connectedPlayer, matches } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
   const canEdit = isAdmin || player.id === connectedPlayer.id;
+  const { totalPaidAllTime } = player.isCreditor
+    ? getCreditorAccounting(player.id, matches)
+    : { totalPaidAllTime: 0 };
 
   return (
     <>
@@ -1159,7 +1206,7 @@ function PlayerRow({ player }) {
         {player.isCreditor && (
           <div className="text-right shrink-0">
             <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
-              {(player.creditBalance || 0).toLocaleString("fr-FR")} €
+              {totalPaidAllTime.toLocaleString("fr-FR")} €
             </p>
             <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
           </div>
@@ -1236,7 +1283,21 @@ function AddPlayerModal({ onClose }) {
   };
 
   return (
-    <Modal title="Ajouter un joueur" onClose={onClose} wide>
+    <Modal
+      title="Ajouter un joueur"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Ajout en cours..." : "Ajouter le joueur"}
+          </Button>
+        </>
+      }
+    >
       <Field label="Avatar">
         <div className="flex flex-wrap gap-2">
           {EMOJI_CHOICES.map((e) => (
@@ -1371,20 +1432,47 @@ function AddPlayerModal({ onClose }) {
           Créancier (peut recevoir des paiements de match)
         </label>
       </div>
-
-      <Button className="w-full mt-3" onClick={submit} disabled={!canSubmit || saving}>
-        {saving ? "Ajout en cours..." : "Ajouter le joueur"}
-      </Button>
     </Modal>
   );
 }
 
+const PLAYER_SORT_OPTIONS = [
+  { id: "name-asc", label: "Nom (A → Z)" },
+  { id: "name-desc", label: "Nom (Z → A)" },
+  { id: "level-desc", label: "Niveau (fort → faible)" },
+  { id: "level-asc", label: "Niveau (faible → fort)" },
+  { id: "balance-asc", label: "Solde (débiteur → créditeur)" },
+];
+
 function PlayersView() {
-  const { players, isAdmin } = useAppData();
+  const { players, matches, isAdmin } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
-  const sorted = [...players].sort(
-    (a, b) => (b.levelSortValue || 0) - (a.levelSortValue || 0)
-  );
+  const [sortBy, setSortBy] = useState("name-asc");
+
+  // Tri purement local à l'affichage — ne modifie jamais l'ordre dans Firestore.
+  const sorted = useMemo(() => {
+    const balanceOf = (p) =>
+      p.isCreditor ? getCreditorAccounting(p.id, matches).totalPaidAllTime : 0;
+    const arr = [...players];
+    switch (sortBy) {
+      case "name-desc":
+        arr.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case "level-desc":
+        arr.sort((a, b) => (b.levelSortValue || 0) - (a.levelSortValue || 0));
+        break;
+      case "level-asc":
+        arr.sort((a, b) => (a.levelSortValue || 0) - (b.levelSortValue || 0));
+        break;
+      case "balance-asc":
+        arr.sort((a, b) => balanceOf(a) - balanceOf(b));
+        break;
+      case "name-asc":
+      default:
+        arr.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return arr;
+  }, [players, matches, sortBy]);
 
   return (
     <div className="px-4 pt-4 pb-28">
@@ -1397,6 +1485,23 @@ function PlayersView() {
             </span>
           </Button>
         )}
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+          Trier par
+        </label>
+        <select
+          className={inputClass}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+        >
+          {PLAYER_SORT_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {sorted.length === 0 ? (
@@ -1422,8 +1527,11 @@ function PlayersView() {
    10. PAIEMENTS — modale de sélection du créancier
    ========================================================================= */
 function PaymentModal({ match, participant, onClose }) {
-  const { players } = useAppData();
-  const creditors = players.filter((p) => p.isCreditor === true);
+  const { players, matches, isAdmin, connectedPlayer } = useAppData();
+  const allCreditors = players.filter((p) => p.isCreditor === true);
+  const creditors = isAdmin
+    ? allCreditors
+    : allCreditors.filter((c) => c.id === connectedPlayer.id);
   const [saving, setSaving] = useState(false);
 
   const confirmPayment = async (creditor) => {
@@ -1436,9 +1544,6 @@ function PaymentModal({ match, participant, onClose }) {
       );
       await updateDoc(doc(db, "matches", match.id), {
         participants: updatedParticipants,
-      });
-      await updateDoc(doc(db, "players", creditor.id), {
-        creditBalance: increment(match.matchFeePerPlayer || 0),
       });
       onClose();
     } catch (error) {
@@ -1462,25 +1567,28 @@ function PaymentModal({ match, participant, onClose }) {
         />
       ) : (
         <div className="flex flex-col gap-2">
-          {creditors.map((c) => (
-            <button
-              key={c.id}
-              disabled={saving}
-              onClick={() => confirmPayment(c)}
-              className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              <span className="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-lg">
-                {c.emoji || "🎾"}
-              </span>
-              <span className="flex-1 text-left">
-                <span className="block text-sm font-semibold">{c.name}</span>
-                <span className="block text-xs text-[var(--color-text-dim)]">
-                  Solde actuel : {(c.creditBalance || 0).toLocaleString("fr-FR")} €
+          {creditors.map((c) => {
+            const { totalPaidAllTime } = getCreditorAccounting(c.id, matches);
+            return (
+              <button
+                key={c.id}
+                disabled={saving}
+                onClick={() => confirmPayment(c)}
+                className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                <span className="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-lg">
+                  {c.emoji || "🎾"}
                 </span>
-              </span>
-              <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)]" />
-            </button>
-          ))}
+                <span className="flex-1 text-left">
+                  <span className="block text-sm font-semibold">{c.name}</span>
+                  <span className="block text-xs text-[var(--color-text-dim)]">
+                    Solde actuel : {totalPaidAllTime.toLocaleString("fr-FR")} €
+                  </span>
+                </span>
+                <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)]" />
+              </button>
+            );
+          })}
         </div>
       )}
     </Modal>
@@ -1511,6 +1619,94 @@ function hasMatchScore(match) {
   const s = match.scores || {};
   return Boolean(s.set1 || s.set2 || s.set3);
 }
+// Comptabilité créancier — tout est recalculé en direct à partir des matchs
+// et des participants, jamais depuis un compteur qui pourrait se désynchroniser.
+function getCreditorAccounting(creditorId, matches) {
+  let totalPaidAllTime = 0; // tout paiement confirmé, peu importe la date du match
+  let totalPaidPastMatches = 0; // uniquement les matchs déjà passés
+  let selfReimbursed = 0; // matchs déjà joués par le créancier lui-même
+  const paymentsReceived = [];
+
+  matches.forEach((m) => {
+    const fee = m.matchFeePerPlayer || 0;
+    const finished = getMatchTiming(m) === "finished";
+    (m.participants || []).forEach((p) => {
+      if (p.paidStatus === "paid" && p.creditorId === creditorId) {
+        totalPaidAllTime += fee;
+        if (finished) {
+          totalPaidPastMatches += fee;
+          paymentsReceived.push({ matchId: m.id, date: m.date, name: p.name, fee });
+        }
+      }
+      if (p.playerId === creditorId && finished) {
+        selfReimbursed += fee;
+      }
+    });
+  });
+
+  paymentsReceived.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived };
+}
+
+// Les 3 façons distinctes de répartir 4 joueurs en 2 équipes de 2.
+// Indices dans le tableau des 4 joueurs sélectionnés (ordre de sélection).
+const PAIRING_PATTERNS = [
+  [[0, 1], [2, 3]],
+  [[0, 2], [1, 3]],
+  [[0, 3], [1, 2]],
+];
+
+// Statistiques d'un joueur — uniquement sur les matchs déjà terminés.
+// Coéquipier/adversaire ne sont comptabilisés que si l'équipe (team: "A"/"B")
+// a été renseignée lors de l'assignation ; victoire/défaite uniquement si
+// l'équipe gagnante a aussi été renseignée en fin de match.
+function computePlayerStats(playerId, matches) {
+  let played = 0;
+  let wins = 0;
+  let losses = 0;
+  const partnerCounts = new Map();
+  const opponentCounts = new Map();
+
+  matches.forEach((m) => {
+    if (getMatchTiming(m) !== "finished") return;
+    const participants = m.participants || [];
+    const me = participants.find((p) => p.playerId === playerId);
+    if (!me) return;
+    played += 1;
+
+    if (me.team && m.winningTeam) {
+      if (me.team === m.winningTeam) wins += 1;
+      else losses += 1;
+    }
+
+    if (me.team) {
+      participants.forEach((p) => {
+        if (p.playerId === playerId || !p.team) return;
+        const map = p.team === me.team ? partnerCounts : opponentCounts;
+        map.set(p.playerId, (map.get(p.playerId) || 0) + 1);
+      });
+    }
+  });
+
+  const topOf = (map) => {
+    let best = null;
+    map.forEach((count, id) => {
+      if (!best || count > best.count) best = { id, count };
+    });
+    return best;
+  };
+
+  const decided = wins + losses;
+  return {
+    played,
+    wins,
+    losses,
+    winRate: decided > 0 ? Math.round((wins / decided) * 100) : 0,
+    topPartner: topOf(partnerCounts),
+    topOpponent: topOf(opponentCounts),
+  };
+}
+
 // Garde l'affichage à jour minute par minute (un match "à venir" doit basculer
 // tout seul en "terminé" sans que personne n'ait à rafraîchir la page).
 function useNow(intervalMs = 60000) {
@@ -1534,9 +1730,9 @@ function StatusBadge({ match, now }) {
   return <Badge tone="blue">À venir</Badge>;
 }
 
-function ParticipantChip({ participant, match, canManage }) {
+function ParticipantChip({ participant, match, canManage, isCreditorParticipant }) {
   const [showPayment, setShowPayment] = useState(false);
-  const paid = participant.paidStatus === "paid";
+  const paid = isCreditorParticipant || participant.paidStatus === "paid";
   return (
     <>
       <div className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)]">
@@ -1568,11 +1764,21 @@ function ParticipantChip({ participant, match, canManage }) {
 }
 
 function EndMatchModal({ match, onClose }) {
+  const { players } = useAppData();
   const [set1, setSet1] = useState(match.scores?.set1 || "");
   const [set2, setSet2] = useState(match.scores?.set2 || "");
   const [set3, setSet3] = useState(match.scores?.set3 || "");
   const [type, setType] = useState(match.matchType || "Officiel");
+  const [winningTeam, setWinningTeam] = useState(match.winningTeam || "");
   const [saving, setSaving] = useState(false);
+
+  const teamAParticipants = (match.participants || []).filter((p) => p.team === "A");
+  const teamBParticipants = (match.participants || []).filter((p) => p.team === "B");
+  const hasTeams = teamAParticipants.length === 2 && teamBParticipants.length === 2;
+  const teamLabel = (list) =>
+    list
+      .map((p) => players.find((pl) => pl.id === p.playerId)?.name || p.name)
+      .join(" & ");
 
   const isSetScoreSuspicious = (value) => {
     const nums = String(value || "").match(/\d+/g);
@@ -1585,6 +1791,7 @@ function EndMatchModal({ match, onClose }) {
       await updateDoc(doc(db, "matches", match.id), {
         scores: { set1, set2, set3 },
         matchType: type,
+        winningTeam: hasTeams && winningTeam ? winningTeam : null,
       });
       onClose();
     } catch (error) {
@@ -1595,7 +1802,20 @@ function EndMatchModal({ match, onClose }) {
   };
 
   return (
-    <Modal title="Score du match" onClose={onClose}>
+    <Modal
+      title="Score du match"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Enregistrement..." : "Enregistrer le score"}
+          </Button>
+        </>
+      }
+    >
       <p className="text-xs text-[var(--color-text-dim)] mb-4">
         1, 2 ou 3 sets (jusqu'à 7 jeux chacun). Laissez vide pour un match amical sans score.
       </p>
@@ -1627,9 +1847,24 @@ function EndMatchModal({ match, onClose }) {
           <option>Tournante</option>
         </select>
       </Field>
-      <Button className="w-full mt-2" onClick={submit} disabled={saving}>
-        {saving ? "Enregistrement..." : "Enregistrer le score"}
-      </Button>
+      {hasTeams ? (
+        <Field label="Équipe gagnante (pour les statistiques)">
+          <select
+            className={inputClass}
+            value={winningTeam}
+            onChange={(e) => setWinningTeam(e.target.value)}
+          >
+            <option value="">Non renseigné</option>
+            <option value="A">Équipe A — {teamLabel(teamAParticipants)}</option>
+            <option value="B">Équipe B — {teamLabel(teamBParticipants)}</option>
+          </select>
+        </Field>
+      ) : (
+        <p className="text-[11px] text-[var(--color-text-faint)] -mt-2">
+          Composition des équipes non renseignée — les statistiques de victoire ne
+          seront pas comptabilisées pour ce match.
+        </p>
+      )}
     </Modal>
   );
 }
@@ -1641,6 +1876,18 @@ function AssignPlayersModal({ match, onClose }) {
   );
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pairingIndex, setPairingIndex] = useState(() => {
+    const teamAIds = (match.participants || [])
+      .filter((p) => p.team === "A")
+      .map((p) => p.playerId);
+    if (teamAIds.length !== 2) return 0;
+    const initialSelected = (match.participants || []).map((p) => p.playerId);
+    const idx = PAIRING_PATTERNS.findIndex(([a]) => {
+      const ids = a.map((i) => initialSelected[i]);
+      return ids.length === 2 && ids.every((id) => teamAIds.includes(id));
+    });
+    return idx >= 0 ? idx : 0;
+  });
 
   // Joueurs déjà engagés sur un AUTRE match le même jour (double terrain, etc.) :
   // on retrouve, pour chacun, le match en question afin d'expliquer pourquoi
@@ -1667,15 +1914,21 @@ function AssignPlayersModal({ match, onClose }) {
     p.name.toLowerCase().includes(search.trim().toLowerCase())
   );
 
+  const pattern = PAIRING_PATTERNS[pairingIndex % PAIRING_PATTERNS.length];
+  const teamA = selected.length === 4 ? pattern[0].map((i) => selected[i]) : [];
+  const teamB = selected.length === 4 ? pattern[1].map((i) => selected[i]) : [];
+  const nameOf = (id) => players.find((p) => p.id === id)?.name || "?";
+
   const submit = async () => {
     setSaving(true);
     try {
       const existing = match.participants || [];
       const participants = selected.map((id) => {
+        const team = selected.length === 4 ? (teamA.includes(id) ? "A" : "B") : null;
         const already = existing.find((p) => p.playerId === id);
-        if (already) return already; // conserve le statut de paiement déjà enregistré
+        if (already) return { ...already, team }; // conserve le paiement, met à jour l'équipe
         const p = players.find((pl) => pl.id === id);
-        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null };
+        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null, team };
       });
       await updateDoc(doc(db, "matches", match.id), { participants });
       onClose();
@@ -1687,7 +1940,21 @@ function AssignPlayersModal({ match, onClose }) {
   };
 
   return (
-    <Modal title="Assigner les joueurs" onClose={onClose} wide>
+    <Modal
+      title="Assigner les joueurs"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Enregistrement..." : "Enregistrer les joueurs"}
+          </Button>
+        </>
+      }
+    >
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         Sélectionnez jusqu'à 4 joueurs pour le match du {formatDateFR(match.date)}
         {match.time ? ` à ${match.time}` : ""}. N'importe quel joueur du club peut
@@ -1746,15 +2013,46 @@ function AssignPlayersModal({ match, onClose }) {
           )}
         </div>
       </Field>
-      <Button className="w-full mt-2" onClick={submit} disabled={saving}>
-        {saving ? "Enregistrement..." : "Enregistrer les joueurs"}
-      </Button>
+
+      {selected.length === 4 && (
+        <Field label="Composition des équipes">
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+              <p className="text-[10px] font-semibold text-[var(--color-text-faint)] uppercase mb-1">
+                Équipe A
+              </p>
+              {teamA.map((id) => (
+                <p key={id} className="text-sm font-medium truncate">
+                  {nameOf(id)}
+                </p>
+              ))}
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+              <p className="text-[10px] font-semibold text-[var(--color-text-faint)] uppercase mb-1">
+                Équipe B
+              </p>
+              {teamB.map((id) => (
+                <p key={id} className="text-sm font-medium truncate">
+                  {nameOf(id)}
+                </p>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPairingIndex((i) => (i + 1) % PAIRING_PATTERNS.length)}
+            className="text-xs font-semibold text-sky-700 underline underline-offset-2"
+          >
+            🔄 Changer la répartition des équipes
+          </button>
+        </Field>
+      )}
     </Modal>
   );
 }
 
 function MatchCard({ match, now }) {
-  const { isAdmin, connectedPlayer } = useAppData();
+  const { isAdmin, connectedPlayer, players } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const participants = match.participants || [];
@@ -1762,6 +2060,10 @@ function MatchCard({ match, now }) {
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
   const scoreEntered = hasMatchScore(match);
+  const canManagePayments = isAdmin || connectedPlayer.isCreditor === true;
+  const creditorPlayerIds = new Set(
+    players.filter((p) => p.isCreditor === true).map((p) => p.id)
+  );
 
   return (
     <Card
@@ -1796,7 +2098,8 @@ function MatchCard({ match, now }) {
               key={p.playerId}
               participant={p}
               match={match}
-              canManage={isAdmin}
+              canManage={canManagePayments}
+              isCreditorParticipant={creditorPlayerIds.has(p.playerId)}
             />
           ))}
         </div>
@@ -1882,7 +2185,21 @@ function CreateMatchModal({ onClose }) {
   };
 
   return (
-    <Modal title="Nouveau match ponctuel" onClose={onClose} wide>
+    <Modal
+      title="Nouveau match ponctuel"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Création..." : "Créer le match"}
+          </Button>
+        </>
+      }
+    >
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date">
           <input
@@ -1919,13 +2236,10 @@ function CreateMatchModal({ onClose }) {
           placeholder="Ex. 13,5"
         />
       </Field>
-      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+      <p className="text-xs text-[var(--color-text-dim)]">
         Un terrain accueille 4 joueurs. Vous pourrez les sélectionner ensuite
         directement depuis la carte du match, sur la page d'accueil.
       </p>
-      <Button className="w-full mt-2" onClick={submit} disabled={!canSubmit || saving}>
-        {saving ? "Création..." : "Créer le match"}
-      </Button>
     </Modal>
   );
 }
@@ -2012,7 +2326,21 @@ function CreateSeasonModal({ onClose }) {
   };
 
   return (
-    <Modal title="Créer une saison complète" onClose={onClose} wide>
+    <Modal
+      title="Créer une saison complète"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Génération en cours..." : `Générer les ${totalMatches} matchs`}
+          </Button>
+        </>
+      }
+    >
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date du premier match">
           <input
@@ -2109,9 +2437,6 @@ function CreateSeasonModal({ onClose }) {
         {recurrence.toLowerCase()}, à partir du {formatDateFR(startDate)}. La
         sélection des joueurs se fera ensuite depuis la page d'accueil.
       </p>
-      <Button className="w-full" onClick={submit} disabled={!canSubmit || saving}>
-        {saving ? "Génération en cours..." : `Générer les ${totalMatches} matchs`}
-      </Button>
     </Modal>
   );
 }
@@ -2262,7 +2587,10 @@ function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const creditors = players.filter((p) => p.isCreditor);
-  const totalBalance = creditors.reduce((s, c) => s + (c.creditBalance || 0), 0);
+  const creditorTotals = new Map(
+    creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches).totalPaidAllTime])
+  );
+  const totalBalance = [...creditorTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
   const unpaidCount = matches.reduce(
     (sum, m) =>
@@ -2320,7 +2648,7 @@ function AdminView() {
       ) : (
         <div className="flex flex-col gap-2">
           {[...creditors]
-            .sort((a, b) => (b.creditBalance || 0) - (a.creditBalance || 0))
+            .sort((a, b) => (creditorTotals.get(b.id) || 0) - (creditorTotals.get(a.id) || 0))
             .map((c) => (
               <Card key={c.id} className="p-4 flex items-center gap-3">
                 <span className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-lg">
@@ -2328,7 +2656,7 @@ function AdminView() {
                 </span>
                 <span className="flex-1 font-semibold text-sm">{c.name}</span>
                 <span className="pm-mono font-bold text-[var(--color-lime)]">
-                  {(c.creditBalance || 0).toLocaleString("fr-FR")} €
+                  {(creditorTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
                 </span>
               </Card>
             ))}
@@ -2342,7 +2670,230 @@ function AdminView() {
 }
 
 /* =============================================================================
-   13. COMPOSANT RACINE
+   13. STATISTIQUES — matchs terminés uniquement
+   ========================================================================= */
+function StatKpiCard({ icon: IconEl, value, label }) {
+  return (
+    <Card className="p-4">
+      <IconEl className="w-4 h-4 text-[var(--color-lime)] mb-2" />
+      <p className="pm-display text-xl font-extrabold">{value}</p>
+      <p className="text-xs text-[var(--color-text-dim)]">{label}</p>
+    </Card>
+  );
+}
+
+function StatsView() {
+  const { connectedPlayer, isAdmin, players, matches } = useAppData();
+  const myStats = computePlayerStats(connectedPlayer.id, matches);
+  const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
+
+  return (
+    <div className="px-4 pt-4 pb-28">
+      <h2 className="pm-display font-bold text-xl mb-1">Statistiques</h2>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Calculées uniquement sur les matchs déjà terminés.
+      </p>
+
+      <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-3">
+        Mes statistiques
+      </h3>
+      {myStats.played === 0 ? (
+        <Card className="p-5 mb-6">
+          <p className="text-sm text-[var(--color-text-dim)] text-center">
+            Aucune statistique disponible pour le moment.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <StatKpiCard icon={Icon.Trophy} value={myStats.played} label="Matchs joués" />
+            <StatKpiCard
+              icon={Icon.Check}
+              value={`${myStats.wins}V — ${myStats.losses}D`}
+              label={`${myStats.winRate}% de victoires`}
+            />
+          </div>
+          <div className="flex flex-col gap-2 mb-6">
+            {myStats.topPartner ? (
+              <Card className="p-4 flex items-center gap-3">
+                <Icon.Users className="w-5 h-5 text-[var(--color-lime)] shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+                    Coéquipier fétiche
+                  </span>
+                  <span className="block text-sm font-semibold truncate">
+                    {nameOf(myStats.topPartner.id)} · {myStats.topPartner.count} match
+                    {myStats.topPartner.count > 1 ? "s" : ""} ensemble
+                  </span>
+                </span>
+              </Card>
+            ) : (
+              <Card className="p-4">
+                <p className="text-xs text-[var(--color-text-faint)] italic">
+                  Coéquipier fétiche : pas encore assez de matchs avec équipes renseignées.
+                </p>
+              </Card>
+            )}
+            {myStats.topOpponent ? (
+              <Card className="p-4 flex items-center gap-3">
+                <Icon.Swords className="w-5 h-5 text-rose-500 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+                    Bête noire
+                  </span>
+                  <span className="block text-sm font-semibold truncate">
+                    {nameOf(myStats.topOpponent.id)} · {myStats.topOpponent.count} confrontation
+                    {myStats.topOpponent.count > 1 ? "s" : ""}
+                  </span>
+                </span>
+              </Card>
+            ) : (
+              <Card className="p-4">
+                <p className="text-xs text-[var(--color-text-faint)] italic">
+                  Bête noire : pas encore assez de matchs avec équipes renseignées.
+                </p>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
+
+      {isAdmin && (
+        <>
+          <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-3">
+            Tous les joueurs
+          </h3>
+          <div className="flex flex-col gap-2">
+            {players.map((p) => {
+              const s = computePlayerStats(p.id, matches);
+              return (
+                <Card key={p.id} className="p-3.5 flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
+                    {p.emoji || "🎾"}
+                  </span>
+                  <span className="flex-1 min-w-0 text-sm font-semibold truncate">
+                    {p.name}
+                  </span>
+                  {s.played === 0 ? (
+                    <span className="text-xs text-[var(--color-text-faint)] italic shrink-0">
+                      Aucune statistique
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[var(--color-text-dim)] text-right shrink-0">
+                      {s.played} matchs · {s.wins}V-{s.losses}D · {s.winRate}%
+                    </span>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =============================================================================
+   14. COMPTABILITÉ — calculatrice personnelle pour chaque créancier
+   ========================================================================= */
+function AccountingView() {
+  const { connectedPlayer, matches } = useAppData();
+  const { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived } =
+    getCreditorAccounting(connectedPlayer.id, matches);
+  const advanced = connectedPlayer.advancedAmount || 0;
+  const remaining = advanced - totalPaidAllTime;
+
+  const blocks = [
+    {
+      label: "Montant avancé au départ",
+      value: advanced,
+      icon: Icon.Shield,
+      hint: "Renseigné par l'administrateur.",
+    },
+    {
+      label: "Montant restant à payer",
+      value: remaining,
+      icon: Icon.Coin,
+      hint: "Avance − ce qui vous a déjà été payé.",
+      tone: remaining > 0 ? "unpaid" : "paid",
+    },
+    {
+      label: "Montant autoremboursé",
+      value: selfReimbursed,
+      icon: Icon.Trophy,
+      hint: "Vos propres matchs déjà joués × leur tarif.",
+    },
+    {
+      label: "Total remboursé (matchs passés)",
+      value: totalPaidPastMatches,
+      icon: Icon.Check,
+      hint: "Payé par les joueurs pour des matchs déjà terminés.",
+      tone: "paid",
+    },
+  ];
+
+  return (
+    <div className="px-4 pt-4 pb-28">
+      <h2 className="pm-display font-bold text-xl mb-1">Ma comptabilité</h2>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Calculé automatiquement à partir des matchs et paiements enregistrés — aucun
+        moyen de paiement externe n'est utilisé.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {blocks.map((b) => (
+          <Card key={b.label} className="p-4">
+            <b.icon
+              className={cn(
+                "w-4 h-4 mb-2",
+                b.tone === "paid"
+                  ? "text-emerald-600"
+                  : b.tone === "unpaid"
+                  ? "text-rose-600"
+                  : "text-[var(--color-lime)]"
+              )}
+            />
+            <p className="pm-display text-xl font-extrabold">
+              {b.value.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-[var(--color-text-dim)] mt-0.5">{b.label}</p>
+            <p className="text-[10px] text-[var(--color-text-faint)] mt-1">{b.hint}</p>
+          </Card>
+        ))}
+      </div>
+
+      <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-3">
+        Paiements reçus (matchs passés)
+      </h3>
+      {paymentsReceived.length === 0 ? (
+        <EmptyState
+          icon={<Icon.Coin className="w-6 h-6" />}
+          title="Aucun paiement enregistré pour l'instant"
+          subtitle="Les paiements que vous confirmez depuis l'onglet Matchs apparaîtront ici."
+        />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {paymentsReceived.map((p, i) => (
+            <Card key={i} className="p-3.5 flex items-center gap-3">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold truncate">{p.name}</span>
+                <span className="block text-xs text-[var(--color-text-faint)]">
+                  {formatDateFR(p.date)}
+                </span>
+              </span>
+              <span className="pm-mono font-bold text-emerald-600 text-sm shrink-0">
+                +{p.fee.toLocaleString("fr-FR")} €
+              </span>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =============================================================================
+   15. COMPOSANT RACINE
    ========================================================================= */
 function MainApp() {
   const { matches, players } = { ...useAppData() };
@@ -2361,6 +2912,10 @@ function MainApp() {
           <MatchesView />
         ) : view === "players" ? (
           <PlayersView />
+        ) : view === "stats" ? (
+          <StatsView />
+        ) : view === "accounting" ? (
+          <AccountingView />
         ) : (
           <AdminView />
         )}
