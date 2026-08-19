@@ -205,6 +205,12 @@ const Icon = {
       <path d="M4 12l5 5L20 6" />
     </svg>
   ),
+  Edit: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  ),
   Chevron: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}>
       <path d="M9 18l6-6-6-6" />
@@ -283,25 +289,51 @@ function isPlayerAdmin(player) {
   return player.isAdmin === true || player.accessCode === ADMIN_MASTER_CODE;
 }
 
-function getSeasonDates(startDateStr, dayOfWeek, count) {
+function getRecurringDates(startDateStr, intervalDays, count) {
   const dates = [];
   let d = new Date(startDateStr + "T00:00:00");
-  while (d.getDay() !== Number(dayOfWeek)) {
-    d.setDate(d.getDate() + 1);
-  }
   for (let i = 0; i < count; i++) {
     dates.push(new Date(d));
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + Number(intervalDays));
   }
   return dates.map((d) => d.toISOString().slice(0, 10));
 }
 
-const LEVELS = [
-  { label: "Débutant", value: 1 },
-  { label: "Intermédiaire", value: 2 },
-  { label: "Avancé", value: 3 },
-  { label: "Expert", value: 4 },
+function parseFeeInput(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const n = parseFloat(String(value).replace(",", "."));
+  return isNaN(n) ? null : n;
+}
+
+const RECURRENCE_OPTIONS = [
+  { label: "Toutes les semaines", days: 7 },
+  { label: "Toutes les 2 semaines", days: 14 },
+  { label: "Toutes les 3 semaines", days: 21 },
+  { label: "Tous les mois", days: 28 },
 ];
+
+const LEVELS = [
+  { label: "P50", value: 100 },
+  { label: "P100", value: 90 },
+  { label: "P200", value: 80 },
+  { label: "P300", value: 70 },
+  { label: "P400", value: 60 },
+  { label: "P500", value: 50 },
+  { label: "P600", value: 40 },
+  { label: "P700", value: 30 },
+  { label: "P1000", value: 20 },
+  { label: "Pas de niveau", value: 0 },
+];
+
+const HAND_OPTIONS = ["Droitier", "Gaucher", "Ambidextre"];
+const SIDE_OPTIONS = ["Droite", "Gauche", "Polyvalent"];
+
+// Rétrocompatibilité : d'anciennes fiches joueur en base peuvent encore
+// contenir l'ancienne valeur "Les deux" (avant le renommage en "Polyvalent").
+function normalizeSide(value) {
+  return value === "Les deux" ? "Polyvalent" : value;
+}
+const FEDERATION_OPTIONS = ["Aucune", "AFP", "AFT", "AFP + AFT"];
 
 const EMOJI_CHOICES = ["🎾", "🏆", "🔥", "⚡️", "😎", "🐐", "🚀", "💪", "🦁", "🎯"];
 
@@ -635,11 +667,12 @@ function BootstrapAdmin() {
         isAdmin: true,
         isCreditor: true,
         creditBalance: 0,
-        level: "Avancé",
-        levelSortValue: 3,
+        level: "Pas de niveau",
+        levelSortValue: 0,
         emoji: "🎾",
         dominantHand: "Droitier",
-        preferredSide: "Les deux",
+        preferredSide: "Polyvalent",
+        federation: "Aucune",
         createdAt: serverTimestamp(),
       });
     } catch (error) {
@@ -861,41 +894,157 @@ function BottomNav({ view, setView }) {
 /* =============================================================================
    9. JOUEURS — liste + formulaire admin avec anti-doublon PIN
    ========================================================================= */
-function PlayerRow({ player }) {
-  const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
+function InfoChip({ children }) {
   return (
-    <Card className="p-4 flex items-center gap-3">
-      <div className="w-11 h-11 shrink-0 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xl">
-        {player.emoji || "🎾"}
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border border-[var(--color-border)]">
+      {children}
+    </span>
+  );
+}
+
+function EditPlayerModal({ player, onClose }) {
+  const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
+  const [preferredSide, setPreferredSide] = useState(
+    normalizeSide(player.preferredSide) || "Polyvalent"
+  );
+  const [federation, setFederation] = useState(player.federation || "Aucune");
+  const [level, setLevel] = useState(player.level || "Pas de niveau");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const levelInfo = LEVELS.find((l) => l.label === level);
+      await updateDoc(doc(db, "players", player.id), {
+        dominantHand,
+        preferredSide,
+        federation,
+        level,
+        levelSortValue: levelInfo ? levelInfo.value : 0,
+      });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Profil de ${player.name}`} onClose={onClose} wide>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Seules les informations de jeu ci-dessous peuvent être modifiées ici.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Main dominante">
+          <select
+            className={inputClass}
+            value={dominantHand}
+            onChange={(e) => setDominantHand(e.target.value)}
+          >
+            {HAND_OPTIONS.map((h) => (
+              <option key={h}>{h}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Position de jeu">
+          <select
+            className={inputClass}
+            value={preferredSide}
+            onChange={(e) => setPreferredSide(e.target.value)}
+          >
+            {SIDE_OPTIONS.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-semibold text-sm truncate">{player.name}</span>
-          {isPlayerAdmin(player) && (
-            <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
-              Admin
-            </Badge>
-          )}
-          {player.isCreditor && (
-            <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[10px]">
-              Créancier
-            </Badge>
-          )}
+
+      <Field label="Fédération">
+        <select
+          className={inputClass}
+          value={federation}
+          onChange={(e) => setFederation(e.target.value)}
+        >
+          {FEDERATION_OPTIONS.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Niveau estimé">
+        <select className={inputClass} value={level} onChange={(e) => setLevel(e.target.value)}>
+          {LEVELS.map((l) => (
+            <option key={l.label} value={l.label}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Button className="w-full mt-2" onClick={submit} disabled={saving}>
+        {saving ? "Enregistrement..." : "Enregistrer les modifications"}
+      </Button>
+    </Modal>
+  );
+}
+
+function PlayerRow({ player }) {
+  const { isAdmin, connectedPlayer } = useAppData();
+  const [showEdit, setShowEdit] = useState(false);
+  const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
+  const canEdit = isAdmin || player.id === connectedPlayer.id;
+
+  return (
+    <>
+      <Card className="p-4 flex items-center gap-3">
+        <div className="w-11 h-11 shrink-0 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xl">
+          {player.emoji || "🎾"}
         </div>
-        <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
-          {levelInfo?.label || player.level || "—"} · {player.dominantHand || "—"} ·
-          Côté {player.preferredSide || "—"}
-        </p>
-      </div>
-      {player.isCreditor && (
-        <div className="text-right shrink-0">
-          <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
-            {(player.creditBalance || 0).toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-sm truncate">{player.name}</span>
+            {isPlayerAdmin(player) && (
+              <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
+                Admin
+              </Badge>
+            )}
+            {player.isCreditor && (
+              <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[10px]">
+                Créancier
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            <InfoChip>{levelInfo?.label || player.level || "Pas de niveau"}</InfoChip>
+            <InfoChip>{player.dominantHand || "—"}</InfoChip>
+            <InfoChip>Côté {normalizeSide(player.preferredSide) || "—"}</InfoChip>
+            {player.federation && player.federation !== "Aucune" && (
+              <InfoChip>{player.federation}</InfoChip>
+            )}
+          </div>
         </div>
-      )}
-    </Card>
+        {player.isCreditor && (
+          <div className="text-right shrink-0">
+            <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
+              {(player.creditBalance || 0).toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
+          </div>
+        )}
+        {canEdit && (
+          <button
+            onClick={() => setShowEdit(true)}
+            aria-label="Modifier le profil"
+            className="p-2.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+          >
+            <Icon.Edit className="w-4 h-4" />
+          </button>
+        )}
+      </Card>
+      {showEdit && <EditPlayerModal player={player} onClose={() => setShowEdit(false)} />}
+    </>
   );
 }
 
@@ -907,9 +1056,10 @@ function AddPlayerModal({ onClose }) {
     accessCode: "",
     isAdmin: false,
     isCreditor: false,
-    level: "Intermédiaire",
+    level: "Pas de niveau",
     dominantHand: "Droitier",
-    preferredSide: "Les deux",
+    preferredSide: "Polyvalent",
+    federation: "Aucune",
     emoji: "🎾",
   });
   const [saving, setSaving] = useState(false);
@@ -943,6 +1093,7 @@ function AddPlayerModal({ onClose }) {
         emoji: form.emoji,
         dominantHand: form.dominantHand,
         preferredSide: form.preferredSide,
+        federation: form.federation,
         createdAt: serverTimestamp(),
       });
       onClose();
@@ -1037,23 +1188,37 @@ function AddPlayerModal({ onClose }) {
             value={form.dominantHand}
             onChange={(e) => setF("dominantHand", e.target.value)}
           >
-            <option>Droitier</option>
-            <option>Gaucher</option>
+            {HAND_OPTIONS.map((h) => (
+              <option key={h}>{h}</option>
+            ))}
           </select>
         </Field>
       </div>
 
-      <Field label="Côté préféré">
-        <select
-          className={inputClass}
-          value={form.preferredSide}
-          onChange={(e) => setF("preferredSide", e.target.value)}
-        >
-          <option>Droite</option>
-          <option>Gauche</option>
-          <option>Les deux</option>
-        </select>
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Côté préféré">
+          <select
+            className={inputClass}
+            value={form.preferredSide}
+            onChange={(e) => setF("preferredSide", e.target.value)}
+          >
+            {SIDE_OPTIONS.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Fédération">
+          <select
+            className={inputClass}
+            value={form.federation}
+            onChange={(e) => setF("federation", e.target.value)}
+          >
+            {FEDERATION_OPTIONS.map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
 
       <div className="flex flex-col gap-2 mb-2">
         <label className="flex items-center gap-2.5 text-sm">
@@ -1293,10 +1458,82 @@ function EndMatchModal({ match, onClose }) {
   );
 }
 
+function AssignPlayersModal({ match, onClose }) {
+  const { players } = useAppData();
+  const [selected, setSelected] = useState(
+    (match.participants || []).map((p) => p.playerId)
+  );
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (id) =>
+    setSelected((s) =>
+      s.includes(id) ? s.filter((x) => x !== id) : s.length >= 4 ? s : [...s, id]
+    );
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const existing = match.participants || [];
+      const participants = selected.map((id) => {
+        const already = existing.find((p) => p.playerId === id);
+        if (already) return already; // conserve le statut de paiement déjà enregistré
+        const p = players.find((pl) => pl.id === id);
+        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null };
+      });
+      await updateDoc(doc(db, "matches", match.id), { participants });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Assigner les joueurs" onClose={onClose} wide>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Sélectionnez jusqu'à 4 joueurs pour le match du {formatDateFR(match.date)}
+        {match.time ? ` à ${match.time}` : ""}.
+      </p>
+      <Field label={`Joueurs (${selected.length}/4)`}>
+        <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pm-scroll">
+          {players.map((p) => (
+            <label
+              key={p.id}
+              className={cn(
+                "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm cursor-pointer",
+                selected.includes(p.id)
+                  ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(p.id)}
+                onChange={() => toggle(p.id)}
+                disabled={!selected.includes(p.id) && selected.length >= 4}
+                className="w-4 h-4 accent-[var(--color-lime)]"
+              />
+              <span>
+                {p.emoji} {p.name}
+              </span>
+            </label>
+          ))}
+        </div>
+      </Field>
+      <Button className="w-full mt-2" onClick={submit} disabled={saving}>
+        {saving ? "Enregistrement..." : "Enregistrer les joueurs"}
+      </Button>
+    </Modal>
+  );
+}
+
 function MatchCard({ match }) {
   const { isAdmin, connectedPlayer } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
-  const isParticipant = match.participants?.some((p) => p.playerId === connectedPlayer.id);
+  const [showAssign, setShowAssign] = useState(false);
+  const participants = match.participants || [];
+  const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
 
   const startMatch = async () => {
     try {
@@ -1317,27 +1554,37 @@ function MatchCard({ match }) {
         <div>
           <p className="pm-display font-bold text-base">{formatDateFR(match.date)}</p>
           <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
-            {match.time} · {match.location}
+            {match.time}
+            {match.location ? ` · ${match.location}` : ""}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <StatusBadge status={match.status} />
           <Badge tone="neutral" className="!text-[10px]">
-            {match.type} · {(match.matchFeePerPlayer || 0).toLocaleString("fr-FR")} €
+            {match.type}
+            {match.matchFeePerPlayer != null
+              ? ` · ${match.matchFeePerPlayer.toLocaleString("fr-FR")} €`
+              : ""}
           </Badge>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        {(match.participants || []).map((p) => (
-          <ParticipantChip
-            key={p.playerId}
-            participant={p}
-            match={match}
-            canManage={isAdmin}
-          />
-        ))}
-      </div>
+      {participants.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {participants.map((p) => (
+            <ParticipantChip
+              key={p.playerId}
+              participant={p}
+              match={match}
+              canManage={isAdmin}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--color-text-faint)] italic mb-3">
+          Aucun joueur assigné pour l'instant.
+        </p>
+      )}
 
       {match.status === "Terminé" && match.scores && (
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--color-surface-2)] mb-3">
@@ -1356,15 +1603,26 @@ function MatchCard({ match }) {
       )}
 
       {isAdmin && match.status !== "Terminé" && (
-        <div className="flex gap-2 pt-1">
+        <div className="flex gap-2 pt-1 flex-wrap">
+          <Button
+            variant="secondary"
+            className="flex-1 min-w-[130px] !py-2 !text-xs"
+            onClick={() => setShowAssign(true)}
+          >
+            {participants.length > 0 ? "Modifier les joueurs" : "Assigner les joueurs"}
+          </Button>
           {match.status === "À venir" && (
-            <Button variant="secondary" className="flex-1 !py-2 !text-xs" onClick={startMatch}>
+            <Button
+              variant="secondary"
+              className="flex-1 min-w-[130px] !py-2 !text-xs"
+              onClick={startMatch}
+            >
               Démarrer le match
             </Button>
           )}
           <Button
             variant="secondary"
-            className="flex-1 !py-2 !text-xs"
+            className="flex-1 min-w-[130px] !py-2 !text-xs"
             onClick={() => setShowEnd(true)}
           >
             Terminer le match
@@ -1381,46 +1639,40 @@ function MatchCard({ match }) {
       )}
 
       {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
+      {showAssign && (
+        <AssignPlayersModal match={match} onClose={() => setShowAssign(false)} />
+      )}
     </Card>
   );
 }
 
 function CreateMatchModal({ onClose }) {
-  const { players } = useAppData();
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("20:00");
-  const [location, setLocation] = useState("Terrains 1 & 2");
-  const [fee, setFee] = useState(10);
-  const [selected, setSelected] = useState([]);
+  const [location, setLocation] = useState("");
+  const [fee, setFee] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const toggle = (id) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-
-  const canSubmit = date && time && location && selected.length === 4;
+  const canSubmit = Boolean(date && time);
 
   const submit = async () => {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      const participants = selected.map((id) => {
-        const p = players.find((pl) => pl.id === id);
-        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null };
-      });
       await addDoc(collection(db, "matches"), {
         date,
         time,
-        location,
+        location: location.trim(),
         type: "Ponctuel",
-        matchFeePerPlayer: Number(fee),
-        participants,
+        matchFeePerPlayer: parseFeeInput(fee),
+        participants: [],
         scores: { set1: "", set2: "", set3: "" },
         status: "À venir",
         createdAt: serverTimestamp(),
       });
       onClose();
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur de création : " + error.message);
     } finally {
       setSaving(false);
     }
@@ -1446,46 +1698,28 @@ function CreateMatchModal({ onClose }) {
           />
         </Field>
       </div>
-      <Field label="Terrain / lieu">
+      <Field label="Terrain / lieu (optionnel)">
         <input
           className={inputClass}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
+          placeholder="Ex. Terrain 2"
         />
       </Field>
-      <Field label="Tarif par joueur (€)">
+      <Field label="Tarif par joueur — € (optionnel)">
         <input
-          type="number"
-          min="0"
+          type="text"
+          inputMode="decimal"
           className={inputClass}
           value={fee}
           onChange={(e) => setFee(e.target.value)}
+          placeholder="Ex. 13,5"
         />
       </Field>
-      <Field label={`Joueurs (${selected.length}/4)`}>
-        <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pm-scroll">
-          {players.map((p) => (
-            <label
-              key={p.id}
-              className={cn(
-                "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm cursor-pointer",
-                selected.includes(p.id)
-                  ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
-                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(p.id)}
-                onChange={() => toggle(p.id)}
-                disabled={!selected.includes(p.id) && selected.length >= 4}
-                className="w-4 h-4 accent-[var(--color-lime)]"
-              />
-              <span>{p.emoji} {p.name}</span>
-            </label>
-          ))}
-        </div>
-      </Field>
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Un terrain accueille 4 joueurs. Vous pourrez les sélectionner ensuite
+        directement depuis la carte du match, sur la page d'accueil.
+      </p>
       <Button className="w-full mt-2" onClick={submit} disabled={!canSubmit || saving}>
         {saving ? "Création..." : "Créer le match"}
       </Button>
@@ -1494,49 +1728,62 @@ function CreateMatchModal({ onClose }) {
 }
 
 function CreateSeasonModal({ onClose }) {
-  const { players } = useAppData();
-  const [dayOfWeek, setDayOfWeek] = useState(4); // Jeudi par défaut
   const [startDate, setStartDate] = useState(todayISO());
-  const [weeks, setWeeks] = useState(44);
+  const [recurrence, setRecurrence] = useState(RECURRENCE_OPTIONS[0].label);
+  const [numberOfMatches, setNumberOfMatches] = useState(10);
   const [time, setTime] = useState("20:00");
-  const [location, setLocation] = useState("Terrains 1 & 2");
-  const [fee, setFee] = useState(10);
-  const [selected, setSelected] = useState([]);
+  const [fee, setFee] = useState("");
+  const [courtsCount, setCourtsCount] = useState(1);
+  const [courtNumbers, setCourtNumbers] = useState("1");
+  const [clubName, setClubName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const toggle = (id) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const canSubmit =
+    Boolean(startDate) && Number(numberOfMatches) > 0 && Number(courtsCount) > 0;
 
-  const canSubmit = startDate && weeks > 0 && selected.length > 0;
+  const totalMatches = Number(numberOfMatches || 0) * Number(courtsCount || 0);
 
   const submit = async () => {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      const dates = getSeasonDates(startDate, dayOfWeek, Number(weeks));
-      const participants = selected.map((id) => {
-        const p = players.find((pl) => pl.id === id);
-        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null };
-      });
+      const interval =
+        RECURRENCE_OPTIONS.find((r) => r.label === recurrence)?.days || 7;
+      const dates = getRecurringDates(startDate, interval, Number(numberOfMatches));
+
+      const enteredCourts = String(courtNumbers || "")
+        .split(/[,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const courtList = [];
+      for (let i = 0; i < Number(courtsCount); i++) {
+        courtList.push(enteredCourts[i] || String(i + 1));
+      }
+
+      const parsedFee = parseFeeInput(fee);
+      const club = clubName.trim();
+
       const batch = writeBatch(db);
       dates.forEach((d) => {
-        const ref = doc(collection(db, "matches"));
-        batch.set(ref, {
-          date: d,
-          time,
-          location,
-          type: "Saison",
-          matchFeePerPlayer: Number(fee),
-          participants,
-          scores: { set1: "", set2: "", set3: "" },
-          status: "À venir",
-          createdAt: serverTimestamp(),
+        courtList.forEach((court) => {
+          const ref = doc(collection(db, "matches"));
+          batch.set(ref, {
+            date: d,
+            time,
+            location: club ? `${club} — Terrain ${court}` : `Terrain ${court}`,
+            type: "Saison",
+            matchFeePerPlayer: parsedFee,
+            participants: [],
+            scores: { set1: "", set2: "", set3: "" },
+            status: "À venir",
+            createdAt: serverTimestamp(),
+          });
         });
       });
       await batch.commit();
       onClose();
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur de création : " + error.message);
     } finally {
       setSaving(false);
     }
@@ -1545,36 +1792,35 @@ function CreateSeasonModal({ onClose }) {
   return (
     <Modal title="Créer une saison complète" onClose={onClose} wide>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Jour récurrent">
-          <select
-            className={inputClass}
-            value={dayOfWeek}
-            onChange={(e) => setDayOfWeek(Number(e.target.value))}
-          >
-            {DAYS_FR.map((d, i) => (
-              <option key={d} value={i}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Nombre de semaines">
-          <input
-            type="number"
-            min="1"
-            className={inputClass}
-            value={weeks}
-            onChange={(e) => setWeeks(e.target.value)}
-          />
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Première date à partir de">
+        <Field label="Date du premier match">
           <input
             type="date"
             className={inputClass}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+          />
+        </Field>
+        <Field label="Récurrence">
+          <select
+            className={inputClass}
+            value={recurrence}
+            onChange={(e) => setRecurrence(e.target.value)}
+          >
+            {RECURRENCE_OPTIONS.map((r) => (
+              <option key={r.label}>{r.label}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Nombre de matchs">
+          <input
+            type="number"
+            min="1"
+            className={inputClass}
+            value={numberOfMatches}
+            onChange={(e) => setNumberOfMatches(e.target.value)}
           />
         </Field>
         <Field label="Heure">
@@ -1586,51 +1832,56 @@ function CreateSeasonModal({ onClose }) {
           />
         </Field>
       </div>
-      <Field label="Terrain / lieu">
+
+      <Field label="Prix par joueur — € (optionnel)">
         <input
-          className={inputClass}
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-        />
-      </Field>
-      <Field label="Tarif par joueur (€)">
-        <input
-          type="number"
-          min="0"
+          type="text"
+          inputMode="decimal"
           className={inputClass}
           value={fee}
           onChange={(e) => setFee(e.target.value)}
+          placeholder="Ex. 13,5"
         />
       </Field>
-      <Field label={`Joueurs réguliers (${selected.length} sélectionné${selected.length > 1 ? "s" : ""})`}>
-        <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pm-scroll">
-          {players.map((p) => (
-            <label
-              key={p.id}
-              className={cn(
-                "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm cursor-pointer",
-                selected.includes(p.id)
-                  ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
-                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(p.id)}
-                onChange={() => toggle(p.id)}
-                className="w-4 h-4 accent-[var(--color-lime)]"
-              />
-              <span>{p.emoji} {p.name}</span>
-            </label>
-          ))}
-        </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Nombre de terrains">
+          <input
+            type="number"
+            min="1"
+            className={inputClass}
+            value={courtsCount}
+            onChange={(e) => setCourtsCount(e.target.value)}
+          />
+        </Field>
+        <Field label="Numéros des terrains">
+          <input
+            className={inputClass}
+            value={courtNumbers}
+            onChange={(e) => setCourtNumbers(e.target.value)}
+            placeholder="Ex. 1, 2, 3"
+          />
+        </Field>
+      </div>
+
+      <Field label="Nom du club (optionnel)">
+        <input
+          className={inputClass}
+          value={clubName}
+          onChange={(e) => setClubName(e.target.value)}
+          placeholder="Ex. Padel Club Bruxelles"
+        />
       </Field>
+
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        {weeks} matchs seront générés, tous les {DAYS_FR[dayOfWeek].toLowerCase()}s à{" "}
-        {time}, à partir du {formatDateFR(getSeasonDates(startDate, dayOfWeek, 1)[0])}.
+        {totalMatches} match{totalMatches > 1 ? "s" : ""} seront générés (
+        {numberOfMatches} date{Number(numberOfMatches) > 1 ? "s" : ""} ×{" "}
+        {courtsCount} terrain{Number(courtsCount) > 1 ? "s" : ""}),{" "}
+        {recurrence.toLowerCase()}, à partir du {formatDateFR(startDate)}. La
+        sélection des joueurs se fera ensuite depuis la page d'accueil.
       </p>
       <Button className="w-full" onClick={submit} disabled={!canSubmit || saving}>
-        {saving ? "Génération en cours..." : `Générer les ${weeks} matchs`}
+        {saving ? "Génération en cours..." : `Générer les ${totalMatches} matchs`}
       </Button>
     </Modal>
   );
@@ -1639,9 +1890,7 @@ function CreateSeasonModal({ onClose }) {
 function MatchesView() {
   const { matches, isAdmin } = useAppData();
   const [filter, setFilter] = useState("upcoming");
-  const [showChoice, setShowChoice] = useState(false);
   const [showCreateMatch, setShowCreateMatch] = useState(false);
-  const [showCreateSeason, setShowCreateSeason] = useState(false);
 
   const filtered = matches.filter((m) =>
     filter === "upcoming" ? m.status !== "Terminé" : m.status === "Terminé"
@@ -1678,7 +1927,7 @@ function MatchesView() {
           title={filter === "upcoming" ? "Aucun match à venir" : "Aucun match terminé"}
           subtitle={
             isAdmin
-              ? "Créez un match ponctuel ou lancez une saison complète."
+              ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
               : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
           }
         />
@@ -1692,51 +1941,15 @@ function MatchesView() {
 
       {isAdmin && (
         <button
-          onClick={() => setShowChoice(true)}
+          onClick={() => setShowCreateMatch(true)}
+          aria-label="Créer un match ponctuel"
           className="fixed bottom-24 right-5 z-20 w-14 h-14 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center shadow-lg shadow-sky-300/50 active:scale-95 transition-all"
         >
           <Icon.Plus className="w-6 h-6" />
         </button>
       )}
 
-      {showChoice && (
-        <Modal title="Créer" onClose={() => setShowChoice(false)}>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => {
-                setShowChoice(false);
-                setShowCreateMatch(true);
-              }}
-              className="flex items-center gap-3 p-4 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 text-left"
-            >
-              <Icon.Ball className="w-5 h-5 text-[var(--color-lime)]" />
-              <span>
-                <span className="block font-semibold text-sm">Match ponctuel</span>
-                <span className="block text-xs text-[var(--color-text-dim)]">
-                  Une rencontre unique
-                </span>
-              </span>
-            </button>
-            <button
-              onClick={() => {
-                setShowChoice(false);
-                setShowCreateSeason(true);
-              }}
-              className="flex items-center gap-3 p-4 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 text-left"
-            >
-              <Icon.Calendar className="w-5 h-5 text-[var(--color-blue)]" />
-              <span>
-                <span className="block font-semibold text-sm">Saison complète</span>
-                <span className="block text-xs text-[var(--color-text-dim)]">
-                  Génère une série de matchs récurrents
-                </span>
-              </span>
-            </button>
-          </div>
-        </Modal>
-      )}
       {showCreateMatch && <CreateMatchModal onClose={() => setShowCreateMatch(false)} />}
-      {showCreateSeason && <CreateSeasonModal onClose={() => setShowCreateSeason(false)} />}
     </div>
   );
 }
@@ -1746,6 +1959,7 @@ function MatchesView() {
    ========================================================================= */
 function AdminView() {
   const { players, matches } = useAppData();
+  const [showCreateSeason, setShowCreateSeason] = useState(false);
   const creditors = players.filter((p) => p.isCreditor);
   const totalBalance = creditors.reduce((s, c) => s + (c.creditBalance || 0), 0);
   const upcomingCount = matches.filter((m) => m.status !== "Terminé").length;
@@ -1764,7 +1978,18 @@ function AdminView() {
 
   return (
     <div className="px-4 pt-4 pb-28">
-      <h2 className="pm-display font-bold text-xl mb-4">Administration</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="pm-display font-bold text-xl">Administration</h2>
+        <Button
+          variant="secondary"
+          className="!py-2 !px-3"
+          onClick={() => setShowCreateSeason(true)}
+        >
+          <span className="flex items-center gap-1.5">
+            <Icon.Calendar className="w-4 h-4" /> Créer une saison
+          </span>
+        </Button>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {stats.map((s) => (
@@ -1807,6 +2032,9 @@ function AdminView() {
               </Card>
             ))}
         </div>
+      )}
+      {showCreateSeason && (
+        <CreateSeasonModal onClose={() => setShowCreateSeason(false)} />
       )}
     </div>
   );
