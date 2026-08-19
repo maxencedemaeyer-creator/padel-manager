@@ -1,291 +1,159 @@
 import React, { useState } from 'react';
-import { signInWithGoogle, signInWithGoogleRedirect, signInGuest } from '../firebase';
-import { ClubSettings } from '../types';
-import { 
-  Sparkles, 
-  ShieldCheck, 
-  Users, 
-  Calendar, 
-  AlertCircle,
-  Loader2,
-  UserCheck,
-  ExternalLink,
-  RefreshCw
-} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { KeyRound, Eye, Sparkles, ShieldCheck, ArrowRight, Loader2, HelpCircle } from 'lucide-react';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
-interface LoginScreenProps {
-  settings: ClubSettings;
-}
+export const LoginScreen: React.FC = () => {
+  const { 
+    loginWithCode, 
+    loginAsGuest, 
+    players, 
+    dataLoading,
+    isForgotPasswordModalOpen,
+    openForgotPasswordModal,
+    closeForgotPasswordModal
+  } = useAuth();
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ settings }) => {
-  const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
-  const [isLoadingRedirect, setIsLoadingRedirect] = useState(false);
-  const [isLoadingGuest, setIsLoadingGuest] = useState(false);
+  const [code, setCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [showRedirectOption, setShowRedirectOption] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleGoogleSignIn = async (forceRedirect = false) => {
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = code.trim();
+    if (!trimmed || isSubmitting) return;
+
     setErrorMessage(null);
-    setErrorCode(null);
-
-    if (forceRedirect) {
-      setIsLoadingRedirect(true);
-      try {
-        await signInWithGoogleRedirect();
-      } catch (error: any) {
-        console.error("Erreur de connexion Google (Redirect):", error);
-        const code = error?.code || 'auth/redirect-error';
-        const msg = error?.message || String(error);
-        setErrorCode(code);
-        setErrorMessage(`Erreur Firebase [${code}] : ${msg}`);
-      } finally {
-        setIsLoadingRedirect(false);
-      }
-      return;
-    }
-
-    setIsLoadingGoogle(true);
+    setIsSubmitting(true);
     try {
-      // Attempt popup sign in first
-      await signInWithGoogle(false);
-    } catch (error: any) {
-      console.error("Erreur de connexion Google (Popup):", error);
-      const code = error?.code || 'auth/unknown-error';
-      const msg = error?.message || String(error);
-      
-      setErrorCode(code);
-      setErrorMessage(`Erreur Firebase [${code}] : ${msg}`);
-
-      // If popup was blocked, closed or failed, automatically highlight or offer redirect
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        code === 'auth/cancelled-popup-request' ||
-        code === 'auth/operation-not-supported-in-this-environment'
-      ) {
-        setShowRedirectOption(true);
+      const res = await loginWithCode(trimmed);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Code incorrect. Réessayez.');
       }
+    } catch (err: any) {
+      setErrorMessage('Une erreur est survenue lors de la connexion.');
     } finally {
-      setIsLoadingGoogle(false);
-    }
-  };
-
-  const handleGuestSignIn = async () => {
-    setErrorMessage(null);
-    setErrorCode(null);
-    setIsLoadingGuest(true);
-    try {
-      await signInGuest();
-    } catch (error: any) {
-      console.error("Erreur de connexion Invité:", error);
-      const code = error?.code || 'auth/guest-error';
-      const msg = error?.message || String(error);
-      setErrorCode(code);
-      setErrorMessage(`Erreur Firebase Invité [${code}] : ${msg}`);
-    } finally {
-      setIsLoadingGuest(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between p-4 sm:p-6 lg:p-10 font-sans antialiased selection:bg-sky-100 selection:text-sky-900">
-      {/* Top Bar Minimal */}
-      <header className="max-w-5xl w-full mx-auto flex items-center justify-between py-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
-            🎾
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 py-8 sm:px-6 relative overflow-hidden">
+      {/* Subtle Background Glows */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Brand Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-linear-to-tr from-emerald-500 to-teal-400 text-white shadow-xl shadow-emerald-500/20 mb-4 ring-8 ring-emerald-500/10">
+            <span className="text-3xl">🎾</span>
           </div>
-          <div>
-            <span className="text-base font-bold text-slate-900 tracking-tight block leading-tight">
-              {settings.clubName || 'Padel Manager'}
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium block">
-              Gestion de club & tournois
-            </span>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Padel Manager
+          </h1>
+          <p className="text-slate-400 text-sm mt-1.5 font-medium">
+            Bienvenue sur ton espace club & plannings
+          </p>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Saison {settings.seasonMatchesCount || 44} Matchs
-          </span>
-        </div>
-      </header>
-
-      {/* Center Hero Card */}
-      <main className="max-w-xl w-full mx-auto my-auto py-8">
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-200/40 p-6 sm:p-10 space-y-7 text-center">
-          
-          {/* Badge & Title */}
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100/80 shadow-2xs">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>Accès Membres & Joueurs</span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Bienvenue sur {settings.clubName || 'Padel Manager'}
-            </h1>
-
-            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
-              Consultez les plannings des terrains, vos prochains matchs de padel, réglez vos présences et suivez la trésorerie du club en temps réel.
-            </p>
-          </div>
-
-          {/* Error Banner with exact code & message */}
-          {errorMessage && (
-            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium space-y-2 text-left animate-in fade-in">
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
-                <div className="flex-1 space-y-1">
-                  <strong className="block font-bold text-rose-950">
-                    Échec de l'authentification Google
-                  </strong>
-                  <p className="text-[11px] leading-relaxed font-mono bg-white/70 p-2 rounded-lg border border-rose-200/60 break-all select-all">
-                    {errorMessage}
-                  </p>
-                </div>
+        {/* Card */}
+        <div className="bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-800 p-6 sm:p-8 shadow-2xl">
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                  Code unique d'accès
+                </label>
+                <button
+                  type="button"
+                  onClick={openForgotPasswordModal}
+                  className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 hover:underline"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  Code oublié ?
+                </button>
               </div>
 
-              {/* Helpful diagnostic tip */}
-              {errorCode === 'auth/unauthorized-domain' && (
-                <div className="text-[11px] text-rose-800 bg-rose-100/80 p-2.5 rounded-xl border border-rose-200">
-                  💡 <strong>Domaine non autorisé dans Firebase :</strong> L'URL actuelle doit être ajoutée aux <em>Domaines autorisés</em> dans la console Firebase (Authentication &gt; Paramètres &gt; Domaines autorisés).
-                </div>
-              )}
+              <div className="relative">
+                <input
+                  type="text"
+                  autoFocus
+                  required
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  placeholder="Entrez votre code personnel (ex: 4812)"
+                  className="w-full px-4 py-3.5 bg-slate-950/80 border border-slate-700/80 rounded-2xl text-base font-semibold text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all text-center tracking-wider"
+                />
+              </div>
 
-              {(errorCode === 'auth/popup-blocked' || errorCode === 'auth/popup-closed-by-user' || showRedirectOption) && (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleGoogleSignIn(true)}
-                    disabled={isLoadingRedirect}
-                    className="w-full flex items-center justify-center gap-2 px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-                  >
-                    {isLoadingRedirect ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    )}
-                    <span>Réessayer avec redirection de page (Plein écran)</span>
-                  </button>
+              {errorMessage && (
+                <div className="mt-2.5 p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs font-medium text-rose-400 text-center animate-in fade-in">
+                  {errorMessage}
                 </div>
               )}
             </div>
-          )}
 
-          {/* Action Buttons */}
-          <div className="space-y-3 pt-2">
-            {/* Primary Google Login (Popup) */}
             <button
-              id="btn-google-login-hero"
-              onClick={() => handleGoogleSignIn(false)}
-              disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
-              className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white rounded-2xl text-sm font-bold shadow-md shadow-slate-900/10 transition-all disabled:opacity-50 min-h-[48px] cursor-pointer"
+              type="submit"
+              disabled={!code.trim() || isSubmitting || dataLoading}
+              className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 text-sm font-extrabold rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoadingGoogle ? (
+              {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Ouverture de la fenêtre Google...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  Vérification...
                 </>
               ) : (
                 <>
-                  {/* Google G SVG */}
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#EA4335"
-                      d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
-                    />
-                    <path
-                      fill="#4285F4"
-                      d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 12s.7 2.3 1.9 4.7l3.7-1.9z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"
-                    />
-                  </svg>
-                  <span>Se connecter avec Google</span>
+                  Se connecter
+                  <ArrowRight className="w-4 h-4 text-slate-950" />
                 </>
               )}
             </button>
+          </form>
 
-            {/* Secondary Google Login (Redirect) if popup is problematic */}
-            {showRedirectOption && (
-              <button
-                type="button"
-                onClick={() => handleGoogleSignIn(true)}
-                disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
-                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100/80 text-blue-900 border border-blue-200 rounded-2xl text-xs font-bold transition-all disabled:opacity-50 min-h-[42px] cursor-pointer"
-              >
-                {isLoadingRedirect ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Redirection Google en cours...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Connexion Google via redirection (Anti-blocage pop-up)</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Guest Login */}
-            <button
-              id="btn-guest-login-hero"
-              onClick={handleGuestSignIn}
-              disabled={isLoadingGoogle || isLoadingRedirect || isLoadingGuest}
-              className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 hover:bg-slate-200/80 active:scale-[0.99] text-slate-700 rounded-2xl text-xs sm:text-sm font-bold transition-all disabled:opacity-50 min-h-[44px] cursor-pointer"
-            >
-              {isLoadingGuest ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
-                  <span>Accès en cours...</span>
-                </>
-              ) : (
-                <>
-                  <UserCheck className="w-4 h-4 text-slate-500" />
-                  <span>Accéder comme invité / spectateur</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Quick Value Props */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-4 border-t border-slate-100 text-left">
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <Calendar className="w-4 h-4 text-blue-600 mb-1.5" />
-              <p className="text-xs font-bold text-slate-800">2 Terrains / Match</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Schéma A/B & net visuel</p>
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800" />
             </div>
-
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <ShieldCheck className="w-4 h-4 text-purple-600 mb-1.5" />
-              <p className="text-xs font-bold text-slate-800">Trésorerie & Dettes</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Avances & règlements 1-clic</p>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <Users className="w-4 h-4 text-emerald-600 mb-1.5" />
-              <p className="text-xs font-bold text-slate-800">Effectif Synchronisé</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Temps réel Firestore</p>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-slate-900 px-3 text-slate-500 font-semibold tracking-wider">
+                ou
+              </span>
             </div>
           </div>
+
+          {/* Guest Mode */}
+          <button
+            type="button"
+            onClick={loginAsGuest}
+            className="w-full py-3 px-4 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white text-xs sm:text-sm font-bold rounded-2xl border border-slate-700/60 transition-all flex items-center justify-center gap-2"
+          >
+            <Eye className="w-4 h-4 text-slate-400" />
+            Continuer en Mode Invité (Lecture seule)
+          </button>
         </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="text-center text-xs text-slate-400 py-3">
-        <span>© {new Date().getFullYear()} {settings.clubName || 'Padel Manager'} • Gestion collaborative des sessions</span>
-      </footer>
+        {/* Quick Helper info for testing */}
+        <div className="mt-6 text-center">
+          <p className="text-xs text-slate-500 font-medium">
+            🔒 Connexion sécurisée sans mot de passe complexe
+          </p>
+        </div>
+      </div>
+
+      {/* Forgot Password Assistance Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordModalOpen}
+        onClose={closeForgotPasswordModal}
+        players={players}
+      />
     </div>
   );
 };

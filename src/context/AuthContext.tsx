@@ -1,239 +1,203 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
-import { User, onAuthStateChanged, signInWithGoogle, signInWithGoogleRedirect, signInGuest, logOut, auth } from '../firebase';
-import { Player, UserRole } from '../types';
-import { listenPlayers, linkPlayerAuth, unlinkPlayerAuth } from '../services/padelService';
+import { Player, UserRole, ClubSettings } from '../types';
+import { listenPlayers, listenSettings } from '../services/padelService';
 
 export interface AuthContextType {
-  user: User | null;
-  authChecked: boolean;
-  role: UserRole; // 'admin' | 'user' | 'guest'
+  isAuthenticated: boolean;
+  userRole: UserRole | null;
   isAdmin: boolean;
   isUser: boolean;
   isGuest: boolean;
   isCreditor: boolean;
-  currentUserPlayerId: string | null;
-  linkedPlayer: Player | null;
-  loginWithGoogle: (autoFallback?: boolean) => Promise<User | null>;
-  loginWithGoogleRedirect: () => Promise<void>;
-  loginAsGuest: () => Promise<User | null>;
-  logout: () => Promise<void>;
-  unlinkPlayer: () => Promise<void>;
-  isAuthModalOpen: boolean;
-  setIsAuthModalOpen: (open: boolean) => void;
-  openAuthModal: () => void;
-  closeAuthModal: () => void;
+  currentPlayer: Player | null;
+  currentCode: string | null;
+  players: Player[];
+  settings: ClubSettings;
+  dataLoading: boolean;
+  loginWithCode: (code: string) => Promise<{ success: boolean; error?: string }>;
+  loginAsGuest: () => void;
+  logout: () => void;
+  openForgotPasswordModal: () => void;
+  closeForgotPasswordModal: () => void;
+  isForgotPasswordModalOpen: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Admin email identifiers (case-insensitive)
-const ADMIN_EMAILS = [
-  'maxence.de.maeyer@gmail.com',
-  'maxencedemaeyer@gmail.com'
-];
+const SAVED_CODE_KEY = 'savedPadelCode';
+const IS_GUEST_KEY = 'isPadelGuest';
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-  players?: Player[];
-}
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [settings, setSettings] = useState<ClubSettings>({
+    matchFeePerPlayer: 10,
+    courtNames: ['Terrain 1', 'Terrain 2'],
+    seasonMatchesCount: 44,
+    seasonDayOfWeek: 4,
+    seasonDefaultTime: '20:00',
+    clubName: 'Padel Manager',
+    currency: '€'
+  });
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const [currentCode, setCurrentCode] = useState<string | null>(() => {
+    return localStorage.getItem(SAVED_CODE_KEY) || null;
+  });
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
+    return localStorage.getItem(IS_GUEST_KEY) === 'true';
+  });
+  const [isForgotPasswordModalOpen, setIsForgotPasswordModalOpen] = useState<boolean>(false);
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children, players: propPlayers }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [internalPlayers, setInternalPlayers] = useState<Player[]>([]);
-
+  // 1. Subscribe to Players and Settings real-time
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthChecked(true);
+    let playersLoaded = false;
+    let settingsLoaded = false;
+
+    const checkAllLoaded = () => {
+      if (playersLoaded && settingsLoaded) {
+        setDataLoading(false);
+      }
+    };
+
+    const unsubPlayers = listenPlayers((newPlayers) => {
+      setPlayers(newPlayers);
+      playersLoaded = true;
+      checkAllLoaded();
     });
-    return () => unsubscribe();
+
+    const unsubSettings = listenSettings((newSettings) => {
+      setSettings(newSettings);
+      settingsLoaded = true;
+      checkAllLoaded();
+    });
+
+    return () => {
+      unsubPlayers();
+      unsubSettings();
+    };
   }, []);
 
-  // Listen to players only once auth is checked and user is active (if not supplied via prop)
-  useEffect(() => {
-    if (propPlayers !== undefined) return;
-    if (!authChecked || !user) {
-      setInternalPlayers([]);
-      return;
-    }
-    const unsub = listenPlayers(
-      (loaded) => setInternalPlayers(loaded),
-      () => {}
-    );
-    return () => unsub();
-  }, [authChecked, user?.uid, propPlayers]);
-
-  const activePlayers = propPlayers !== undefined ? propPlayers : internalPlayers;
-
-  // Determine linked player strictly from players list with userId match
-  const linkedPlayer = useMemo<Player | null>(() => {
-    if (!user || user.isAnonymous) return null;
-    const userEmail = user.email?.toLowerCase().trim();
-    const userUid = user.uid;
-
-    // 1. Strict primary match by userId / linkedUid / authUid
-    let matched = activePlayers.find((p) => {
-      if (p.userId && p.userId === userUid) return true;
-      if (p.linkedUid && p.linkedUid === userUid) return true;
-      if (p.authUid && p.authUid === userUid) return true;
-      return false;
-    });
-
-    // 2. Secondary match by verified email if not already matched
-    if (!matched && userEmail) {
-      matched = activePlayers.find((p) => {
-        if (p.linkedEmail && p.linkedEmail.toLowerCase().trim() === userEmail) return true;
-        if (p.authEmail && p.authEmail.toLowerCase().trim() === userEmail) return true;
-        if (p.email && p.email.toLowerCase().trim() === userEmail) return true;
-        return false;
-      });
+  // 2. Identify player and role based on currentCode
+  const { matchedPlayer, effectiveRole } = useMemo(() => {
+    if (isGuestMode) {
+      return { matchedPlayer: null, effectiveRole: 'guest' as UserRole };
     }
 
-    // 3. Fallback to localStorage cache if players are loaded
-    if (!matched && activePlayers.length > 0) {
-      try {
-        const cachedId = localStorage.getItem(`padel_linked_uid_${userUid}`);
-        if (cachedId) {
-          const cachedMatch = activePlayers.find((p) => p.id === cachedId);
-          if (cachedMatch) matched = cachedMatch;
-        }
-      } catch (e) {
-        // ignore
-      }
+    if (!currentCode) {
+      return { matchedPlayer: null, effectiveRole: null };
     }
 
-    return matched || null;
-  }, [user, activePlayers]);
+    const trimmedCode = currentCode.trim();
 
-  // Auto-sync Firestore if matched by email or cache but userId wasn't set yet
-  useEffect(() => {
-    if (user && !user.isAnonymous && linkedPlayer && (!linkedPlayer.userId || linkedPlayer.userId !== user.uid)) {
-      linkPlayerAuth(linkedPlayer.id, user.uid, user.email || undefined).catch((err) => {
-        console.warn('Auto-healing player userId in Firestore:', err);
-      });
-    }
-  }, [user, linkedPlayer]);
-
-  // Determine RBAC permissions
-  const { role, isAdmin, isUser, isGuest, isCreditor } = useMemo(() => {
-    if (!user || user.isAnonymous) {
+    // Master Admin Code "4812"
+    if (trimmedCode === '4812') {
+      const adminPlayer = players.find(p => p.isAdmin) || 
+        players.find(p => p.name.toLowerCase().includes('maxence')) || 
+        players[0] || null;
       return {
-        role: 'guest' as UserRole,
-        isAdmin: false,
-        isUser: false,
-        isGuest: true,
-        isCreditor: false
+        matchedPlayer: adminPlayer,
+        effectiveRole: 'admin' as UserRole
       };
     }
 
-    const email = user.email?.toLowerCase().trim() || '';
-    const hasAdminEmail = ADMIN_EMAILS.some(adminEmail => email === adminEmail || email.includes('maxence.de.maeyer') || email.includes('maxencedemaeyer'));
-    const isPlayerAdmin = Boolean(linkedPlayer?.isAdmin);
-
-    const adminStatus = hasAdminEmail || isPlayerAdmin;
-
-    return {
-      role: adminStatus ? ('admin' as UserRole) : ('user' as UserRole),
-      isAdmin: adminStatus,
-      isUser: !adminStatus,
-      isGuest: false,
-      isCreditor: linkedPlayer?.role === 'creditor'
-    };
-  }, [user, linkedPlayer]);
-
-  const currentUserPlayerId = linkedPlayer?.id || null;
-
-  const handleLoginWithGoogle = async (autoFallback = true): Promise<User | null> => {
-    try {
-      const loggedUser = await signInWithGoogle(autoFallback);
-      return loggedUser;
-    } catch (err) {
-      console.error('Login with Google error:', err);
-      throw err;
+    // Player Access Code matching
+    const player = players.find(p => (p.accessCode || '').trim() === trimmedCode);
+    if (player) {
+      return {
+        matchedPlayer: player,
+        effectiveRole: player.isAdmin ? ('admin' as UserRole) : ('user' as UserRole)
+      };
     }
-  };
 
-  const handleLoginWithGoogleRedirect = async (): Promise<void> => {
-    try {
-      await signInWithGoogleRedirect();
-    } catch (err) {
-      console.error('Login with Google Redirect error:', err);
-      throw err;
+    // Invalid code
+    return { matchedPlayer: null, effectiveRole: null };
+  }, [currentCode, isGuestMode, players]);
+
+  // 3. Login with Code
+  const loginWithCode = useCallback(async (inputCode: string): Promise<{ success: boolean; error?: string }> => {
+    const code = (inputCode || '').trim();
+    if (!code) {
+      return { success: false, error: 'Veuillez entrer un code.' };
     }
-  };
 
-  const handleLoginAsGuest = async (): Promise<User | null> => {
-    try {
-      const guestUser = await signInGuest();
-      return guestUser;
-    } catch (err) {
-      console.error('Login as guest error:', err);
-      throw err;
+    // Check if master admin code
+    if (code === '4812') {
+      localStorage.setItem(SAVED_CODE_KEY, code);
+      localStorage.removeItem(IS_GUEST_KEY);
+      setCurrentCode(code);
+      setIsGuestMode(false);
+      return { success: true };
     }
-  };
 
-  const handleLogout = async (): Promise<void> => {
-    try {
-      if (user?.uid) {
-        try {
-          localStorage.removeItem(`padel_linked_uid_${user.uid}`);
-        } catch (e) {}
-      }
-      await logOut();
-    } catch (err) {
-      console.error('Logout error:', err);
-      throw err;
+    // Check in players list
+    const found = players.find(p => (p.accessCode || '').trim() === code);
+    if (found) {
+      localStorage.setItem(SAVED_CODE_KEY, code);
+      localStorage.removeItem(IS_GUEST_KEY);
+      setCurrentCode(code);
+      setIsGuestMode(false);
+      return { success: true };
     }
-  };
 
-  const handleUnlinkPlayer = useCallback(async (): Promise<void> => {
-    if (!linkedPlayer) return;
-    try {
-      await unlinkPlayerAuth(linkedPlayer.id, user?.uid);
-      setIsAuthModalOpen(true);
-    } catch (err) {
-      console.error('Erreur déliaison profil:', err);
-      throw err;
-    }
-  }, [linkedPlayer, user?.uid]);
+    return { success: false, error: 'Code incorrect. Réessayez.' };
+  }, [players]);
 
-  const value = useMemo(
-    () => ({
-      user,
-      authChecked,
-      role,
-      isAdmin,
-      isUser,
-      isGuest,
-      isCreditor,
-      currentUserPlayerId,
-      linkedPlayer,
-      loginWithGoogle: handleLoginWithGoogle,
-      loginWithGoogleRedirect: handleLoginWithGoogleRedirect,
-      loginAsGuest: handleLoginAsGuest,
-      logout: handleLogout,
-      unlinkPlayer: handleUnlinkPlayer,
-      isAuthModalOpen,
-      setIsAuthModalOpen,
-      openAuthModal: () => setIsAuthModalOpen(true),
-      closeAuthModal: () => setIsAuthModalOpen(false)
-    }),
-    [
-      user,
-      authChecked,
-      role,
-      isAdmin,
-      isUser,
-      isGuest,
-      isCreditor,
-      currentUserPlayerId,
-      linkedPlayer,
-      handleUnlinkPlayer,
-      isAuthModalOpen
-    ]
-  );
+  // 4. Login as Guest
+  const loginAsGuest = useCallback(() => {
+    localStorage.removeItem(SAVED_CODE_KEY);
+    localStorage.setItem(IS_GUEST_KEY, 'true');
+    setCurrentCode(null);
+    setIsGuestMode(true);
+  }, []);
+
+  // 5. Logout
+  const logout = useCallback(() => {
+    localStorage.removeItem(SAVED_CODE_KEY);
+    localStorage.removeItem(IS_GUEST_KEY);
+    setCurrentCode(null);
+    setIsGuestMode(false);
+  }, []);
+
+  const isAuthenticated = effectiveRole !== null;
+  const isAdmin = effectiveRole === 'admin';
+  const isUser = effectiveRole === 'user';
+  const isGuest = effectiveRole === 'guest';
+  const isCreditor = matchedPlayer?.isCreditor === true;
+
+  const value = useMemo<AuthContextType>(() => ({
+    isAuthenticated,
+    userRole: effectiveRole,
+    isAdmin,
+    isUser,
+    isGuest,
+    isCreditor,
+    currentPlayer: matchedPlayer,
+    currentCode,
+    players,
+    settings,
+    dataLoading,
+    loginWithCode,
+    loginAsGuest,
+    logout,
+    openForgotPasswordModal: () => setIsForgotPasswordModalOpen(true),
+    closeForgotPasswordModal: () => setIsForgotPasswordModalOpen(false),
+    isForgotPasswordModalOpen
+  }), [
+    isAuthenticated,
+    effectiveRole,
+    isAdmin,
+    isUser,
+    isGuest,
+    isCreditor,
+    matchedPlayer,
+    currentCode,
+    players,
+    settings,
+    dataLoading,
+    loginWithCode,
+    loginAsGuest,
+    logout,
+    isForgotPasswordModalOpen
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

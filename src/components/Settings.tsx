@@ -1,356 +1,432 @@
-import React, { useState } from 'react';
-import { ClubSettings } from '../types';
+import React, { useState, useEffect } from 'react';
+import { ClubSettings, Player, PasswordRequest } from '../types';
+import { 
+  updateClubSettings, 
+  generateSeasonMatches, 
+  clearAllMatches, 
+  listenPasswordRequests, 
+  resolvePasswordRequest 
+} from '../services/padelService';
 import { 
   Settings as SettingsIcon, 
-  Save, 
   Calendar, 
-  Euro, 
-  Layers, 
-  Plus, 
+  KeyRound, 
+  Mail, 
+  HelpCircle, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Loader2, 
+  Save, 
   Trash2, 
-  RefreshCw, 
-  Sparkles, 
-  Check, 
-  AlertTriangle 
+  RotateCw, 
+  ShieldCheck, 
+  DollarSign, 
+  Users,
+  Copy,
+  Check
 } from 'lucide-react';
 
 interface SettingsProps {
   settings: ClubSettings;
-  isAdmin?: boolean;
-  isGuest?: boolean;
-  onSaveSettings: (settings: ClubSettings) => Promise<void>;
-  onGenerateSeason: (startDate: string) => Promise<number>;
-  onSeedDemo: () => Promise<void>;
+  players: Player[];
+  matchesCount: number;
+  isAdmin: boolean;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
   settings,
-  isAdmin = false,
-  isGuest = false,
-  onSaveSettings,
-  onGenerateSeason,
-  onSeedDemo
+  players,
+  matchesCount,
+  isAdmin
 }) => {
-  const isReadOnly = !isAdmin || isGuest;
-  const [courtNames, setCourtNames] = useState<string[]>(settings.courtNames || ["Terrain 1", "Terrain 6"]);
-  const [newCourtName, setNewCourtName] = useState('');
-  const [seasonMatchesCount, setSeasonMatchesCount] = useState<number>(settings.seasonMatchesCount || 44);
-  const [defaultPrice, setDefaultPrice] = useState<number>(settings.defaultPricePerPlayer || 12.50);
-  const [clubName, setClubName] = useState<string>(settings.clubName || "Padel Manager Club");
-  const [defaultTime, setDefaultTime] = useState<string>(settings.seasonDefaultTime || "19:00");
-  const [seasonStartDate, setSeasonStartDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
-  
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedMsg, setGeneratedMsg] = useState<string | null>(null);
+  const [matchFee, setMatchFee] = useState<number>(settings.matchFeePerPlayer || 10);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const handleAddCourt = () => {
-    if (!newCourtName.trim()) return;
-    setCourtNames([...courtNames, newCourtName.trim()]);
-    setNewCourtName('');
-  };
+  // Season Generator state
+  const [startDate, setStartDate] = useState('2026-09-03');
+  const [startTime, setStartTime] = useState('20:00');
+  const [seasonWeeks, setSeasonWeeks] = useState(44);
+  const [isGeneratingSeason, setIsGeneratingSeason] = useState(false);
+  const [genSuccessMsg, setGenSuccessMsg] = useState<string | null>(null);
 
-  const handleRemoveCourt = (index: number) => {
-    if (courtNames.length <= 1) {
-      alert("Au moins un terrain est obligatoire.");
-      return;
-    }
-    setCourtNames(courtNames.filter((_, idx) => idx !== index));
-  };
+  // Password requests from players
+  const [passwordRequests, setPasswordRequests] = useState<PasswordRequest[]>([]);
+  const [copiedCodePlayerId, setCopiedCodePlayerId] = useState<string | null>(null);
 
-  const handleSave = async (e: React.FormEvent) => {
+  useEffect(() => {
+    setMatchFee(settings.matchFeePerPlayer || 10);
+  }, [settings]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsub = listenPasswordRequests((reqs) => {
+      setPasswordRequests(reqs);
+    });
+    return () => unsub();
+  }, [isAdmin]);
+
+  const handleSaveFee = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    if (isSavingSettings) return;
+
+    setIsSavingSettings(true);
+    setSaveSuccess(false);
     try {
-      await onSaveSettings({
-        courtNames,
-        seasonMatchesCount: Number(seasonMatchesCount) || 44,
-        defaultPricePerPlayer: Number(defaultPrice) || 12.50,
-        clubName: clubName.trim(),
-        seasonDefaultTime: defaultTime
+      await updateClubSettings({
+        matchFeePerPlayer: Number(matchFee) || 10
       });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (err: any) {
-      console.error("Erreur enregistrement paramètres:", err);
-      alert("Erreur lors de l'enregistrement des paramètres : " + (err?.message || err));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error("Erreur enregistrement tarif:", err);
     } finally {
-      setIsSaving(false);
+      setIsSavingSettings(false);
     }
   };
 
   const handleGenerateSeason = async () => {
-    if (!window.confirm(`Voulez-vous générer automatiquement le calendrier de ${seasonMatchesCount} matchs hebdomadaires à partir du ${seasonStartDate} ?`)) {
+    if (!confirm(`Générer automatiquement ${seasonWeeks} jeudis de saison (2 terrains par soirée = ${seasonWeeks * 2} matchs) à partir du ${startDate} ?`)) {
       return;
     }
-    setIsGenerating(true);
+
+    setIsGeneratingSeason(true);
+    setGenSuccessMsg(null);
     try {
-      const count = await onGenerateSeason(seasonStartDate);
-      setGeneratedMsg(`${count} matchs de la saison ont été générés avec succès !`);
-      setTimeout(() => setGeneratedMsg(null), 4000);
-    } catch (err: any) {
+      const res = await generateSeasonMatches(startDate, startTime, seasonWeeks);
+      setGenSuccessMsg(`Saison générée avec succès ! ${res.count} matchs créés (Terrain 1 & Terrain 2).`);
+      setTimeout(() => setGenSuccessMsg(null), 5000);
+    } catch (err) {
       console.error("Erreur génération saison:", err);
-      alert("Erreur lors de la génération de la saison : " + (err?.message || err));
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingSeason(false);
     }
   };
 
+  const handleCopyCode = (player: Player) => {
+    if (player.accessCode) {
+      navigator.clipboard.writeText(player.accessCode);
+      setCopiedCodePlayerId(player.id);
+      setTimeout(() => setCopiedCodePlayerId(null), 2000);
+    }
+  };
+
+  const handleResolveReq = async (id: string | undefined) => {
+    if (!id) return;
+    try {
+      await resolvePasswordRequest(id);
+    } catch (err) {
+      console.error("Erreur résolution demande:", err);
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 p-8 shadow-xs">
+        <ShieldCheck className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+        <h3 className="text-lg font-bold text-slate-800">Espace Administrateur</h3>
+        <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+          Les paramètres du club et la consultation des codes d'accès sont réservés à l'Administrateur (Maxence).
+        </p>
+      </div>
+    );
+  }
+
+  const pendingRequests = passwordRequests.filter(r => r.status === 'pending');
+
   return (
-    <div className="space-y-6 pb-12 max-w-4xl mx-auto">
+    <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-              Configuration du club
-            </span>
-            {!isAdmin ? (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800">
-                Lecture seule
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800">
-                Administrateur
-              </span>
-            )}
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+            <SettingsIcon className="w-5 h-5" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Paramètres Généraux
-          </h2>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Paramètres Club & Codes d'accès
+            </h2>
+            <p className="text-xs text-slate-500 font-medium">
+              Espace d'administration centralisé • Gestion des tarifs & saison
+            </p>
+          </div>
         </div>
       </div>
 
-      {!isAdmin && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center gap-2.5">
-          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-          <span>La modification des paramètres globaux, la génération des saisons et la réinitialisation des données sont réservées à l'administrateur du club.</span>
-        </div>
-      )}
-
-      {savedSuccess && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-          <Check className="w-4 h-4 text-emerald-700" />
-          Les paramètres ont été enregistrés avec succès !
-        </div>
-      )}
-
-      {/* Main Settings Form */}
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: Terrains & Noms */}
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-            <Layers className="w-4 h-4 text-blue-600" />
-            <h3 className="text-base font-bold text-slate-900">
-              Noms des Terrains par Défaut
-            </h3>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-xs text-slate-400">
-              Ces terrains seront créés par défaut pour chaque match (par exemple Terrain 1 et Terrain 6).
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {courtNames.map((court, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl"
-                >
-                  <span className="text-xs font-bold text-slate-800">{court}</span>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCourt(idx)}
-                      className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+      {/* 1. ASSISTANCE CODES OUBLIÉS (DEMANDES JOUEURS) */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <HelpCircle className="w-4 h-4" />
             </div>
-
-            {/* Add Court */}
-            {isAdmin && (
-              <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <input
-                  type="text"
-                  placeholder="Ex: Terrain 2 ou Terrain Panoramique"
-                  value={newCourtName}
-                  onChange={(e) => setNewCourtName(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 min-h-[44px] sm:min-h-[38px]"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddCourt}
-                  disabled={!newCourtName.trim()}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors disabled:opacity-50 min-h-[44px] flex items-center justify-center"
-                >
-                  + Ajouter terrain
-                </button>
-              </div>
-            )}
+            <div>
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                Demandes d'assistance reçues ({pendingRequests.length} en attente)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Joueurs ayant demandé leur code d'accès perdu via la page de connexion
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Section 2: Saison & Tarifs */}
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-            <Euro className="w-4 h-4 text-emerald-600" />
-            <h3 className="text-base font-bold text-slate-900">
-              Règles de Saison & Tarification
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
-                Nombre de Matchs Saison
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                disabled={!isAdmin}
-                value={seasonMatchesCount}
-                onChange={(e) => setSeasonMatchesCount(parseInt(e.target.value) || 44)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
-              />
-              <span className="text-[11px] text-slate-400">Par défaut : 44 matchs</span>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
-                Prix par Joueur (€)
-              </label>
-              <input
-                type="number"
-                step="0.10"
-                min="0"
-                disabled={!isAdmin}
-                value={defaultPrice}
-                onChange={(e) => setDefaultPrice(parseFloat(e.target.value) || 12.50)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
-              />
-              <span className="text-[11px] text-slate-400">Par défaut : 12.50 €</span>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
-                Heure par défaut
-              </label>
-              <input
-                type="text"
-                placeholder="19:00"
-                disabled={!isAdmin}
-                value={defaultTime}
-                onChange={(e) => setDefaultTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-bold min-h-[44px] sm:min-h-[38px] disabled:opacity-75"
-              />
-              <span className="text-[11px] text-slate-400">Ex: 19:00 ou 19h30</span>
-            </div>
-          </div>
-
-          {isAdmin && (
-            <div className="pt-3 flex justify-end">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 min-h-[44px]"
+        {passwordRequests.length === 0 ? (
+          <p className="text-xs text-slate-400 py-4 text-center">
+            Aucune demande d'assistance enregistrée
+          </p>
+        ) : (
+          <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+            {passwordRequests.map((req) => (
+              <div 
+                key={req.id} 
+                className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                  req.status === 'pending' 
+                    ? 'bg-amber-50/60 border-amber-200/80 text-amber-950' 
+                    : 'bg-slate-50 border-slate-200 text-slate-600 opacity-75'
+                }`}
               >
-                <Save className="w-4 h-4" />
-                {isSaving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
-              </button>
-            </div>
-          )}
-        </div>
-      </form>
+                <div>
+                  <div className="flex items-center gap-2 font-bold">
+                    <span>{req.playerName || req.value}</span>
+                    <span className="px-2 py-0.2 rounded-md text-[10px] bg-white border border-amber-300/60 font-semibold">
+                      {req.requestType === 'email' ? 'Par email' : 'Par prénom/nom'}
+                    </span>
+                    {req.status === 'resolved' && (
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.2 rounded">
+                        Traité
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Valeur saisie : <span className="font-semibold">{req.value}</span> • Reçu le {new Date(req.createdAt).toLocaleString('fr-FR')}
+                  </p>
+                </div>
 
-      {/* Section 3: Générateur automatique des 44 matchs */}
-      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-blue-100 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-blue-600" />
-            <h3 className="text-base font-bold text-slate-900">
-              Générateur du Calendrier des {seasonMatchesCount} Matchs
-            </h3>
+                {req.status === 'pending' && (
+                  <button
+                    onClick={() => handleResolveReq(req.id)}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all w-fit shrink-0"
+                  >
+                    Marquer comme transmis
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700">
-            1-Clic
+        )}
+      </div>
+
+      {/* 2. TABLEAU RÉCAPITULATIF SÉCURISÉ DES CODES D'ACCÈS */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                Annuaire des Codes d'Accès Joueurs ({players.length})
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Liste confidentielle pour transmettre rapidement un code à un membre
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase text-[10px]">
+                <th className="py-3 px-3">Joueur</th>
+                <th className="py-3 px-3">Email</th>
+                <th className="py-3 px-3">Rôle</th>
+                <th className="py-3 px-3">Code Unique</th>
+                <th className="py-3 px-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+              {players.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-50/60">
+                  <td className="py-2.5 px-3">
+                    <div className="flex items-center gap-2 font-bold text-slate-900">
+                      <span>{p.emoji || '🎾'}</span>
+                      <span>{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-500">{p.email || '—'}</td>
+                  <td className="py-2.5 px-3">
+                    {p.isAdmin ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-800">
+                        Admin Master
+                      </span>
+                    ) : p.isCreditor ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
+                        Créancier
+                      </span>
+                    ) : (
+                      <span className="text-slate-500">Joueur</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span className="font-mono font-black text-sm text-slate-950 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
+                      {p.accessCode || '—'}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-right">
+                    <button
+                      onClick={() => handleCopyCode(p)}
+                      className="px-2.5 py-1 text-slate-600 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold text-[11px] transition-colors inline-flex items-center gap-1"
+                    >
+                      {copiedCodePlayerId === p.id ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-700">Copié !</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copier</span>
+                        </>
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 3. TARIF DE PART DE MATCH */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs">
+        <h3 className="text-sm sm:text-base font-extrabold text-slate-900 mb-1">
+          Tarif par part de joueur
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Montant automatique facturé et déduit lors de chaque validation de présence ({settings.matchFeePerPlayer} € par défaut)
+        </p>
+
+        <form onSubmit={handleSaveFee} className="flex items-center gap-3 max-w-sm">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={matchFee}
+              onChange={(e) => setMatchFee(Number(e.target.value))}
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">€ / joueur</span>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSavingSettings}
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {isSavingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Enregistrer
+          </button>
+        </form>
+
+        {saveSuccess && (
+          <p className="text-xs font-bold text-emerald-600 mt-2 flex items-center gap-1">
+            <CheckCircle2 className="w-4 h-4" /> Tarif mis à jour avec succès !
+          </p>
+        )}
+      </div>
+
+      {/* 4. OUTIL DE GÉNÉRATION AUTOMATIQUE DE SAISON */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center gap-2.5 mb-2">
+          <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+            <Calendar className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+              Générateur Automatique de Saison (44 Jeudis)
+            </h3>
+            <p className="text-xs text-slate-500">
+              Crée les 44 créneaux de la saison 2026/27 (Terrain 1 & Terrain 2)
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-purple-50/60 border border-purple-200/80 rounded-2xl p-4 my-4 text-xs text-purple-950 space-y-2 leading-relaxed">
+          <p>
+            <strong>Fonctionnement :</strong> À partir du <strong>Jeudi 3 septembre 2026 à 20h00</strong>, le script planifie automatiquement les <strong>44 jeudis consécutifs</strong>.
+          </p>
+          <p>
+            Pour chaque jeudi, <strong>2 matchs distincts</strong> sont créés (Terrain 1 et Terrain 2), représentant 8 places de joueurs par soirée.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Date du 1er jeudi</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Heure de début</label>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Nombre de semaines</label>
+            <input
+              type="number"
+              min="1"
+              max="52"
+              value={seasonWeeks}
+              onChange={(e) => setSeasonWeeks(Number(e.target.value))}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <button
+            onClick={handleGenerateSeason}
+            disabled={isGeneratingSeason}
+            className="px-5 py-3 bg-purple-600 hover:bg-purple-700 active:scale-98 text-white rounded-2xl text-xs font-bold shadow-md shadow-purple-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {isGeneratingSeason ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Génération des 44 jeudis en cours...
+              </>
+            ) : (
+              <>
+                <RotateCw className="w-4 h-4" />
+                Générer la saison automatique ({seasonWeeks * 2} matchs)
+              </>
+            )}
+          </button>
+
+          <span className="text-xs text-slate-400 font-medium">
+            Matchs actuellement en base : <strong className="text-slate-800">{matchesCount}</strong>
           </span>
         </div>
 
-        {generatedMsg && (
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <Sparkles className="w-4 h-4 text-emerald-700" />
-            {generatedMsg}
+        {genSuccessMsg && (
+          <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            {genSuccessMsg}
           </div>
-        )}
-
-        <p className="text-xs text-slate-500 leading-relaxed">
-          Générez instantanément les <strong>{seasonMatchesCount} matchs hebdomadaires</strong> de la saison avec les 2 terrains configurés ({courtNames.join(', ')}).
-        </p>
-
-        {isAdmin ? (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="flex-1 space-y-1">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase">
-                Date du Match #1 (Premier Lundi)
-              </label>
-              <input
-                type="date"
-                value={seasonStartDate}
-                onChange={(e) => setSeasonStartDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 font-semibold min-h-[44px] sm:min-h-[38px]"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGenerateSeason}
-              disabled={isGenerating}
-              className="sm:self-end px-5 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 min-h-[44px]"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isGenerating ? 'Génération en cours...' : `Générer les ${seasonMatchesCount} Matchs`}
-            </button>
-          </div>
-        ) : (
-          <p className="text-xs font-medium text-slate-400 italic">
-            Génération réservée aux administrateurs.
-          </p>
         )}
       </div>
-
-      {/* Section 4: Initialisation Démo */}
-      {isAdmin && (
-        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-slate-500" />
-            <h4 className="text-sm font-bold text-slate-800">
-              Données de Démonstration & Test
-            </h4>
-          </div>
-          <p className="text-xs text-slate-400">
-            Charge des créanciers d'exemple (Maxence, Thomas avec 1 100 € d'avance), des joueurs et des premiers matchs test.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Recharger les données d'exemple ? Cela ajoutera les joueurs et matchs de test.")) {
-                onSeedDemo();
-              }
-            }}
-            className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs min-h-[44px] flex items-center justify-center"
-          >
-            Recharger les données de démonstration
-          </button>
-        </div>
-      )}
     </div>
   );
 };

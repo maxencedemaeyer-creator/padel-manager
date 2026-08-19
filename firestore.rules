@@ -52,5 +52,10 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if true;
     }
+
+    // 4. Password / Code Recovery Requests
+    match /password_requests/{requestId} {
+      allow read, write: if true;
+    }
   }
 }
