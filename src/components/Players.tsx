@@ -11,11 +11,11 @@ import {
   Federation 
 } from '../types';
 import { 
-  savePlayer, 
   updatePlayerProfile, 
   deletePlayer, 
   seedInitialPlayers 
 } from '../services/padelService';
+import { PlayerModal } from './PlayerModal';
 import { 
   UserPlus, 
   Search, 
@@ -70,18 +70,6 @@ export const Players: React.FC<PlayersProps> = ({
   // Admin Add / Edit Player Modal
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [formName, setFormName] = useState('');
-  const [formEmail, setFormEmail] = useState('');
-  const [formCode, setFormCode] = useState('');
-  const [formIsAdmin, setFormIsAdmin] = useState(false);
-  const [formIsCreditor, setFormIsCreditor] = useState(false);
-  const [formCreditBalance, setFormCreditBalance] = useState<number>(0);
-  const [formEmoji, setFormEmoji] = useState('🎾');
-  const [formDominantHand, setFormDominantHand] = useState<DominantHand>('Droitier');
-  const [formPreferredSide, setFormPreferredSide] = useState<PreferredSide>('Polyvalent');
-  const [formFederation, setFormFederation] = useState<Federation>('Aucune');
-  const [formLevel, setFormLevel] = useState<PlayerLevel>('Aucun niveau défini');
-  const [isSubmittingPlayer, setIsSubmittingPlayer] = useState(false);
 
   // Filtered & Sorted Players
   const processedPlayers = useMemo(() => {
@@ -150,68 +138,13 @@ export const Players: React.FC<PlayersProps> = ({
   // Open Edit Modal for Admin
   const handleOpenEdit = (player: Player) => {
     setEditingPlayer(player);
-    setFormName(player.name);
-    setFormEmail(player.email || '');
-    setFormCode(player.accessCode || '');
-    setFormIsAdmin(player.isAdmin);
-    setFormIsCreditor(player.isCreditor);
-    setFormCreditBalance(player.creditBalance || 0);
-    setFormEmoji(player.emoji || '🎾');
-    setFormDominantHand((player.dominantHand as DominantHand) || 'Droitier');
-    setFormPreferredSide((player.preferredSide as PreferredSide) || 'Polyvalent');
-    setFormFederation((player.federation as Federation) || 'Aucune');
-    setFormLevel((player.level as PlayerLevel) || 'Aucun niveau défini');
     setIsAddModalOpen(true);
   };
 
   // Open Add Modal for Admin
   const handleOpenAdd = () => {
     setEditingPlayer(null);
-    setFormName('');
-    setFormEmail('');
-    // Generate random 4-digit code
-    const randCode = String(Math.floor(1000 + Math.random() * 9000));
-    setFormCode(randCode);
-    setFormIsAdmin(false);
-    setFormIsCreditor(false);
-    setFormCreditBalance(0);
-    setFormEmoji('🎾');
-    setFormDominantHand('Droitier');
-    setFormPreferredSide('Polyvalent');
-    setFormFederation('Aucune');
-    setFormLevel('Aucun niveau défini');
     setIsAddModalOpen(true);
-  };
-
-  // Save Player (Admin)
-  const handleSavePlayerModal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName.trim() || isSubmittingPlayer) return;
-
-    setIsSubmittingPlayer(true);
-    try {
-      const selectedLvl = PLAYER_LEVELS.find(l => l.label === formLevel);
-      await savePlayer({
-        id: editingPlayer ? editingPlayer.id : undefined,
-        name: formName.trim(),
-        email: formEmail.trim(),
-        accessCode: formCode.trim(),
-        isAdmin: formIsAdmin,
-        isCreditor: formIsCreditor,
-        creditBalance: formIsCreditor ? formCreditBalance : 0,
-        emoji: formEmoji || '🎾',
-        dominantHand: formDominantHand,
-        preferredSide: formPreferredSide,
-        federation: formFederation,
-        level: formLevel,
-        levelSortValue: selectedLvl ? selectedLvl.sortValue : 0
-      });
-      setIsAddModalOpen(false);
-    } catch (err) {
-      console.error("Erreur enregistrement joueur:", err);
-    } finally {
-      setIsSubmittingPlayer(false);
-    }
   };
 
   // Delete Player (Admin)
@@ -701,221 +634,12 @@ export const Players: React.FC<PlayersProps> = ({
       )}
 
       {/* 5. ADMIN ADD / EDIT PLAYER MODAL */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsAddModalOpen(false)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
-              aria-label="Fermer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 bg-purple-50 text-purple-700 rounded-2xl flex items-center justify-center shrink-0">
-                <UserPlus className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900 leading-tight">
-                  {editingPlayer ? `Modifier ${editingPlayer.name}` : 'Ajouter un nouveau joueur'}
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  Informations de profil et code d'accès unique
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSavePlayerModal} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nom / Prénom *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ex: Alexandre"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                  />
-                </div>
-
-                {/* Email */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Adresse e-mail
-                  </label>
-                  <input
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="alexandre@padel.be"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Access Code */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Code unique de connexion *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    placeholder="Ex: 4812"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono tracking-wider focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                  />
-                </div>
-
-                {/* Emoji */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Emoji / Symbole
-                  </label>
-                  <input
-                    type="text"
-                    value={formEmoji}
-                    onChange={(e) => setFormEmoji(e.target.value)}
-                    maxLength={4}
-                    placeholder="🎾"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              {/* LEVEL (ADMIN SEUL) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Niveau du joueur (Attribué par l'Administrateur)
-                </label>
-                <select
-                  value={formLevel}
-                  onChange={(e) => setFormLevel(e.target.value as PlayerLevel)}
-                  className="w-full px-3.5 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-xs font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  {PLAYER_LEVELS.map(lvl => (
-                    <option key={lvl.label} value={lvl.label}>
-                      {lvl.label} (Valeur de tri: {lvl.sortValue})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Dominant Hand */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Main dominante</label>
-                  <select
-                    value={formDominantHand}
-                    onChange={(e) => setFormDominantHand(e.target.value as DominantHand)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    {DOMINANT_HANDS.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                {/* Preferred Side */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Côté préféré</label>
-                  <select
-                    value={formPreferredSide}
-                    onChange={(e) => setFormPreferredSide(e.target.value as PreferredSide)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    {PREFERRED_SIDES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-
-                {/* Federation */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Fédération</label>
-                  <select
-                    value={formFederation}
-                    onChange={(e) => setFormFederation(e.target.value as Federation)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    {FEDERATIONS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Roles & Creditor */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formIsAdmin}
-                    onChange={(e) => setFormIsAdmin(e.target.checked)}
-                    className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
-                  />
-                  <span className="text-xs font-bold text-slate-900">
-                    Droits d'Administrateur complets (Admin Master)
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formIsCreditor}
-                    onChange={(e) => setFormIsCreditor(e.target.checked)}
-                    className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                  />
-                  <span className="text-xs font-bold text-slate-900">
-                    Joueur Créancier (a avancé les frais de saison)
-                  </span>
-                </label>
-
-                {formIsCreditor && (
-                  <div className="pt-2 pl-6">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Montant de la créance initiale (€)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={formCreditBalance}
-                      onChange={(e) => setFormCreditBalance(Number(e.target.value))}
-                      className="w-40 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 text-xs font-bold rounded-2xl hover:bg-slate-200 transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={!formName.trim() || !formCode.trim() || isSubmittingPlayer}
-                  className="flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-2xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSubmittingPlayer ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      {editingPlayer ? 'Enregistrer les modifications' : 'Créer le joueur'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <PlayerModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        playerToEdit={editingPlayer}
+        existingPlayers={players}
+      />
     </div>
   );
 };
