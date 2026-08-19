@@ -11,8 +11,6 @@ import {
   DEFAULT_SETTINGS 
 } from './types';
 import { 
-  listenSettings, 
-  listenPlayers, 
   listenMatches, 
   seedInitialPlayers 
 } from './services/padelService';
@@ -28,6 +26,8 @@ import { LoginScreen } from './components/LoginScreen';
 import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { Loader2 } from 'lucide-react';
 
+const CACHED_MATCHES_KEY = 'padel_cached_matches';
+
 function AppContent() {
   const {
     isAuthenticated,
@@ -35,16 +35,24 @@ function AppContent() {
     isGuest,
     currentPlayer,
     dataLoading,
+    players,
+    settings,
     isForgotPasswordModalOpen,
     closeForgotPasswordModal
   } = useAuth();
 
   // App data state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [settings, setSettings] = useState<ClubSettings>(DEFAULT_SETTINGS);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [isDataSyncing, setIsDataSyncing] = useState<boolean>(true);
+  
+  // Instant load matches from localStorage cache for 0ms initial render
+  const [matches, setMatches] = useState<Match[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHED_MATCHES_KEY);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Mobile Drawer Menu State
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -52,32 +60,20 @@ function AppContent() {
   // Ref to track if initial demo seed has already run
   const hasSeededRef = useRef(false);
 
-  // 1. Real-time Firestore Listeners (executed when user is authenticated or guest)
+  // 1. Real-time Firestore Listeners for Matches (non-blocking)
   useEffect(() => {
-    if (!isAuthenticated) {
-      setIsDataSyncing(false);
-      return;
-    }
-
-    setIsDataSyncing(true);
-
-    const unsubSettings = listenSettings((loadedSettings) => {
-      setSettings(loadedSettings);
-    });
-
-    const unsubPlayers = listenPlayers((loadedPlayers) => {
-      setPlayers(loadedPlayers);
-      setIsDataSyncing(false);
-    });
+    if (!isAuthenticated) return;
 
     const unsubMatches = listenMatches((loadedMatches) => {
       setMatches(loadedMatches);
-      setIsDataSyncing(false);
+      try {
+        localStorage.setItem(CACHED_MATCHES_KEY, JSON.stringify(loadedMatches));
+      } catch (e) {
+        console.warn("Matches cache error:", e);
+      }
     });
 
     return () => {
-      unsubSettings();
-      unsubPlayers();
       unsubMatches();
     };
   }, [isAuthenticated]);
@@ -90,22 +86,7 @@ function AppContent() {
     }
   }, [dataLoading, isAuthenticated, players.length]);
 
-  // 1. Initial auth loading state
-  if (dataLoading && !isAuthenticated && !isGuest) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-3">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center justify-center text-2xl shadow-2xs">
-          🎾
-        </div>
-        <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
-          <span>Chargement de Padel Manager...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Unauthenticated -> Login Screen with unique code entry & guest mode
+  // 1. Unauthenticated -> Login Screen with unique code entry & guest mode
   if (!isAuthenticated) {
     return (
       <>
@@ -119,7 +100,7 @@ function AppContent() {
     );
   }
 
-  // 3. Authenticated -> Full Application
+  // 2. Authenticated -> Full Application
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-800 flex flex-col antialiased selection:bg-emerald-100 selection:text-emerald-900">
       {/* Header with Welcome message and Logout */}
@@ -141,75 +122,60 @@ function AppContent() {
           setIsMobileDrawerOpen={setIsMobileDrawerOpen}
         />
 
-        {/* Sync Loader for initial load */}
-        {isDataSyncing && players.length === 0 && matches.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs p-12 text-center my-6 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
-              <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-            </div>
-            <h3 className="text-sm font-bold text-slate-800">
-              Synchronisation des données en direct...
-            </h3>
-            <p className="text-xs text-slate-400">
-              Connexion sécurisée à Firestore.
-            </p>
-          </div>
-        ) : (
-          /* Active Views */
-          <div>
-            {activeTab === 'dashboard' && (
-              <Dashboard
-                matches={matches}
-                players={players}
-                settings={settings}
-                isAdmin={isAdmin}
-                isGuest={isGuest}
-                currentPlayer={currentPlayer}
-                onNavigateToMatches={() => setActiveTab('matches')}
-                onNavigateToFinances={() => setActiveTab('finances')}
-                onNavigateToPlayers={() => setActiveTab('players')}
-              />
-            )}
+        {/* Active Views */}
+        <div>
+          {activeTab === 'dashboard' && (
+            <Dashboard
+              matches={matches}
+              players={players}
+              settings={settings}
+              isAdmin={isAdmin}
+              isGuest={isGuest}
+              currentPlayer={currentPlayer}
+              onNavigateToMatches={() => setActiveTab('matches')}
+              onNavigateToFinances={() => setActiveTab('finances')}
+              onNavigateToPlayers={() => setActiveTab('players')}
+            />
+          )}
 
-            {activeTab === 'matches' && (
-              <Matches
-                matches={matches}
-                players={players}
-                settings={settings}
-                isAdmin={isAdmin}
-                isGuest={isGuest}
-                currentPlayer={currentPlayer}
-              />
-            )}
+          {activeTab === 'matches' && (
+            <Matches
+              matches={matches}
+              players={players}
+              settings={settings}
+              isAdmin={isAdmin}
+              isGuest={isGuest}
+              currentPlayer={currentPlayer}
+            />
+          )}
 
-            {activeTab === 'players' && (
-              <Players
-                players={players}
-                isAdmin={isAdmin}
-                isGuest={isGuest}
-                currentPlayer={currentPlayer}
-              />
-            )}
+          {activeTab === 'players' && (
+            <Players
+              players={players}
+              isAdmin={isAdmin}
+              isGuest={isGuest}
+              currentPlayer={currentPlayer}
+            />
+          )}
 
-            {activeTab === 'finances' && (
-              <Finances
-                players={players}
-                matches={matches}
-                settings={settings}
-                isAdmin={isAdmin}
-              />
-            )}
+          {activeTab === 'finances' && (
+            <Finances
+              players={players}
+              matches={matches}
+              settings={settings}
+              isAdmin={isAdmin}
+            />
+          )}
 
-            {activeTab === 'settings' && (
-              <Settings
-                settings={settings}
-                players={players}
-                matchesCount={matches.length}
-                isAdmin={isAdmin}
-              />
-            )}
-          </div>
-        )}
+          {activeTab === 'settings' && (
+            <Settings
+              settings={settings}
+              players={players}
+              matchesCount={matches.length}
+              isAdmin={isAdmin}
+            />
+          )}
+        </div>
       </main>
 
       {/* Assistance Modal for Lost Code */}

@@ -8,6 +8,10 @@ import {
   addDoc, 
   writeBatch,
   getDoc,
+  getDocs,
+  query,
+  where,
+  limit,
   runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -212,7 +216,58 @@ export function listenPasswordRequests(callback: (reqs: PasswordRequest[]) => vo
 }
 
 /* =========================================================================
-   2. SETTINGS OPERATIONS
+   2. AUTH & DIRECT VERIFICATION
+   ========================================================================= */
+
+/**
+ * Fast direct Firestore lookup by access code (fallback for instant login)
+ */
+export async function verifyPlayerCodeDirect(code: string): Promise<Player | null> {
+  const trimmed = (code || '').trim();
+  if (!trimmed) return null;
+
+  try {
+    const q = query(
+      collection(db, 'players'), 
+      where('accessCode', '==', trimmed),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+
+    const d = snap.docs[0];
+    const data = d.data();
+    const levelStr = data.level || 'Aucun niveau défini';
+    const foundLvl = PLAYER_LEVELS.find(l => l.label === levelStr);
+
+    return {
+      id: d.id,
+      name: data.name || '',
+      email: data.email || '',
+      accessCode: data.accessCode || '',
+      isAdmin: data.isAdmin === true,
+      isCreditor: data.isCreditor === true,
+      creditBalance: data.creditBalance !== undefined 
+        ? Number(data.creditBalance) 
+        : (data.advanceAmount !== undefined ? Number(data.advanceAmount) : 0),
+      emoji: data.emoji || '🎾',
+      dominantHand: data.dominantHand || 'Droitier',
+      preferredSide: data.preferredSide || 'Polyvalent',
+      federation: data.federation || 'Aucune',
+      level: levelStr,
+      levelSortValue: data.levelSortValue !== undefined ? Number(data.levelSortValue) : (foundLvl ? foundLvl.sortValue : 0),
+      phone: data.phone || '',
+      avatarColor: data.avatarColor || '#E0F2FE',
+      createdAt: data.createdAt || 0
+    };
+  } catch (err) {
+    console.error("Direct code lookup error:", err);
+    return null;
+  }
+}
+
+/* =========================================================================
+   3. SETTINGS OPERATIONS
    ========================================================================= */
 
 export async function updateClubSettings(settings: Partial<ClubSettings>): Promise<void> {

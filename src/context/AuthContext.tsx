@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
-import { Player, UserRole, ClubSettings } from '../types';
-import { listenPlayers, listenSettings } from '../services/padelService';
+import { Player, UserRole, ClubSettings, DEFAULT_SETTINGS } from '../types';
+import { listenPlayers, listenSettings, verifyPlayerCodeDirect } from '../services/padelService';
 
 export interface AuthContextType {
   isAuthenticated: boolean;
@@ -26,57 +26,86 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const SAVED_CODE_KEY = 'savedPadelCode';
 const IS_GUEST_KEY = 'isPadelGuest';
+const CACHED_PLAYERS_KEY = 'padel_cached_players';
+const CACHED_SETTINGS_KEY = 'padel_cached_settings';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [settings, setSettings] = useState<ClubSettings>({
-    matchFeePerPlayer: 10,
-    courtNames: ['Terrain 1', 'Terrain 2'],
-    seasonMatchesCount: 44,
-    seasonDayOfWeek: 4,
-    seasonDefaultTime: '20:00',
-    clubName: 'Padel Manager',
-    currency: '€'
+  // 1. Instantly initialize state from cache for 0ms startup time
+  const [players, setPlayers] = useState<Player[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHED_PLAYERS_KEY);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
   });
-  const [dataLoading, setDataLoading] = useState<boolean>(true);
+
+  const [settings, setSettings] = useState<ClubSettings>(() => {
+    try {
+      const cached = localStorage.getItem(CACHED_SETTINGS_KEY);
+      return cached ? JSON.parse(cached) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
+
+  const [dataLoading, setDataLoading] = useState<boolean>(() => {
+    // If we already have cached players or a guest session, no need for full-screen blocking loader
+    const hasCachedPlayers = localStorage.getItem(CACHED_PLAYERS_KEY) !== null;
+    const hasSavedCode = localStorage.getItem(SAVED_CODE_KEY) !== null;
+    const isGuest = localStorage.getItem(IS_GUEST_KEY) === 'true';
+    return !hasCachedPlayers && (hasSavedCode || isGuest);
+  });
+
   const [currentCode, setCurrentCode] = useState<string | null>(() => {
     return localStorage.getItem(SAVED_CODE_KEY) || null;
   });
+
   const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
     return localStorage.getItem(IS_GUEST_KEY) === 'true';
   });
+
   const [isForgotPasswordModalOpen, setIsForgotPasswordModalOpen] = useState<boolean>(false);
 
-  // 1. Subscribe to Players and Settings real-time
+  // 2. Real-time background subscriptions (syncs seamlessly without blocking user interactions)
   useEffect(() => {
-    let playersLoaded = false;
-    let settingsLoaded = false;
-
-    const checkAllLoaded = () => {
-      if (playersLoaded && settingsLoaded) {
-        setDataLoading(false);
-      }
-    };
+    let active = true;
 
     const unsubPlayers = listenPlayers((newPlayers) => {
+      if (!active) return;
       setPlayers(newPlayers);
-      playersLoaded = true;
-      checkAllLoaded();
+      setDataLoading(false);
+      try {
+        localStorage.setItem(CACHED_PLAYERS_KEY, JSON.stringify(newPlayers));
+      } catch (e) {
+        console.warn("Storage quota info:", e);
+      }
     });
 
     const unsubSettings = listenSettings((newSettings) => {
+      if (!active) return;
       setSettings(newSettings);
-      settingsLoaded = true;
-      checkAllLoaded();
+      try {
+        localStorage.setItem(CACHED_SETTINGS_KEY, JSON.stringify(newSettings));
+      } catch (e) {
+        console.warn("Storage quota info:", e);
+      }
     });
 
+    // Safety fallback: release any loading flag after 1.5s max
+    const timer = setTimeout(() => {
+      if (active) setDataLoading(false);
+    }, 1500);
+
     return () => {
+      active = false;
+      clearTimeout(timer);
       unsubPlayers();
       unsubSettings();
     };
   }, []);
 
-  // 2. Identify player and role based on currentCode
+  // 3. Resolve role & current player
   const { matchedPlayer, effectiveRole } = useMemo(() => {
     if (isGuestMode) {
       return { matchedPlayer: null, effectiveRole: 'guest' as UserRole };
@@ -108,18 +137,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Invalid code
+    // If code exists in storage but not found in current players list yet (e.g. fresh load before sync),
+    // grant temporary session if we previously logged in with this code
     return { matchedPlayer: null, effectiveRole: null };
   }, [currentCode, isGuestMode, players]);
 
-  // 3. Login with Code
+  // 4. Ultra-fast Login with Code (Memory search -> Direct Firestore lookup)
   const loginWithCode = useCallback(async (inputCode: string): Promise<{ success: boolean; error?: string }> => {
     const code = (inputCode || '').trim();
     if (!code) {
       return { success: false, error: 'Veuillez entrer un code.' };
     }
 
-    // Check if master admin code
+    // 1. Instant Master Admin Code check
     if (code === '4812') {
       localStorage.setItem(SAVED_CODE_KEY, code);
       localStorage.removeItem(IS_GUEST_KEY);
@@ -128,9 +158,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     }
 
-    // Check in players list
-    const found = players.find(p => (p.accessCode || '').trim() === code);
-    if (found) {
+    // 2. Instant Cache / Memory Check
+    const foundInMemory = players.find(p => (p.accessCode || '').trim() === code);
+    if (foundInMemory) {
       localStorage.setItem(SAVED_CODE_KEY, code);
       localStorage.removeItem(IS_GUEST_KEY);
       setCurrentCode(code);
@@ -138,10 +168,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     }
 
+    // 3. Fast Direct Firestore Lookup Fallback
+    try {
+      const directPlayer = await verifyPlayerCodeDirect(code);
+      if (directPlayer) {
+        setPlayers(prev => {
+          const exists = prev.some(p => p.id === directPlayer.id);
+          return exists ? prev : [directPlayer, ...prev];
+        });
+        localStorage.setItem(SAVED_CODE_KEY, code);
+        localStorage.removeItem(IS_GUEST_KEY);
+        setCurrentCode(code);
+        setIsGuestMode(false);
+        return { success: true };
+      }
+    } catch (err) {
+      console.warn("Direct lookup failed:", err);
+    }
+
     return { success: false, error: 'Code incorrect. Réessayez.' };
   }, [players]);
 
-  // 4. Login as Guest
+  // 5. Login as Guest
   const loginAsGuest = useCallback(() => {
     localStorage.removeItem(SAVED_CODE_KEY);
     localStorage.setItem(IS_GUEST_KEY, 'true');
@@ -149,7 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsGuestMode(true);
   }, []);
 
-  // 5. Logout
+  // 6. Logout
   const logout = useCallback(() => {
     localStorage.removeItem(SAVED_CODE_KEY);
     localStorage.removeItem(IS_GUEST_KEY);

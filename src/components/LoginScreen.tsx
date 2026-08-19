@@ -100,7 +100,7 @@ export const LoginScreen: React.FC = () => {
 
             <button
               type="submit"
-              disabled={!code.trim() || isSubmitting || dataLoading}
+              disabled={!code.trim() || isSubmitting}
               className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 text-sm font-extrabold rounded-2xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
