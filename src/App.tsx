@@ -2583,6 +2583,30 @@ function MatchesView() {
 /* =============================================================================
    12. ADMINISTRATION — dashboard des soldes de créances
    ========================================================================= */
+function CreditorBalanceEditor({ creditor, rawTotal }) {
+  const [value, setValue] = useState(String(rawTotal + (creditor.manualAdjustment || 0)));
+  const save = async () => {
+    const target = parseFeeInput(value);
+    if (target == null) return;
+    try {
+      await updateDoc(doc(db, "players", creditor.id), {
+        manualAdjustment: target - rawTotal,
+      });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    }
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="pm-mono font-bold text-[var(--color-lime)] bg-transparent text-right w-24 focus:outline-none border-b border-transparent focus:border-sky-300"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+    />
+  );
+}
 function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
@@ -2655,9 +2679,7 @@ function AdminView() {
                   {c.emoji || "🎾"}
                 </span>
                 <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                <span className="pm-mono font-bold text-[var(--color-lime)]">
-                  {(creditorTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
-                </span>
+                <CreditorBalanceEditor creditor={c} rawTotal={creditorTotals.get(c.id) || 0} />
               </Card>
             ))}
         </div>
