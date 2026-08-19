@@ -1736,36 +1736,102 @@ function StatusBadge({ match, now }) {
   return <Badge tone="blue">À venir</Badge>;
 }
 
-function ParticipantChip({ participant, match, canManage, isCreditorParticipant }) {
-  const [showPayment, setShowPayment] = useState(false);
-  const paid = isCreditorParticipant || participant.paidStatus === "paid";
-  return (
-    <>
-      <div className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-        <span className="w-6 h-6 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs">
-          🎾
-        </span>
-        <span className="text-xs font-medium max-w-[70px] truncate">
-          {participant.name}
-        </span>
-        <button
-          disabled={paid || !canManage}
-          onClick={() => setShowPayment(true)}
-          className={cn(!paid && canManage && "cursor-pointer")}
-        >
-          <Badge tone={paid ? "paid" : "unpaid"} className="!px-2 !py-0.5">
-            {paid ? "Payé" : "À payer"}
-          </Badge>
-        </button>
+function getInitials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Répartit les 4 emplacements d'un match en 2 équipes de 2 (haut / bas du filet).
+// Utilise l'équipe (team: "A"/"B") si connue, complète dans l'ordre sinon —
+// ne modifie aucune donnée, se contente d'organiser l'affichage.
+function getCourtSlots(match) {
+  const participants = match.participants || [];
+  const top = participants.filter((p) => p.team === "A");
+  const bottom = participants.filter((p) => p.team === "B");
+  const untracked = participants.filter((p) => p.team !== "A" && p.team !== "B");
+  untracked.forEach((p) => {
+    if (top.length < 2) top.push(p);
+    else if (bottom.length < 2) bottom.push(p);
+  });
+  while (top.length < 2) top.push(null);
+  while (bottom.length < 2) bottom.push(null);
+  return { top: top.slice(0, 2), bottom: bottom.slice(0, 2) };
+}
+
+function PlayerSlotCard({
+  participant,
+  playerRecord,
+  canAssign,
+  canPay,
+  isCreditorParticipant,
+  onAssignClick,
+  onPayClick,
+}) {
+  if (!participant) {
+    return (
+      <div
+        role={canAssign ? "button" : undefined}
+        tabIndex={canAssign ? 0 : undefined}
+        onClick={canAssign ? onAssignClick : undefined}
+        className={cn(
+          "flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 border-dashed min-h-[86px] text-center",
+          canAssign
+            ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
+            : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
+        )}
+      >
+        <Icon.Plus className="w-4 h-4" />
+        <span className="text-[11px] font-medium">Emplacement libre</span>
       </div>
-      {showPayment && (
-        <PaymentModal
-          match={match}
-          participant={participant}
-          onClose={() => setShowPayment(false)}
-        />
+    );
+  }
+
+  const paid = isCreditorParticipant || participant.paidStatus === "paid";
+  const badgeTone = isCreditorParticipant ? "blue" : paid ? "paid" : "unpaid";
+  const badgeLabel = isCreditorParticipant ? "Avancé" : paid ? "Payé" : "Attente";
+  const side = normalizeSide(playerRecord?.preferredSide);
+  const roleLabel =
+    side === "Droite" ? "Joueur de droite" : side === "Gauche" ? "Joueur de gauche" : "Polyvalent";
+
+  return (
+    <div
+      role={canAssign ? "button" : undefined}
+      tabIndex={canAssign ? 0 : undefined}
+      onClick={canAssign ? onAssignClick : undefined}
+      className={cn(
+        "flex items-start gap-2 p-3 rounded-xl border bg-white min-h-[86px]",
+        canAssign ? "cursor-pointer hover:border-sky-300" : "border-[var(--color-border)]"
       )}
-    </>
+    >
+      <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0">
+        {getInitials(participant.name)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold truncate">{participant.name}</span>
+        <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
+        <span className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            disabled={!canPay || paid}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canPay && !paid) onPayClick();
+            }}
+          >
+            <Badge tone={badgeTone} className="!px-1.5 !py-0.5 !text-[10px]">
+              {badgeLabel}
+            </Badge>
+          </button>
+          {isCreditorParticipant && (
+            <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
+              Créancier
+            </Badge>
+          )}
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -2057,18 +2123,44 @@ function AssignPlayersModal({ match, onClose }) {
   );
 }
 
-function MatchCard({ match, now }) {
+function CourtPanel({ match, now }) {
   const { isAdmin, connectedPlayer, players } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null);
+
   const participants = match.participants || [];
+  const filledCount = participants.length;
   const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
   const scoreEntered = hasMatchScore(match);
   const canManagePayments = isAdmin || connectedPlayer.isCreditor === true;
+  const canAssign = isAdmin && !finished;
   const creditorPlayerIds = new Set(
     players.filter((p) => p.isCreditor === true).map((p) => p.id)
+  );
+  const playerById = (id) => players.find((p) => p.id === id);
+  const { top, bottom } = getCourtSlots(match);
+
+  const fillBadge =
+    filledCount === 4
+      ? "4/4 joueurs • Complet"
+      : filledCount === 0
+      ? "Créneau libre"
+      : `${filledCount}/4 joueurs`;
+
+  const renderSlot = (participant, key) => (
+    <PlayerSlotCard
+      key={key}
+      participant={participant}
+      playerRecord={participant ? playerById(participant.playerId) : null}
+      canAssign={canAssign}
+      canPay={canManagePayments}
+      isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
+      onAssignClick={() => setShowAssign(true)}
+      onPayClick={() => setPaymentTarget(participant)}
+    />
   );
 
   return (
@@ -2078,42 +2170,38 @@ function MatchCard({ match, now }) {
         isParticipant && "border-[var(--color-lime)]/40"
       )}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="pm-display font-bold text-base">{formatDateFR(match.date)}</p>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-sm truncate">{match.location || "Terrain"}</p>
           <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
-            {match.time}
-            {match.location ? ` · ${match.location}` : ""}
+            {match.matchFeePerPlayer != null
+              ? `${match.matchFeePerPlayer.toLocaleString("fr-FR")} € / joueur`
+              : "Tarif non renseigné"}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
           <StatusBadge match={match} now={now} />
-          <Badge tone="neutral" className="!text-[10px]">
-            {match.type}
-            {match.matchFeePerPlayer != null
-              ? ` · ${match.matchFeePerPlayer.toLocaleString("fr-FR")} €`
-              : ""}
+          <Badge tone={filledCount === 4 ? "paid" : "neutral"} className="!text-[10px]">
+            {fillBadge}
           </Badge>
         </div>
       </div>
 
-      {participants.length > 0 ? (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {participants.map((p) => (
-            <ParticipantChip
-              key={p.playerId}
-              participant={p}
-              match={match}
-              canManage={canManagePayments}
-              isCreditorParticipant={creditorPlayerIds.has(p.playerId)}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-[var(--color-text-faint)] italic mb-3">
-          Aucun joueur assigné pour l'instant.
-        </p>
-      )}
+      <div className="grid grid-cols-2 gap-2">
+        {top.map((p, i) => renderSlot(p, p?.playerId || `top-${i}`))}
+      </div>
+
+      <div className="relative flex items-center my-2.5">
+        <div className="flex-1 h-px bg-[var(--color-border)]" />
+        <span className="mx-2 px-2.5 py-1 rounded-full bg-slate-800 text-white text-[10px] font-bold tracking-wide shrink-0">
+          FILET • NET
+        </span>
+        <div className="flex-1 h-px bg-[var(--color-border)]" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {bottom.map((p, i) => renderSlot(p, p?.playerId || `bottom-${i}`))}
+      </div>
 
       {scoreEntered && (
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--color-surface-2)] mb-3">
@@ -2131,15 +2219,6 @@ function MatchCard({ match, now }) {
         </div>
       )}
 
-      {isAdmin && !finished && (
-        <Button
-          variant="secondary"
-          className="w-full !py-2 !text-xs"
-          onClick={() => setShowAssign(true)}
-        >
-          {participants.length > 0 ? "Modifier les joueurs" : "Assigner les joueurs"}
-        </Button>
-      )}
       {isAdmin && finished && (
         <Button
           variant="secondary"
@@ -2154,6 +2233,44 @@ function MatchCard({ match, now }) {
       {showAssign && (
         <AssignPlayersModal match={match} onClose={() => setShowAssign(false)} />
       )}
+      {paymentTarget && (
+        <PaymentModal
+          match={match}
+          participant={paymentTarget}
+          onClose={() => setPaymentTarget(null)}
+        />
+      )}
+    </Card>
+  );
+}
+
+function groupMatchesBySession(matches) {
+  const map = new Map();
+  matches.forEach((m) => {
+    const key = `${m.date}|${m.time}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(m);
+  });
+  return [...map.values()];
+}
+
+function SessionCard({ sessionMatches, now }) {
+  const first = sessionMatches[0];
+  return (
+    <Card className="p-4 pm-rise">
+      <div className="flex items-baseline justify-between mb-3">
+        <p className="pm-display font-bold text-base">
+          {formatDateFR(first.date)} · {first.time}
+        </p>
+        <Badge tone="neutral" className="!text-[10px]">
+          {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
+        </Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {sessionMatches.map((m) => (
+          <CourtPanel key={m.id} match={m} now={now} />
+        ))}
+      </div>
     </Card>
   );
 }
@@ -2481,20 +2598,17 @@ function MatchesView() {
       <h2 className="pm-display font-bold text-xl mb-4">Matchs</h2>
 
       <div className="mb-6">
-        <div className="flex items-baseline justify-between mb-2">
-          <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
-            Prochain match
-          </h3>
-          {nextDate && (
-            <span className="text-xs text-[var(--color-text-faint)]">
-              {formatDateFR(nextDate)}
-            </span>
-          )}
-        </div>
+        <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-2">
+          Prochain match
+        </h3>
         {nextGroup.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {nextGroup.map((m) => (
-              <MatchCard key={m.id} match={m} now={now} />
+          <div className="flex flex-col gap-4">
+            {groupMatchesBySession(nextGroup).map((session) => (
+              <SessionCard
+                key={`${session[0].date}|${session[0].time}`}
+                sessionMatches={session}
+                now={now}
+              />
             ))}
           </div>
         ) : (
@@ -2512,17 +2626,16 @@ function MatchesView() {
 
       {lastGroup.length > 0 && (
         <div className="mb-6">
-          <div className="flex items-baseline justify-between mb-2">
-            <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
-              Dernier match joué
-            </h3>
-            <span className="text-xs text-[var(--color-text-faint)]">
-              {formatDateFR(lastDate)}
-            </span>
-          </div>
-          <div className="flex flex-col gap-3">
-            {lastGroup.map((m) => (
-              <MatchCard key={m.id} match={m} now={now} />
+          <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-2">
+            Dernier match joué
+          </h3>
+          <div className="flex flex-col gap-4">
+            {groupMatchesBySession(lastGroup).map((session) => (
+              <SessionCard
+                key={`${session[0].date}|${session[0].time}`}
+                sessionMatches={session}
+                now={now}
+              />
             ))}
           </div>
         </div>
@@ -2563,9 +2676,13 @@ function MatchesView() {
             subtitle="Le reste de la saison apparaîtra ici."
           />
         ) : (
-          <div className="flex flex-col gap-3">
-            {otherFiltered.map((m) => (
-              <MatchCard key={m.id} match={m} now={now} />
+          <div className="flex flex-col gap-4">
+            {groupMatchesBySession(otherFiltered).map((session) => (
+              <SessionCard
+                key={`${session[0].date}|${session[0].time}`}
+                sessionMatches={session}
+                now={now}
+              />
             ))}
           </div>
         )}
