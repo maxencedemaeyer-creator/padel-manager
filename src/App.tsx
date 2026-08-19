@@ -289,8 +289,19 @@ function formatDateFR(dateStr) {
   })}`;
 }
 
+// IMPORTANT : ne jamais utiliser .toISOString() pour obtenir une date
+// "YYYY-MM-DD" — ça convertit en UTC et peut faire basculer sur la veille
+// selon le fuseau horaire (ex. minuit en Belgique = 22h UTC la veille).
+// Cette fonction lit les composants de la date en HEURE LOCALE.
+function toLocalISODate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalISODate(new Date());
 }
 
 function generateUniqueCode(players, excludeId = null) {
@@ -323,7 +334,7 @@ function getRecurringDates(startDateStr, intervalDays, count) {
     dates.push(new Date(d));
     d.setDate(d.getDate() + Number(intervalDays));
   }
-  return dates.map((d) => d.toISOString().slice(0, 10));
+  return dates.map((d) => toLocalISODate(d));
 }
 
 function parseFeeInput(value) {
