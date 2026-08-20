@@ -93,39 +93,17 @@ const SESSION_KEY = "padelManagerSession";
 const ADMIN_MASTER_CODE = "4812"; // Code admin de secours (Maxence)
 
 /* =============================================================================
-   0bis. NOTIFICATION EMAIL — désinscription tardive (via EmailJS, sans backend)
+   0bis. ALERTE INTERNE — désinscription tardive (sans service externe)
    ========================================================================= */
-// ⚠️ À REMPLIR : créez un compte gratuit sur https://www.emailjs.com, un
-// service d'envoi (ex. Gmail), et un template avec les variables utilisées
-// plus bas (player_name, match_date, match_time, match_location,
-// hours_before, to_email — mettez {{to_email}} comme destinataire du
-// template dans le tableau de bord EmailJS).
-const EMAILJS_SERVICE_ID = "VOTRE_SERVICE_ID";
-const EMAILJS_TEMPLATE_ID = "VOTRE_TEMPLATE_ID";
-const EMAILJS_PUBLIC_KEY = "VOTRE_PUBLIC_KEY";
-
 const WITHDRAWAL_RESOLVE_DELAY_MINUTES = 3; // délai avant de vérifier si c'était une permutation
 const WITHDRAWAL_ALERT_WINDOW_HOURS = 72; // n'alerte que si le match a lieu dans ce délai
 
-async function sendWithdrawalEmail(templateParams) {
-  const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      service_id: EMAILJS_SERVICE_ID,
-      template_id: EMAILJS_TEMPLATE_ID,
-      user_id: EMAILJS_PUBLIC_KEY,
-      template_params: templateParams,
-    }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
-
 // Vérifie les désinscriptions en attente (posées il y a plus de 3 minutes) :
 // si le joueur s'est réinscrit ce même jour ailleurs, ce n'était qu'une
-// permutation (aucun email) ; sinon, et si on est à moins de 72h du match,
-// un email est envoyé aux administrateurs. Tourne dans le navigateur de
-// n'importe quel utilisateur connecté — pas besoin de backend dédié.
+// permutation (aucune alerte) ; sinon, et si on est à moins de 72h du match,
+// le dossier est marqué "alertWorthy" — il apparaît alors dans la clochette
+// de notification des administrateurs, dans l'app. Tourne dans le navigateur
+// de n'importe quel utilisateur connecté — pas besoin de backend dédié.
 async function resolvePendingWithdrawals() {
   try {
     const pendingSnap = await getDocs(
@@ -139,20 +117,13 @@ async function resolvePendingWithdrawals() {
     );
     if (dueDocs.length === 0) return;
 
-    const [matchesSnap, playersSnap] = await Promise.all([
-      getDocs(collection(db, "matches")),
-      getDocs(collection(db, "players")),
-    ]);
+    const matchesSnap = await getDocs(collection(db, "matches"));
     const freshMatches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const adminEmails = playersSnap.docs
-      .map((d) => d.data())
-      .filter((p) => isPlayerAdmin(p) && p.email)
-      .map((p) => p.email);
 
     for (const docSnap of dueDocs) {
       const w = docSnap.data();
-      // Réclame immédiatement ce dossier pour éviter un double envoi si un
-      // autre appareil le résout au même moment.
+      // Réclame immédiatement ce dossier pour éviter un double traitement si
+      // un autre appareil le résout au même moment.
       try {
         await updateDoc(doc(db, "withdrawals", docSnap.id), { resolved: true });
       } catch (e) {
@@ -168,19 +139,16 @@ async function resolvePendingWithdrawals() {
 
       const matchStart = new Date(`${w.matchDate}T${w.matchTime || "00:00"}:00`).getTime();
       const hoursBefore = (matchStart - new Date(w.leftAt).getTime()) / 3600000;
-      if (hoursBefore > WITHDRAWAL_ALERT_WINDOW_HOURS || adminEmails.length === 0) continue;
+      if (hoursBefore > WITHDRAWAL_ALERT_WINDOW_HOURS) continue; // désinscription assez à l'avance
 
       try {
-        await sendWithdrawalEmail({
-          to_email: adminEmails.join(","),
-          player_name: w.playerName,
-          match_date: formatDateFR(w.matchDate),
-          match_time: w.matchTime,
-          match_location: w.matchLocation || "Terrain",
-          hours_before: Math.max(0, Math.round(hoursBefore)),
+        await updateDoc(doc(db, "withdrawals", docSnap.id), {
+          alertWorthy: true,
+          read: false,
+          hoursBefore: Math.max(0, Math.round(hoursBefore)),
         });
       } catch (e) {
-        console.error("Échec de l'envoi de l'email de désinscription :", e);
+        console.error("Erreur lors du marquage de l'alerte :", e);
       }
     }
   } catch (e) {
@@ -194,6 +162,32 @@ function useWithdrawalWatcher() {
     const interval = setInterval(resolvePendingWithdrawals, 60000);
     return () => clearInterval(interval);
   }, []);
+}
+
+// Alertes de désinscription tardive à afficher aux administrateurs.
+function useWithdrawalAlerts() {
+  const [alerts, setAlerts] = useState([]);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      const q = query(collection(db, "withdrawals"), where("alertWorthy", "==", true));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          list.sort((a, b) => new Date(b.leftAt) - new Date(a.leftAt));
+          setAlerts(list);
+        },
+        (error) => console.error(error)
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    return () => unsub();
+  }, []);
+
+  return alerts;
 }
 
 /* =============================================================================
@@ -343,6 +337,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
       <path d="M4 7h16M9 7V4.5A1.5 1.5 0 0110.5 3h3A1.5 1.5 0 0115 4.5V7m2 0v13a2 2 0 01-2 2H9a2 2 0 01-2-2V7h10z" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  ),
+  Bell: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M6 8a6 6 0 1112 0c0 4.5 1.5 6 1.5 6h-15S6 12.5 6 8z" />
+      <path d="M10 21a2 2 0 004 0" />
     </svg>
   ),
   Chart: (p) => (
@@ -1018,8 +1018,99 @@ function AuthGate({ children }) {
 /* =============================================================================
    8. LAYOUT — header fixe + navigation basse
    ========================================================================= */
+function WithdrawalAlertsModal({ alerts, onClose }) {
+  const [busyId, setBusyId] = useState(null);
+
+  const markRead = async (id) => {
+    setBusyId(id);
+    try {
+      await updateDoc(doc(db, "withdrawals", id), { read: true });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const unreadCount = alerts.filter((a) => !a.read).length;
+
+  const markAllRead = async () => {
+    setBusyId("all");
+    try {
+      await Promise.all(
+        alerts
+          .filter((a) => !a.read)
+          .map((a) => updateDoc(doc(db, "withdrawals", a.id), { read: true }))
+      );
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Modal
+      title="Désinscriptions tardives"
+      onClose={onClose}
+      wide
+      footer={
+        unreadCount > 0 ? (
+          <Button variant="secondary" onClick={markAllRead} disabled={busyId === "all"}>
+            Tout marquer comme lu
+          </Button>
+        ) : undefined
+      }
+    >
+      {alerts.length === 0 ? (
+        <EmptyState
+          icon={<Icon.Bell className="w-6 h-6" />}
+          title="Aucune alerte"
+          subtitle="Les désinscriptions à moins de 72h d'un match apparaîtront ici (les simples changements de créneau/équipe le même jour sont ignorés)."
+        />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {alerts.map((a) => (
+            <Card key={a.id} className={cn("p-3.5", !a.read && "border-rose-300")}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{a.playerName}</p>
+                  <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
+                    S'est désinscrit du match du {formatDateFR(a.matchDate)}
+                    {a.matchTime ? ` à ${a.matchTime}` : ""}
+                    {a.matchLocation ? ` (${a.matchLocation})` : ""}
+                  </p>
+                  {a.hoursBefore != null && (
+                    <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                      {a.hoursBefore}h avant le match
+                    </p>
+                  )}
+                </div>
+                {!a.read && (
+                  <button
+                    type="button"
+                    onClick={() => markRead(a.id)}
+                    disabled={busyId === a.id}
+                    className="shrink-0 text-[11px] font-semibold text-sky-700 underline underline-offset-2"
+                  >
+                    Marquer comme lu
+                  </button>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function Header() {
   const { connectedPlayer, isAdmin, logout } = useAppData();
+  const withdrawalAlerts = useWithdrawalAlerts();
+  const [showAlerts, setShowAlerts] = useState(false);
+  const unreadCount = withdrawalAlerts.filter((a) => !a.read).length;
+
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
       <div className="flex items-center gap-2">
@@ -1043,6 +1134,20 @@ function Header() {
             </Badge>
           )}
         </div>
+        {isAdmin && (
+          <button
+            onClick={() => setShowAlerts(true)}
+            aria-label="Alertes de désinscription"
+            className="relative p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
+          >
+            <Icon.Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={logout}
           aria-label="Déconnexion"
@@ -1051,6 +1156,9 @@ function Header() {
           <Icon.Logout className="w-4 h-4" />
         </button>
       </div>
+      {showAlerts && (
+        <WithdrawalAlertsModal alerts={withdrawalAlerts} onClose={() => setShowAlerts(false)} />
+      )}
     </header>
   );
 }
