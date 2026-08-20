@@ -52,6 +52,8 @@ import {
   deleteDoc,
   onSnapshot,
   query,
+  where,
+  getDocs,
   orderBy,
   increment,
   writeBatch,
@@ -89,6 +91,110 @@ if (typeof window !== "undefined") {
 
 const SESSION_KEY = "padelManagerSession";
 const ADMIN_MASTER_CODE = "4812"; // Code admin de secours (Maxence)
+
+/* =============================================================================
+   0bis. NOTIFICATION EMAIL — désinscription tardive (via EmailJS, sans backend)
+   ========================================================================= */
+// ⚠️ À REMPLIR : créez un compte gratuit sur https://www.emailjs.com, un
+// service d'envoi (ex. Gmail), et un template avec les variables utilisées
+// plus bas (player_name, match_date, match_time, match_location,
+// hours_before, to_email — mettez {{to_email}} comme destinataire du
+// template dans le tableau de bord EmailJS).
+const EMAILJS_SERVICE_ID = "VOTRE_SERVICE_ID";
+const EMAILJS_TEMPLATE_ID = "VOTRE_TEMPLATE_ID";
+const EMAILJS_PUBLIC_KEY = "VOTRE_PUBLIC_KEY";
+
+const WITHDRAWAL_RESOLVE_DELAY_MINUTES = 3; // délai avant de vérifier si c'était une permutation
+const WITHDRAWAL_ALERT_WINDOW_HOURS = 72; // n'alerte que si le match a lieu dans ce délai
+
+async function sendWithdrawalEmail(templateParams) {
+  const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      service_id: EMAILJS_SERVICE_ID,
+      template_id: EMAILJS_TEMPLATE_ID,
+      user_id: EMAILJS_PUBLIC_KEY,
+      template_params: templateParams,
+    }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+// Vérifie les désinscriptions en attente (posées il y a plus de 3 minutes) :
+// si le joueur s'est réinscrit ce même jour ailleurs, ce n'était qu'une
+// permutation (aucun email) ; sinon, et si on est à moins de 72h du match,
+// un email est envoyé aux administrateurs. Tourne dans le navigateur de
+// n'importe quel utilisateur connecté — pas besoin de backend dédié.
+async function resolvePendingWithdrawals() {
+  try {
+    const pendingSnap = await getDocs(
+      query(collection(db, "withdrawals"), where("resolved", "==", false))
+    );
+    if (pendingSnap.empty) return;
+
+    const now = Date.now();
+    const dueDocs = pendingSnap.docs.filter(
+      (d) => new Date(d.data().resolveAt).getTime() <= now
+    );
+    if (dueDocs.length === 0) return;
+
+    const [matchesSnap, playersSnap] = await Promise.all([
+      getDocs(collection(db, "matches")),
+      getDocs(collection(db, "players")),
+    ]);
+    const freshMatches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const adminEmails = playersSnap.docs
+      .map((d) => d.data())
+      .filter((p) => isPlayerAdmin(p) && p.email)
+      .map((p) => p.email);
+
+    for (const docSnap of dueDocs) {
+      const w = docSnap.data();
+      // Réclame immédiatement ce dossier pour éviter un double envoi si un
+      // autre appareil le résout au même moment.
+      try {
+        await updateDoc(doc(db, "withdrawals", docSnap.id), { resolved: true });
+      } catch (e) {
+        continue; // déjà réclamé par un autre appareil entre-temps
+      }
+
+      const stillActiveSameDay = freshMatches.some(
+        (m) =>
+          m.date === w.matchDate &&
+          (m.participants || []).some((p) => p.playerId === w.playerId)
+      );
+      if (stillActiveSameDay) continue; // simple permutation, pas une vraie désinscription
+
+      const matchStart = new Date(`${w.matchDate}T${w.matchTime || "00:00"}:00`).getTime();
+      const hoursBefore = (matchStart - new Date(w.leftAt).getTime()) / 3600000;
+      if (hoursBefore > WITHDRAWAL_ALERT_WINDOW_HOURS || adminEmails.length === 0) continue;
+
+      try {
+        await sendWithdrawalEmail({
+          to_email: adminEmails.join(","),
+          player_name: w.playerName,
+          match_date: formatDateFR(w.matchDate),
+          match_time: w.matchTime,
+          match_location: w.matchLocation || "Terrain",
+          hours_before: Math.max(0, Math.round(hoursBefore)),
+        });
+      } catch (e) {
+        console.error("Échec de l'envoi de l'email de désinscription :", e);
+      }
+    }
+  } catch (e) {
+    console.error("Erreur lors de la vérification des désinscriptions :", e);
+  }
+}
+
+function useWithdrawalWatcher() {
+  useEffect(() => {
+    resolvePendingWithdrawals();
+    const interval = setInterval(resolvePendingWithdrawals, 60000);
+    return () => clearInterval(interval);
+  }, []);
+}
 
 /* =============================================================================
    1. DESIGN TOKENS — palette "crème pastel élégante" (blanc chaud / bleu doux / sauge)
@@ -2810,6 +2916,22 @@ function CourtPanel({ match, now }) {
     try {
       const remaining = participants.filter((p) => p.playerId !== connectedPlayer.id);
       await updateDoc(doc(db, "matches", match.id), { participants: remaining });
+      // Dossier de désinscription en attente — résolu 3 minutes plus tard
+      // (voir resolvePendingWithdrawals) pour ignorer les simples permutations
+      // de terrain/équipe le même jour.
+      await addDoc(collection(db, "withdrawals"), {
+        playerId: connectedPlayer.id,
+        playerName: connectedPlayer.name,
+        matchId: match.id,
+        matchDate: match.date,
+        matchTime: match.time,
+        matchLocation: match.location || "",
+        leftAt: new Date().toISOString(),
+        resolveAt: new Date(
+          Date.now() + WITHDRAWAL_RESOLVE_DELAY_MINUTES * 60000
+        ).toISOString(),
+        resolved: false,
+      });
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
@@ -3364,10 +3486,10 @@ function MatchesView() {
 
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
-      <h2 className="pm-display font-bold text-xl mb-4">Matchs</h2>
+      <h2 className="pm-display font-bold text-xl mb-4 text-white">Matchs</h2>
 
       <div className="mb-6">
-        <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-2">
+        <h3 className="font-semibold text-sm text-white mb-2">
           Prochain match
         </h3>
         {nextGroup.length > 0 ? (
@@ -3395,7 +3517,7 @@ function MatchesView() {
 
       {lastGroup.length > 0 && (
         <div className="mb-6">
-          <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-2">
+          <h3 className="font-semibold text-sm text-white mb-2">
             Dernier match joué
           </h3>
           <div className="flex flex-col gap-4">
@@ -3412,7 +3534,7 @@ function MatchesView() {
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
+          <h3 className="font-semibold text-sm text-white">
             Reste de la saison
           </h3>
           <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1">
@@ -3989,6 +4111,7 @@ function MainApp() {
   const { matches, players } = { ...useAppData() };
   const matchesHook = useMatches();
   const [view, setView] = useState("matches");
+  useWithdrawalWatcher();
 
   return (
     <AppDataContext.Provider
