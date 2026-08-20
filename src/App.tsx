@@ -2072,7 +2072,6 @@ function EndMatchModal({ match, onClose }) {
     set2: initSet(match.scores?.set2),
     set3: initSet(match.scores?.set3),
   }));
-  const [type, setType] = useState(match.matchType || "Officiel");
   const [saving, setSaving] = useState(false);
 
   const teamAParticipants = (match.participants || []).filter((p) => p.team === "A");
@@ -2093,12 +2092,14 @@ function EndMatchModal({ match, onClose }) {
     (k) => isSuspicious(sets[k].a) || isSuspicious(sets[k].b)
   );
 
+  // Un score saisi ici correspond toujours à un match officiel — les deux
+  // boutons "Pas de score" ci-dessous couvrent déjà les autres cas.
   const submit = async () => {
     setSaving(true);
     try {
       await updateDoc(doc(db, "matches", match.id), {
         scores: sets,
-        matchType: type,
+        matchType: "Officiel",
         winningTeam: computeWinnerFromSets(sets),
         teamsUnreliable: false,
       });
@@ -2145,7 +2146,7 @@ function EndMatchModal({ match, onClose }) {
             Annuler
           </Button>
           <Button onClick={submit} disabled={saving}>
-            {saving ? "Enregistrement..." : "Enregistrer le score"}
+            {saving ? "Enregistrement..." : "Enregistrer"}
           </Button>
         </>
       }
@@ -2155,40 +2156,48 @@ function EndMatchModal({ match, onClose }) {
         ci-dessous.
       </p>
 
-      <div className="grid grid-cols-[1fr,44px,44px,44px] gap-2 items-center mb-1.5">
+      <div className="grid grid-cols-[1fr_48px_48px_48px] gap-2 items-center mb-2">
         <span />
         {["Set 1", "Set 2", "Set 3"].map((label) => (
           <span
             key={label}
-            className="text-center text-[10px] font-semibold uppercase text-[var(--color-text-faint)]"
+            className="text-center text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)]"
           >
             {label}
           </span>
         ))}
       </div>
 
-      {rows.map((row) => (
-        <div
-          key={row.side}
-          className="grid grid-cols-[1fr,44px,44px,44px] gap-2 items-center mb-2"
-        >
-          <span className="text-sm font-medium truncate pr-2">{row.label}</span>
-          {["set1", "set2", "set3"].map((k) => (
-            <input
-              key={k}
-              type="text"
-              inputMode="numeric"
-              value={sets[k][row.side]}
-              onChange={(e) => updateSet(k, row.side, e.target.value)}
-              className={cn(
-                "w-11 h-11 rounded-xl border text-center font-bold pm-mono focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300",
-                row.tone
-                  ? "border-emerald-200 bg-emerald-50"
-                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-              )}
-            />
-          ))}
-        </div>
+      {rows.map((row, i) => (
+        <React.Fragment key={row.side}>
+          <div className="grid grid-cols-[1fr_48px_48px_48px] gap-2 items-center mb-2">
+            <span className="flex items-center gap-1.5 text-sm font-semibold truncate pr-2">
+              <span
+                className={cn(
+                  "w-2.5 h-2.5 rounded-full shrink-0",
+                  row.tone ? "bg-emerald-400" : "bg-sky-400"
+                )}
+              />
+              {row.label}
+            </span>
+            {["set1", "set2", "set3"].map((k) => (
+              <input
+                key={k}
+                type="text"
+                inputMode="numeric"
+                value={sets[k][row.side]}
+                onChange={(e) => updateSet(k, row.side, e.target.value)}
+                className={cn(
+                  "w-12 h-12 rounded-xl border text-center text-lg font-bold pm-mono focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300",
+                  row.tone
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "border-sky-200 bg-sky-50"
+                )}
+              />
+            ))}
+          </div>
+          {i === 0 && <div className="h-px bg-[var(--color-border)] mb-2" />}
+        </React.Fragment>
       ))}
       {anySuspicious && (
         <p className="text-[var(--color-danger)] text-[11px] font-semibold mb-2">
@@ -2196,15 +2205,7 @@ function EndMatchModal({ match, onClose }) {
         </p>
       )}
 
-      <Field label="Type de partie">
-        <select className={inputClass} value={type} onChange={(e) => setType(e.target.value)}>
-          <option>Officiel</option>
-          <option>Amical</option>
-          <option>Tournante</option>
-        </select>
-      </Field>
-
-      <div className="flex flex-col gap-2 mt-1">
+      <div className="flex flex-col gap-2 mt-3">
         <Button
           variant="secondary"
           className="w-full !text-xs"
