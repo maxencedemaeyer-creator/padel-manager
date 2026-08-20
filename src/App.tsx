@@ -99,7 +99,7 @@ function GlobalStyles() {
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
       :root{
-        --color-bg: #FAF8F5;
+        --color-bg: #4361EE;
         --color-surface: #FFFFFF;
         --color-surface-2: #F4EFE7;
         --color-border: #E8E2D8;
