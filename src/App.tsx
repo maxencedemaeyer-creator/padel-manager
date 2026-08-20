@@ -1977,6 +1977,7 @@ function PlayerSlotCard({
   trackPayments,
   slotTeam,
   slotSide,
+  isWinningTeam,
   onAssignClick,
   onPayClick,
 }) {
@@ -2019,8 +2020,9 @@ function PlayerSlotCard({
       tabIndex={canAssign ? 0 : undefined}
       onClick={canAssign ? onAssignClick : undefined}
       className={cn(
-        "relative flex items-start gap-2 p-3 rounded-xl border bg-white min-h-[86px]",
-        canAssign ? "cursor-pointer hover:border-sky-300" : "border-[var(--color-border)]"
+        "relative flex items-start gap-2 p-3 rounded-xl border min-h-[86px]",
+        isWinningTeam ? "bg-amber-50 border-amber-300" : "bg-white border-[var(--color-border)]",
+        canAssign && "cursor-pointer hover:border-sky-300"
       )}
     >
       {slotTag}
@@ -2028,7 +2030,10 @@ function PlayerSlotCard({
         {getInitials(participant.name)}
       </span>
       <span className="min-w-0 flex-1 pr-10">
-        <span className="block text-sm font-semibold truncate">{participant.name}</span>
+        <span className="block text-sm font-semibold truncate">
+          {isWinningTeam && "🏆 "}
+          {participant.name}
+        </span>
         <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
         {trackPayments && (
           <span className="flex flex-wrap items-center gap-1">
@@ -2513,6 +2518,7 @@ function CourtPanel({ match, now }) {
         trackPayments={trackPayments}
         slotTeam={def.team}
         slotSide={def.side}
+        isWinningTeam={Boolean(match.winningTeam) && match.winningTeam === def.team}
         onAssignClick={() => setPickSlot({ team: def.team, courtSide: def.side, participant })}
         onPayClick={() => setPaymentTarget(participant)}
       />
@@ -2564,39 +2570,52 @@ function CourtPanel({ match, now }) {
 
       {scoreEntered ? (
         <div className="my-2.5 py-2.5 px-2 rounded-xl bg-[var(--color-surface-2)]">
-          {["A", "B"].map((teamKey) => {
-            const isWinner = match.winningTeam === teamKey;
-            const values = ["set1", "set2", "set3"]
+          {(() => {
+            const setPairs = ["set1", "set2", "set3"]
               .map((k) => getSetDisplay(match.scores[k]))
               .filter(Boolean)
-              .map((disp) => disp.split("-")[teamKey === "A" ? 0 : 1]);
-            return (
-              <div
-                key={teamKey}
-                className={cn(
-                  "flex items-center justify-center gap-1.5",
-                  teamKey === "A" && "mb-1.5"
-                )}
-              >
-                <span className="w-4 text-xs text-center shrink-0">{isWinner ? "🏆" : ""}</span>
-                <div className="flex gap-1">
-                  {values.map((v, i) => (
-                    <span
-                      key={i}
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold pm-mono border",
-                        isWinner
-                          ? "bg-amber-100 text-amber-800 border-amber-300"
-                          : "bg-white text-[var(--color-text-dim)] border-[var(--color-border)]"
-                      )}
-                    >
-                      {v}
-                    </span>
-                  ))}
+              .map((disp) => {
+                const [a, b] = disp.split("-");
+                return { a, b };
+              });
+            return ["A", "B"].map((teamKey) => {
+              const isWinner = match.winningTeam === teamKey;
+              return (
+                <div
+                  key={teamKey}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5",
+                    teamKey === "A" && "mb-1.5"
+                  )}
+                >
+                  <span className="w-4 text-xs text-center shrink-0">{isWinner ? "🏆" : ""}</span>
+                  <div className="flex gap-1">
+                    {setPairs.map((pair, i) => {
+                      const mine = Number(teamKey === "A" ? pair.a : pair.b);
+                      const other = Number(teamKey === "A" ? pair.b : pair.a);
+                      const wonSet = Number.isFinite(mine) && Number.isFinite(other) && mine > other;
+                      const lostSet = Number.isFinite(mine) && Number.isFinite(other) && mine < other;
+                      return (
+                        <span
+                          key={i}
+                          className={cn(
+                            "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold pm-mono border",
+                            wonSet
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                              : lostSet
+                              ? "bg-rose-100 text-rose-700 border-rose-300"
+                              : "bg-white text-[var(--color-text-dim)] border-[var(--color-border)]"
+                          )}
+                        >
+                          {teamKey === "A" ? pair.a : pair.b}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
           {match.matchType && (
             <p className="text-center text-[10px] text-[var(--color-text-faint)] mt-1.5">
               {match.matchType}
