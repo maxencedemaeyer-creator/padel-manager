@@ -2562,34 +2562,61 @@ function CourtPanel({ match, now }) {
         {renderSlot(COURT_SLOT_DEFS[1])}
       </div>
 
-      <div className="relative flex items-center my-2.5">
-        <div className="flex-1 h-px bg-[var(--color-border)]" />
-        <span className="mx-2 px-2.5 py-1 rounded-full bg-slate-800 text-white text-[10px] font-bold tracking-wide shrink-0">
-          FILET • NET
-        </span>
-        <div className="flex-1 h-px bg-[var(--color-border)]" />
-      </div>
+      {scoreEntered ? (
+        <div className="my-2.5 py-2.5 px-2 rounded-xl bg-[var(--color-surface-2)]">
+          {["A", "B"].map((teamKey) => {
+            const isWinner = match.winningTeam === teamKey;
+            const values = ["set1", "set2", "set3"]
+              .map((k) => getSetDisplay(match.scores[k]))
+              .filter(Boolean)
+              .map((disp) => disp.split("-")[teamKey === "A" ? 0 : 1]);
+            return (
+              <div
+                key={teamKey}
+                className={cn(
+                  "flex items-center justify-center gap-1.5",
+                  teamKey === "A" && "mb-1.5"
+                )}
+              >
+                <span className="w-4 text-xs text-center shrink-0">{isWinner ? "🏆" : ""}</span>
+                <div className="flex gap-1">
+                  {values.map((v, i) => (
+                    <span
+                      key={i}
+                      className={cn(
+                        "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold pm-mono border",
+                        isWinner
+                          ? "bg-amber-100 text-amber-800 border-amber-300"
+                          : "bg-white text-[var(--color-text-dim)] border-[var(--color-border)]"
+                      )}
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {match.matchType && (
+            <p className="text-center text-[10px] text-[var(--color-text-faint)] mt-1.5">
+              {match.matchType}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="relative flex items-center my-2.5">
+          <div className="flex-1 h-px bg-[var(--color-border)]" />
+          <span className="mx-2 px-2.5 py-1 rounded-full bg-slate-800 text-white text-[10px] font-bold tracking-wide shrink-0">
+            FILET • NET
+          </span>
+          <div className="flex-1 h-px bg-[var(--color-border)]" />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 mb-3">
         {renderSlot(COURT_SLOT_DEFS[2])}
         {renderSlot(COURT_SLOT_DEFS[3])}
       </div>
-
-      {scoreEntered && (
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--color-surface-2)] mb-3">
-          <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
-          <span className="pm-mono text-sm font-bold">
-            {[getSetDisplay(match.scores.set1), getSetDisplay(match.scores.set2), getSetDisplay(match.scores.set3)]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-          {match.matchType && (
-            <Badge tone="blue" className="!text-[10px] ml-auto">
-              {match.matchType}
-            </Badge>
-          )}
-        </div>
-      )}
 
       {isAdmin && finished && (
         <Button
