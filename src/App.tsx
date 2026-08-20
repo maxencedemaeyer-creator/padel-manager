@@ -2061,6 +2061,7 @@ function PlayerSlotCard({
   slotTeam,
   slotSide,
   isWinningTeam,
+  isAdmin,
   onAssignClick,
   onPayClick,
 }) {
@@ -2146,7 +2147,7 @@ function PlayerSlotCard({
                   {badgeLabel}
                 </Badge>
               </button>
-              {isCreditorParticipant && (
+              {isCreditorParticipant && isAdmin && (
                 <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
                   Créancier
                 </Badge>
@@ -2617,6 +2618,7 @@ function CourtPanel({ match, now }) {
         slotTeam={def.team}
         slotSide={def.side}
         isWinningTeam={Boolean(match.winningTeam) && match.winningTeam === def.team}
+        isAdmin={isAdmin}
         onAssignClick={() => setPickSlot({ team: def.team, courtSide: def.side, participant })}
         onPayClick={() => setPaymentTarget(participant)}
       />
