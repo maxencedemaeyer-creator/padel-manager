@@ -225,6 +225,12 @@ const Icon = {
       <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
     </svg>
   ),
+  Settings: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  ),
   Chart: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
       <path d="M4 20V10M12 20V4M20 20v-7" />
@@ -236,6 +242,11 @@ const Icon = {
       <path d="M5 4l7 7-3 3-7-7V4h3z" />
       <path d="M19 4l-7 7 3 3 7-7V4h-3z" />
       <path d="M8 14l-4 4M16 14l4 4" />
+    </svg>
+  ),
+  Flame: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M12 2c1.5 3-2 4.5-2 8a4 4 0 008 0c1.5 1.5 2 3.5 2 5a8 8 0 11-16 0c0-4 3-6 3-9 1 1 1.5 2 1.5 3C9.5 5.5 11 3.5 12 2z" />
     </svg>
   ),
   Chevron: (p) => (
@@ -1642,57 +1653,87 @@ function getMatchTiming(match, now = new Date()) {
   if (now < end) return "ongoing";
   return "finished";
 }
+// Un set peut être l'ancien format (chaîne "6-4") ou le nouveau ({a,b}) —
+// on affiche les deux de la même façon.
+function getSetDisplay(set) {
+  if (!set) return null;
+  if (typeof set === "string") return set || null;
+  if (typeof set === "object" && set.a !== "" && set.a != null && set.b !== "" && set.b != null) {
+    return `${set.a}-${set.b}`;
+  }
+  return null;
+}
+// Le vainqueur est déduit automatiquement des sets encodés — pas de choix
+// manuel : l'équipe qui remporte le plus de sets gagne le match.
+function computeWinnerFromSets(sets) {
+  let winsA = 0;
+  let winsB = 0;
+  ["set1", "set2", "set3"].forEach((k) => {
+    const set = sets[k];
+    if (!set || typeof set !== "object") return;
+    const a = Number(set.a);
+    const b = Number(set.b);
+    if (set.a === "" || set.b === "" || !Number.isFinite(a) || !Number.isFinite(b)) return;
+    if (a > b) winsA += 1;
+    else if (b > a) winsB += 1;
+  });
+  if (winsA > winsB) return "A";
+  if (winsB > winsA) return "B";
+  return null;
+}
 function hasMatchScore(match) {
   const s = match.scores || {};
-  return Boolean(s.set1 || s.set2 || s.set3);
+  return Boolean(getSetDisplay(s.set1) || getSetDisplay(s.set2) || getSetDisplay(s.set3));
 }
 // Comptabilité créancier — tout est recalculé en direct à partir des matchs
 // et des participants, jamais depuis un compteur qui pourrait se désynchroniser.
+// Seuls les matchs de type "Saison" entrent dans la comptabilité des
+// créances — les matchs ponctuels ajoutés en plus n'ont pas de système de
+// paiement du tout, donc ils ne doivent jamais fausser ces calculs.
 function getCreditorAccounting(creditorId, matches) {
   let totalPaidAllTime = 0; // tout paiement confirmé, peu importe la date du match
   let totalPaidPastMatches = 0; // uniquement les matchs déjà passés
   let selfReimbursed = 0; // matchs déjà joués par le créancier lui-même
   const paymentsReceived = [];
 
-  matches.forEach((m) => {
-    const fee = m.matchFeePerPlayer || 0;
-    const finished = getMatchTiming(m) === "finished";
-    (m.participants || []).forEach((p) => {
-      if (p.paidStatus === "paid" && p.creditorId === creditorId) {
-        totalPaidAllTime += fee;
-        if (finished) {
-          totalPaidPastMatches += fee;
-          paymentsReceived.push({ matchId: m.id, date: m.date, name: p.name, fee });
+  matches
+    .filter((m) => m.type === "Saison")
+    .forEach((m) => {
+      const fee = m.matchFeePerPlayer || 0;
+      const finished = getMatchTiming(m) === "finished";
+      (m.participants || []).forEach((p) => {
+        if (p.paidStatus === "paid" && p.creditorId === creditorId) {
+          totalPaidAllTime += fee;
+          if (finished) {
+            totalPaidPastMatches += fee;
+            paymentsReceived.push({ matchId: m.id, date: m.date, name: p.name, fee });
+          }
         }
-      }
-      if (p.playerId === creditorId && finished) {
-        selfReimbursed += fee;
-      }
+        if (p.playerId === creditorId && finished) {
+          selfReimbursed += fee;
+        }
+      });
     });
-  });
 
   paymentsReceived.sort((a, b) => new Date(b.date) - new Date(a.date));
   return { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived };
 }
 
-// Les 3 façons distinctes de répartir 4 joueurs en 2 équipes de 2.
-// Indices dans le tableau des 4 joueurs sélectionnés (ordre de sélection).
-const PAIRING_PATTERNS = [
-  [[0, 1], [2, 3]],
-  [[0, 2], [1, 3]],
-  [[0, 3], [1, 2]],
-];
-
 // Statistiques d'un joueur — uniquement sur les matchs déjà terminés.
 // Coéquipier/adversaire ne sont comptabilisés que si l'équipe (team: "A"/"B")
 // a été renseignée lors de l'assignation ; victoire/défaite uniquement si
-// l'équipe gagnante a aussi été renseignée en fin de match.
+// l'équipe gagnante a aussi été renseignée en fin de match. Utilise aussi la
+// position fixe sur le terrain (Droite/Gauche) enregistrée à l'assignation.
 function computePlayerStats(playerId, matches) {
   let played = 0;
   let wins = 0;
   let losses = 0;
   const partnerCounts = new Map();
+  const partnerWins = new Map();
   const opponentCounts = new Map();
+  const positionCounts = { Droite: 0, Gauche: 0 };
+  const positionResults = { Droite: { wins: 0, losses: 0 }, Gauche: { wins: 0, losses: 0 } };
+  const history = [];
 
   matches.forEach((m) => {
     if (getMatchTiming(m) !== "finished") return;
@@ -1701,18 +1742,43 @@ function computePlayerStats(playerId, matches) {
     if (!me) return;
     played += 1;
 
+    // Équipes changées en cours de match : le match compte comme joué, mais
+    // aucune donnée d'équipe n'est fiable (coéquipier/adversaire/victoire).
+    // On l'enregistre quand même dans l'historique (résultat inconnu) pour
+    // qu'une série de victoires/défaites s'arrête correctement dessus.
+    if (m.teamsUnreliable) {
+      history.push({ date: m.date, time: m.time, result: null });
+      return;
+    }
+
+    let result = null; // "win" | "loss" | null (non renseigné)
     if (me.team && m.winningTeam) {
-      if (me.team === m.winningTeam) wins += 1;
+      result = me.team === m.winningTeam ? "win" : "loss";
+      if (result === "win") wins += 1;
       else losses += 1;
+    }
+
+    if (me.courtSide === "Droite" || me.courtSide === "Gauche") {
+      positionCounts[me.courtSide] += 1;
+      if (result === "win") positionResults[me.courtSide].wins += 1;
+      else if (result === "loss") positionResults[me.courtSide].losses += 1;
     }
 
     if (me.team) {
       participants.forEach((p) => {
         if (p.playerId === playerId || !p.team) return;
-        const map = p.team === me.team ? partnerCounts : opponentCounts;
-        map.set(p.playerId, (map.get(p.playerId) || 0) + 1);
+        if (p.team === me.team) {
+          partnerCounts.set(p.playerId, (partnerCounts.get(p.playerId) || 0) + 1);
+          if (result === "win") {
+            partnerWins.set(p.playerId, (partnerWins.get(p.playerId) || 0) + 1);
+          }
+        } else {
+          opponentCounts.set(p.playerId, (opponentCounts.get(p.playerId) || 0) + 1);
+        }
       });
     }
+
+    history.push({ date: m.date, time: m.time, result });
   });
 
   const topOf = (map) => {
@@ -1723,6 +1789,64 @@ function computePlayerStats(playerId, matches) {
     return best;
   };
 
+  // Duo gagnant : partenaire avec le meilleur taux de victoire (min. 2 matchs ensemble).
+  let bestDuo = null;
+  partnerCounts.forEach((count, id) => {
+    if (count < 2) return;
+    const w = partnerWins.get(id) || 0;
+    const rate = Math.round((w / count) * 100);
+    if (!bestDuo || rate > bestDuo.rate || (rate === bestDuo.rate && count > bestDuo.count)) {
+      bestDuo = { id, count, wins: w, rate };
+    }
+  });
+
+  // Série en cours : du match le plus récent vers le plus ancien, tant que
+  // le résultat (victoire/défaite) reste identique.
+  history.sort(
+    (a, b) =>
+      new Date(`${b.date}T${b.time || "00:00"}`) - new Date(`${a.date}T${a.time || "00:00"}`)
+  );
+  let streak = 0;
+  let streakType = null;
+  for (const entry of history) {
+    if (!entry.result) break;
+    if (streakType === null) {
+      streakType = entry.result;
+      streak = 1;
+    } else if (entry.result === streakType) {
+      streak += 1;
+    } else break;
+  }
+
+  const favoritePosition =
+    positionCounts.Droite === 0 && positionCounts.Gauche === 0
+      ? null
+      : positionCounts.Droite === positionCounts.Gauche
+      ? "Équilibré"
+      : positionCounts.Droite > positionCounts.Gauche
+      ? "Droite"
+      : "Gauche";
+
+  // Meilleur ratio de victoires par position (min. 1 match décidé sur ce côté).
+  const positionRate = (side) => {
+    const { wins: w, losses: l } = positionResults[side];
+    const decided = w + l;
+    return decided > 0 ? Math.round((w / decided) * 100) : null;
+  };
+  const droiteRate = positionRate("Droite");
+  const gaucheRate = positionRate("Gauche");
+  let bestPositionRatio = null;
+  if (droiteRate != null || gaucheRate != null) {
+    if (droiteRate == null) bestPositionRatio = { side: "Gauche", rate: gaucheRate };
+    else if (gaucheRate == null) bestPositionRatio = { side: "Droite", rate: droiteRate };
+    else if (droiteRate === gaucheRate) bestPositionRatio = { side: "Égalité", rate: droiteRate };
+    else
+      bestPositionRatio =
+        droiteRate > gaucheRate
+          ? { side: "Droite", rate: droiteRate }
+          : { side: "Gauche", rate: gaucheRate };
+  }
+
   const decided = wins + losses;
   return {
     played,
@@ -1731,7 +1855,45 @@ function computePlayerStats(playerId, matches) {
     winRate: decided > 0 ? Math.round((wins / decided) * 100) : 0,
     topPartner: topOf(partnerCounts),
     topOpponent: topOf(opponentCounts),
+    bestDuo,
+    favoritePosition,
+    positionRates: { Droite: droiteRate, Gauche: gaucheRate },
+    bestPositionRatio,
+    positionCounts,
+    streak,
+    streakType,
   };
+}
+
+// Face-à-face entre deux joueurs choisis : équipiers et adversaires,
+// uniquement sur les matchs terminés avec une composition d'équipe fiable.
+function computeHeadToHead(idA, idB, matches) {
+  let asOpponents = 0;
+  let winsA = 0;
+  let winsB = 0;
+  let undecided = 0;
+  let asPartners = 0;
+  let partnerWins = 0;
+
+  matches.forEach((m) => {
+    if (getMatchTiming(m) !== "finished" || m.teamsUnreliable) return;
+    const participants = m.participants || [];
+    const pa = participants.find((p) => p.playerId === idA);
+    const pb = participants.find((p) => p.playerId === idB);
+    if (!pa || !pb || !pa.team || !pb.team) return;
+
+    if (pa.team === pb.team) {
+      asPartners += 1;
+      if (m.winningTeam && m.winningTeam === pa.team) partnerWins += 1;
+    } else {
+      asOpponents += 1;
+      if (!m.winningTeam) undecided += 1;
+      else if (m.winningTeam === pa.team) winsA += 1;
+      else winsB += 1;
+    }
+  });
+
+  return { asOpponents, winsA, winsB, undecided, asPartners, partnerWins };
 }
 
 // Garde l'affichage à jour minute par minute (un match "à venir" doit basculer
@@ -1764,21 +1926,46 @@ function getInitials(name) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-// Répartit les 4 emplacements d'un match en 2 équipes de 2 (haut / bas du filet).
-// Utilise l'équipe (team: "A"/"B") si connue, complète dans l'ordre sinon —
-// ne modifie aucune donnée, se contente d'organiser l'affichage.
+// Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
+// joueur qui les occupe : Team A-Droite (haut-gauche), Team A-Gauche
+// (haut-droite), Team B-Gauche (bas-gauche), Team B-Droite (bas-droite).
+const COURT_SLOT_DEFS = [
+  { key: "topLeft", team: "A", side: "Droite" },
+  { key: "topRight", team: "A", side: "Gauche" },
+  { key: "bottomLeft", team: "B", side: "Gauche" },
+  { key: "bottomRight", team: "B", side: "Droite" },
+];
+
+// Place chaque participant dans SA case fixe (team + côté). Les anciennes
+// données qui n'ont qu'une équipe (sans côté) ou rien du tout se replacent
+// automatiquement dans la première case encore libre, pour ne rien perdre
+// à l'affichage.
 function getCourtSlots(match) {
   const participants = match.participants || [];
-  const top = participants.filter((p) => p.team === "A");
-  const bottom = participants.filter((p) => p.team === "B");
-  const untracked = participants.filter((p) => p.team !== "A" && p.team !== "B");
-  untracked.forEach((p) => {
-    if (top.length < 2) top.push(p);
-    else if (bottom.length < 2) bottom.push(p);
+  const bySlot = {};
+
+  COURT_SLOT_DEFS.forEach((def) => {
+    bySlot[def.key] =
+      participants.find((p) => p.team === def.team && p.courtSide === def.side) || null;
   });
-  while (top.length < 2) top.push(null);
-  while (bottom.length < 2) bottom.push(null);
-  return { top: top.slice(0, 2), bottom: bottom.slice(0, 2) };
+
+  const legacyWithTeamOnly = participants.filter(
+    (p) => (p.team === "A" || p.team === "B") && !p.courtSide && !Object.values(bySlot).includes(p)
+  );
+  legacyWithTeamOnly.forEach((p) => {
+    const def = COURT_SLOT_DEFS.find((d) => d.team === p.team && !bySlot[d.key]);
+    if (def) bySlot[def.key] = p;
+  });
+
+  const untracked = participants.filter(
+    (p) => p.team !== "A" && p.team !== "B" && !Object.values(bySlot).includes(p)
+  );
+  untracked.forEach((p) => {
+    const def = COURT_SLOT_DEFS.find((d) => !bySlot[d.key]);
+    if (def) bySlot[def.key] = p;
+  });
+
+  return bySlot; // { topLeft, topRight, bottomLeft, bottomRight }
 }
 
 function PlayerSlotCard({
@@ -1787,9 +1974,18 @@ function PlayerSlotCard({
   canAssign,
   canPay,
   isCreditorParticipant,
+  trackPayments,
+  slotTeam,
+  slotSide,
   onAssignClick,
   onPayClick,
 }) {
+  const slotTag = (
+    <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
+      Team {slotTeam} · {slotSide}
+    </span>
+  );
+
   if (!participant) {
     return (
       <div
@@ -1797,12 +1993,13 @@ function PlayerSlotCard({
         tabIndex={canAssign ? 0 : undefined}
         onClick={canAssign ? onAssignClick : undefined}
         className={cn(
-          "flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 border-dashed min-h-[86px] text-center",
+          "relative flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 border-dashed min-h-[86px] text-center",
           canAssign
             ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
             : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
         )}
       >
+        {slotTag}
         <Icon.Plus className="w-4 h-4" />
         <span className="text-[11px] font-medium">Emplacement libre</span>
       </div>
@@ -1822,35 +2019,38 @@ function PlayerSlotCard({
       tabIndex={canAssign ? 0 : undefined}
       onClick={canAssign ? onAssignClick : undefined}
       className={cn(
-        "flex items-start gap-2 p-3 rounded-xl border bg-white min-h-[86px]",
+        "relative flex items-start gap-2 p-3 rounded-xl border bg-white min-h-[86px]",
         canAssign ? "cursor-pointer hover:border-sky-300" : "border-[var(--color-border)]"
       )}
     >
+      {slotTag}
       <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0">
         {getInitials(participant.name)}
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 pr-10">
         <span className="block text-sm font-semibold truncate">{participant.name}</span>
         <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
-        <span className="flex flex-wrap items-center gap-1">
-          <button
-            type="button"
-            disabled={!canPay || paid}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (canPay && !paid) onPayClick();
-            }}
-          >
-            <Badge tone={badgeTone} className="!px-1.5 !py-0.5 !text-[10px]">
-              {badgeLabel}
-            </Badge>
-          </button>
-          {isCreditorParticipant && (
-            <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
-              Créancier
-            </Badge>
-          )}
-        </span>
+        {trackPayments && (
+          <span className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              disabled={!canPay || paid}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canPay && !paid) onPayClick();
+              }}
+            >
+              <Badge tone={badgeTone} className="!px-1.5 !py-0.5 !text-[10px]">
+                {badgeLabel}
+              </Badge>
+            </button>
+            {isCreditorParticipant && (
+              <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
+                Créancier
+              </Badge>
+            )}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -1858,33 +2058,49 @@ function PlayerSlotCard({
 
 function EndMatchModal({ match, onClose }) {
   const { players } = useAppData();
-  const [set1, setSet1] = useState(match.scores?.set1 || "");
-  const [set2, setSet2] = useState(match.scores?.set2 || "");
-  const [set3, setSet3] = useState(match.scores?.set3 || "");
+
+  const initSet = (set) => {
+    if (set && typeof set === "object") return { a: set.a ?? "", b: set.b ?? "" };
+    if (typeof set === "string" && set.includes("-")) {
+      const [a, b] = set.split("-");
+      return { a: (a || "").trim(), b: (b || "").trim() };
+    }
+    return { a: "", b: "" };
+  };
+  const [sets, setSets] = useState(() => ({
+    set1: initSet(match.scores?.set1),
+    set2: initSet(match.scores?.set2),
+    set3: initSet(match.scores?.set3),
+  }));
   const [type, setType] = useState(match.matchType || "Officiel");
-  const [winningTeam, setWinningTeam] = useState(match.winningTeam || "");
   const [saving, setSaving] = useState(false);
 
   const teamAParticipants = (match.participants || []).filter((p) => p.team === "A");
   const teamBParticipants = (match.participants || []).filter((p) => p.team === "B");
-  const hasTeams = teamAParticipants.length === 2 && teamBParticipants.length === 2;
-  const teamLabel = (list) =>
-    list
-      .map((p) => players.find((pl) => pl.id === p.playerId)?.name || p.name)
-      .join(" & ");
+  const teamLabel = (list, fallback) =>
+    list.length
+      ? list
+          .map((p) => players.find((pl) => pl.id === p.playerId)?.name || p.name)
+          .join(" & ")
+      : fallback;
 
-  const isSetScoreSuspicious = (value) => {
-    const nums = String(value || "").match(/\d+/g);
-    return Boolean(nums && nums.some((n) => Number(n) > 7));
+  const updateSet = (key, side, value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 2);
+    setSets((prev) => ({ ...prev, [key]: { ...prev[key], [side]: digits } }));
   };
+  const isSuspicious = (v) => v !== "" && Number(v) > 7;
+  const anySuspicious = ["set1", "set2", "set3"].some(
+    (k) => isSuspicious(sets[k].a) || isSuspicious(sets[k].b)
+  );
 
   const submit = async () => {
     setSaving(true);
     try {
       await updateDoc(doc(db, "matches", match.id), {
-        scores: { set1, set2, set3 },
+        scores: sets,
         matchType: type,
-        winningTeam: hasTeams && winningTeam ? winningTeam : null,
+        winningTeam: computeWinnerFromSets(sets),
+        teamsUnreliable: false,
       });
       onClose();
     } catch (error) {
@@ -1894,10 +2110,35 @@ function EndMatchModal({ match, onClose }) {
     }
   };
 
+  // Les deux cas "pas de score" enregistrent et referment immédiatement,
+  // sans passer par le bouton principal.
+  const noScore = async (teamsChanged) => {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "matches", match.id), {
+        scores: { set1: null, set2: null, set3: null },
+        matchType: "Amical",
+        winningTeam: null,
+        teamsUnreliable: teamsChanged,
+      });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const rows = [
+    { side: "a", label: teamLabel(teamAParticipants, "Équipe A"), tone: true },
+    { side: "b", label: teamLabel(teamBParticipants, "Équipe B"), tone: false },
+  ];
+
   return (
     <Modal
-      title="Score du match"
+      title="Ajouter un score"
       onClose={onClose}
+      wide
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
@@ -1910,29 +2151,51 @@ function EndMatchModal({ match, onClose }) {
       }
     >
       <p className="text-xs text-[var(--color-text-dim)] mb-4">
-        1, 2 ou 3 sets (jusqu'à 7 jeux chacun). Laissez vide pour un match amical sans score.
+        Le vainqueur est déterminé automatiquement à partir des sets encodés
+        ci-dessous.
       </p>
-      <div className="grid grid-cols-3 gap-2 mb-1">
-        {[
-          ["Set 1", set1, setSet1],
-          ["Set 2", set2, setSet2],
-          ["Set 3", set3, setSet3],
-        ].map(([label, val, setter]) => (
-          <Field key={label} label={label}>
-            <input
-              className={cn(inputClass, "pm-mono text-center")}
-              value={val}
-              placeholder="6-4"
-              onChange={(e) => setter(e.target.value)}
-            />
-            {isSetScoreSuspicious(val) && (
-              <p className="text-[var(--color-danger)] text-[10px] font-semibold mt-1">
-                ⚠️ Max 7 jeux
-              </p>
-            )}
-          </Field>
+
+      <div className="grid grid-cols-[1fr,44px,44px,44px] gap-2 items-center mb-1.5">
+        <span />
+        {["Set 1", "Set 2", "Set 3"].map((label) => (
+          <span
+            key={label}
+            className="text-center text-[10px] font-semibold uppercase text-[var(--color-text-faint)]"
+          >
+            {label}
+          </span>
         ))}
       </div>
+
+      {rows.map((row) => (
+        <div
+          key={row.side}
+          className="grid grid-cols-[1fr,44px,44px,44px] gap-2 items-center mb-2"
+        >
+          <span className="text-sm font-medium truncate pr-2">{row.label}</span>
+          {["set1", "set2", "set3"].map((k) => (
+            <input
+              key={k}
+              type="text"
+              inputMode="numeric"
+              value={sets[k][row.side]}
+              onChange={(e) => updateSet(k, row.side, e.target.value)}
+              className={cn(
+                "w-11 h-11 rounded-xl border text-center font-bold pm-mono focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300",
+                row.tone
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              )}
+            />
+          ))}
+        </div>
+      ))}
+      {anySuspicious && (
+        <p className="text-[var(--color-danger)] text-[11px] font-semibold mb-2">
+          ⚠️ Un score de set dépasse généralement 7 jeux — vérifiez la saisie.
+        </p>
+      )}
+
       <Field label="Type de partie">
         <select className={inputClass} value={type} onChange={(e) => setType(e.target.value)}>
           <option>Officiel</option>
@@ -1940,51 +2203,35 @@ function EndMatchModal({ match, onClose }) {
           <option>Tournante</option>
         </select>
       </Field>
-      {hasTeams ? (
-        <Field label="Équipe gagnante (pour les statistiques)">
-          <select
-            className={inputClass}
-            value={winningTeam}
-            onChange={(e) => setWinningTeam(e.target.value)}
-          >
-            <option value="">Non renseigné</option>
-            <option value="A">Équipe A — {teamLabel(teamAParticipants)}</option>
-            <option value="B">Équipe B — {teamLabel(teamBParticipants)}</option>
-          </select>
-        </Field>
-      ) : (
-        <p className="text-[11px] text-[var(--color-text-faint)] -mt-2">
-          Composition des équipes non renseignée — les statistiques de victoire ne
-          seront pas comptabilisées pour ce match.
-        </p>
-      )}
+
+      <div className="flex flex-col gap-2 mt-1">
+        <Button
+          variant="secondary"
+          className="w-full !text-xs"
+          onClick={() => noScore(true)}
+          disabled={saving}
+        >
+          Pas de score — Les équipes ont changé au cours du match
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-full !text-xs"
+          onClick={() => noScore(false)}
+          disabled={saving}
+        >
+          Pas de score — Match amical
+        </Button>
+      </div>
     </Modal>
   );
 }
 
-function AssignPlayersModal({ match, onClose }) {
+function PickPlayerModal({ match, team, courtSide, currentParticipant, onClose }) {
   const { players, matches } = useAppData();
-  const [selected, setSelected] = useState(
-    (match.participants || []).map((p) => p.playerId)
-  );
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
-  const [pairingIndex, setPairingIndex] = useState(() => {
-    const teamAIds = (match.participants || [])
-      .filter((p) => p.team === "A")
-      .map((p) => p.playerId);
-    if (teamAIds.length !== 2) return 0;
-    const initialSelected = (match.participants || []).map((p) => p.playerId);
-    const idx = PAIRING_PATTERNS.findIndex(([a]) => {
-      const ids = a.map((i) => initialSelected[i]);
-      return ids.length === 2 && ids.every((id) => teamAIds.includes(id));
-    });
-    return idx >= 0 ? idx : 0;
-  });
 
-  // Joueurs déjà engagés sur un AUTRE match le même jour (double terrain, etc.) :
-  // on retrouve, pour chacun, le match en question afin d'expliquer pourquoi
-  // il est indisponible.
+  // Joueurs déjà engagés sur un AUTRE match le même jour (double terrain, etc.).
   const conflictByPlayerId = useMemo(() => {
     const map = new Map();
     matches.forEach((m) => {
@@ -1996,34 +2243,56 @@ function AssignPlayersModal({ match, onClose }) {
     return map;
   }, [matches, match.id, match.date]);
 
-  const toggle = (id) => {
-    if (conflictByPlayerId.has(id)) return; // déjà pris ce jour-là ailleurs
-    setSelected((s) =>
-      s.includes(id) ? s.filter((x) => x !== id) : s.length >= 4 ? s : [...s, id]
-    );
-  };
+  // Joueurs déjà présents sur CE match, sur une autre place.
+  const takenElsewhereIds = new Set(
+    (match.participants || [])
+      .filter((p) => p.playerId !== currentParticipant?.playerId)
+      .map((p) => p.playerId)
+  );
 
   const filteredPlayers = players.filter((p) =>
     p.name.toLowerCase().includes(search.trim().toLowerCase())
   );
 
-  const pattern = PAIRING_PATTERNS[pairingIndex % PAIRING_PATTERNS.length];
-  const teamA = selected.length === 4 ? pattern[0].map((i) => selected[i]) : [];
-  const teamB = selected.length === 4 ? pattern[1].map((i) => selected[i]) : [];
-  const nameOf = (id) => players.find((p) => p.id === id)?.name || "?";
-
-  const submit = async () => {
+  // Choisir un joueur assigne immédiatement cette place et referme la fenêtre —
+  // pas de bouton "Valider" séparé, chaque emplacement se gère indépendamment.
+  const pick = async (player) => {
+    if (player.id === currentParticipant?.playerId) {
+      onClose();
+      return;
+    }
     setSaving(true);
     try {
-      const existing = match.participants || [];
-      const participants = selected.map((id) => {
-        const team = selected.length === 4 ? (teamA.includes(id) ? "A" : "B") : null;
-        const already = existing.find((p) => p.playerId === id);
-        if (already) return { ...already, team }; // conserve le paiement, met à jour l'équipe
-        const p = players.find((pl) => pl.id === id);
-        return { playerId: id, name: p.name, paidStatus: "unpaid", creditorId: null, team };
+      const remaining = (match.participants || []).filter(
+        (p) => p.playerId !== currentParticipant?.playerId && p.playerId !== player.id
+      );
+      const newParticipant = {
+        playerId: player.id,
+        name: player.name,
+        paidStatus: "unpaid",
+        creditorId: null,
+        team,
+        courtSide,
+      };
+      await updateDoc(doc(db, "matches", match.id), {
+        participants: [...remaining, newParticipant],
       });
-      await updateDoc(doc(db, "matches", match.id), { participants });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!currentParticipant) return;
+    setSaving(true);
+    try {
+      const remaining = (match.participants || []).filter(
+        (p) => p.playerId !== currentParticipant.playerId
+      );
+      await updateDoc(doc(db, "matches", match.id), { participants: remaining });
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -2034,24 +2303,24 @@ function AssignPlayersModal({ match, onClose }) {
 
   return (
     <Modal
-      title="Assigner les joueurs"
+      title={currentParticipant ? "Remplacer ce joueur" : "Assigner un joueur"}
       onClose={onClose}
-      wide
       footer={
         <>
+          {currentParticipant && (
+            <Button variant="danger" onClick={remove} disabled={saving}>
+              Retirer
+            </Button>
+          )}
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Annuler
-          </Button>
-          <Button onClick={submit} disabled={saving}>
-            {saving ? "Enregistrement..." : "Valider"}
           </Button>
         </>
       }
     >
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        Sélectionnez jusqu'à 4 joueurs pour le match du {formatDateFR(match.date)}
-        {match.time ? ` à ${match.time}` : ""}. N'importe quel joueur du club peut
-        être choisi, sauf s'il est déjà sur un autre match ce jour-là.
+        Choisissez un joueur pour cette place — {formatDateFR(match.date)}
+        {match.time ? ` à ${match.time}` : ""}. La fenêtre se referme dès votre choix.
       </p>
 
       <input
@@ -2059,87 +2328,139 @@ function AssignPlayersModal({ match, onClose }) {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Rechercher un joueur..."
+        autoFocus
       />
 
-      <Field label={`Joueurs (${selected.length}/4) — ${filteredPlayers.length} affiché(s)`}>
-        <div className="flex flex-col gap-2 max-h-72 sm:max-h-[26rem] overflow-y-auto pm-scroll-visible pr-1">
-          {filteredPlayers.length === 0 ? (
-            <p className="text-xs text-[var(--color-text-faint)] italic py-2">
-              Aucun joueur ne correspond à cette recherche.
-            </p>
-          ) : (
-            filteredPlayers.map((p) => {
-              const conflict = conflictByPlayerId.get(p.id);
-              const isSelected = selected.includes(p.id);
-              return (
-                <label
-                  key={p.id}
-                  className={cn(
-                    "flex items-center gap-2.5 p-2.5 rounded-xl border text-sm",
-                    conflict
-                      ? "border-[var(--color-border)] bg-[var(--color-surface-2)]/50 opacity-50 cursor-not-allowed"
-                      : "cursor-pointer",
-                    !conflict && isSelected
-                      ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
-                      : !conflict && "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggle(p.id)}
-                    disabled={Boolean(conflict) || (!isSelected && selected.length >= 4)}
-                    className="w-4 h-4 accent-[var(--color-lime)] shrink-0"
-                  />
-                  <span className="flex-1 min-w-0 truncate">
-                    {p.emoji} {p.name}
+      <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pm-scroll-visible pr-1">
+        {filteredPlayers.length === 0 ? (
+          <p className="text-xs text-[var(--color-text-faint)] italic py-2">
+            Aucun joueur ne correspond à cette recherche.
+          </p>
+        ) : (
+          filteredPlayers.map((p) => {
+            const isCurrent = p.id === currentParticipant?.playerId;
+            const dayConflict = !isCurrent ? conflictByPlayerId.get(p.id) : null;
+            const inThisMatch = !isCurrent && takenElsewhereIds.has(p.id);
+            const disabled = saving || Boolean(dayConflict) || inThisMatch;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => pick(p)}
+                className={cn(
+                  "flex items-center gap-2.5 p-2.5 rounded-xl border text-left text-sm transition-colors",
+                  isCurrent
+                    ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
+                    : disabled
+                    ? "border-[var(--color-border)] bg-[var(--color-surface-2)]/50 opacity-50 cursor-not-allowed"
+                    : "border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-sky-300"
+                )}
+              >
+                <span className="flex-1 min-w-0 truncate">
+                  {p.emoji} {p.name}
+                </span>
+                {isCurrent && (
+                  <Badge tone="lime" className="!text-[10px] shrink-0">
+                    Actuel
+                  </Badge>
+                )}
+                {dayConflict && (
+                  <span className="text-[10px] text-[var(--color-text-faint)] shrink-0 text-right">
+                    Déjà sur {dayConflict.location || "un autre terrain"}
+                    {dayConflict.time ? ` · ${dayConflict.time}` : ""}
                   </span>
-                  {conflict && (
-                    <span className="text-[10px] text-[var(--color-text-faint)] shrink-0 text-right">
-                      Déjà sur {conflict.location || "un autre terrain"}
-                      {conflict.time ? ` · ${conflict.time}` : ""}
-                    </span>
-                  )}
-                </label>
-              );
-            })
-          )}
-        </div>
-      </Field>
+                )}
+                {!dayConflict && inThisMatch && (
+                  <span className="text-[10px] text-[var(--color-text-faint)] shrink-0">
+                    Déjà sur ce terrain
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </Modal>
+  );
+}
 
-      {selected.length === 4 && (
-        <Field label="Composition des équipes">
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <div className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-              <p className="text-[10px] font-semibold text-[var(--color-text-faint)] uppercase mb-1">
-                Équipe A
-              </p>
-              {teamA.map((id) => (
-                <p key={id} className="text-sm font-medium truncate">
-                  {nameOf(id)}
-                </p>
-              ))}
-            </div>
-            <div className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-              <p className="text-[10px] font-semibold text-[var(--color-text-faint)] uppercase mb-1">
-                Équipe B
-              </p>
-              {teamB.map((id) => (
-                <p key={id} className="text-sm font-medium truncate">
-                  {nameOf(id)}
-                </p>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPairingIndex((i) => (i + 1) % PAIRING_PATTERNS.length)}
-            className="text-xs font-semibold text-sky-700 underline underline-offset-2"
-          >
-            🔄 Changer la répartition des équipes
-          </button>
+function EditMatchDateTimeModal({ match, onClose }) {
+  const [date, setDate] = useState(match.date);
+  const [time, setTime] = useState(match.time);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!date || !time) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "matches", match.id), { date, time });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Modifier la date et l'heure"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={saving || !date || !time}>
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Date">
+          <input
+            type="date"
+            className={inputClass}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </Field>
-      )}
+        <Field label="Heure">
+          <input
+            type="time"
+            className={inputClass}
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore }) {
+  return (
+    <Modal title="Paramètres du terrain" onClose={onClose}>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onPickDateTime}
+          className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+        >
+          <Icon.Calendar className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
+          Modifier la date et l'heure du match
+        </button>
+        <button
+          type="button"
+          onClick={onPickScore}
+          className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+        >
+          <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
+          Modifier le score du match
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -2147,7 +2468,9 @@ function AssignPlayersModal({ match, onClose }) {
 function CourtPanel({ match, now }) {
   const { isAdmin, connectedPlayer, players } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
-  const [showAssign, setShowAssign] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showDateTime, setShowDateTime] = useState(false);
+  const [pickSlot, setPickSlot] = useState(null); // { team, courtSide, participant } | null
   const [paymentTarget, setPaymentTarget] = useState(null);
 
   const participants = match.participants || [];
@@ -2156,13 +2479,18 @@ function CourtPanel({ match, now }) {
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
   const scoreEntered = hasMatchScore(match);
-  const canManagePayments = isAdmin || connectedPlayer.isCreditor === true;
-  const canAssign = isAdmin && !finished;
+  // Seuls les matchs de la saison en cours ("Saison") ont un système de
+  // paiement/créances ; les matchs ponctuels ajoutés en plus n'en ont pas.
+  const trackPayments = match.type === "Saison";
+  const canManagePayments = trackPayments && (isAdmin || connectedPlayer.isCreditor === true);
+  // L'assignation reste possible même après la fin du match (ex. match créé
+  // rétroactivement) — seul un admin peut le faire.
+  const canAssign = isAdmin;
   const creditorPlayerIds = new Set(
     players.filter((p) => p.isCreditor === true).map((p) => p.id)
   );
   const playerById = (id) => players.find((p) => p.id === id);
-  const { top, bottom } = getCourtSlots(match);
+  const slots = getCourtSlots(match);
 
   const fillBadge =
     filledCount === 4
@@ -2171,18 +2499,24 @@ function CourtPanel({ match, now }) {
       ? "Créneau libre"
       : `${filledCount}/4 joueurs`;
 
-  const renderSlot = (participant, key) => (
-    <PlayerSlotCard
-      key={key}
-      participant={participant}
-      playerRecord={participant ? playerById(participant.playerId) : null}
-      canAssign={canAssign}
-      canPay={canManagePayments}
-      isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
-      onAssignClick={() => setShowAssign(true)}
-      onPayClick={() => setPaymentTarget(participant)}
-    />
-  );
+  const renderSlot = (def) => {
+    const participant = slots[def.key];
+    return (
+      <PlayerSlotCard
+        key={def.key}
+        participant={participant}
+        playerRecord={participant ? playerById(participant.playerId) : null}
+        canAssign={canAssign}
+        canPay={canManagePayments}
+        isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
+        trackPayments={trackPayments}
+        slotTeam={def.team}
+        slotSide={def.side}
+        onAssignClick={() => setPickSlot({ team: def.team, courtSide: def.side, participant })}
+        onPayClick={() => setPaymentTarget(participant)}
+      />
+    );
+  };
 
   return (
     <Card
@@ -2195,21 +2529,36 @@ function CourtPanel({ match, now }) {
         <div className="min-w-0">
           <p className="font-semibold text-sm truncate">{match.location || "Terrain"}</p>
           <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
-            {match.matchFeePerPlayer != null
-              ? `${match.matchFeePerPlayer.toLocaleString("fr-FR")} € / joueur`
-              : "Tarif non renseigné"}
+            {trackPayments
+              ? match.matchFeePerPlayer != null
+                ? `${match.matchFeePerPlayer.toLocaleString("fr-FR")} € / joueur`
+                : "Tarif non renseigné"
+              : "Match ponctuel — hors comptabilité"}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <StatusBadge match={match} now={now} />
-          <Badge tone={filledCount === 4 ? "paid" : "neutral"} className="!text-[10px]">
-            {fillBadge}
-          </Badge>
+        <div className="flex items-start gap-1.5 shrink-0">
+          <div className="flex flex-col items-end gap-1.5">
+            <StatusBadge match={match} now={now} />
+            <Badge tone={filledCount === 4 ? "paid" : "neutral"} className="!text-[10px]">
+              {fillBadge}
+            </Badge>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowSettingsMenu(true)}
+              aria-label="Paramètres du terrain"
+              className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
+            >
+              <Icon.Settings className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {top.map((p, i) => renderSlot(p, p?.playerId || `top-${i}`))}
+        {renderSlot(COURT_SLOT_DEFS[0])}
+        {renderSlot(COURT_SLOT_DEFS[1])}
       </div>
 
       <div className="relative flex items-center my-2.5">
@@ -2221,14 +2570,15 @@ function CourtPanel({ match, now }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        {bottom.map((p, i) => renderSlot(p, p?.playerId || `bottom-${i}`))}
+        {renderSlot(COURT_SLOT_DEFS[2])}
+        {renderSlot(COURT_SLOT_DEFS[3])}
       </div>
 
       {scoreEntered && (
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--color-surface-2)] mb-3">
           <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
           <span className="pm-mono text-sm font-bold">
-            {[match.scores.set1, match.scores.set2, match.scores.set3]
+            {[getSetDisplay(match.scores.set1), getSetDisplay(match.scores.set2), getSetDisplay(match.scores.set3)]
               .filter(Boolean)
               .join(" · ")}
           </span>
@@ -2251,8 +2601,30 @@ function CourtPanel({ match, now }) {
       )}
 
       {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
-      {showAssign && (
-        <AssignPlayersModal match={match} onClose={() => setShowAssign(false)} />
+      {showSettingsMenu && (
+        <CourtSettingsMenu
+          onClose={() => setShowSettingsMenu(false)}
+          onPickDateTime={() => {
+            setShowSettingsMenu(false);
+            setShowDateTime(true);
+          }}
+          onPickScore={() => {
+            setShowSettingsMenu(false);
+            setShowEnd(true);
+          }}
+        />
+      )}
+      {showDateTime && (
+        <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
+      )}
+      {pickSlot && (
+        <PickPlayerModal
+          match={match}
+          team={pickSlot.team}
+          courtSide={pickSlot.courtSide}
+          currentParticipant={pickSlot.participant}
+          onClose={() => setPickSlot(null)}
+        />
       )}
       {paymentTarget && (
         <PaymentModal
@@ -2300,7 +2672,6 @@ function CreateMatchModal({ onClose }) {
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("20:00");
   const [location, setLocation] = useState("");
-  const [fee, setFee] = useState("");
   const [saving, setSaving] = useState(false);
 
   const canSubmit = Boolean(date && time);
@@ -2314,7 +2685,7 @@ function CreateMatchModal({ onClose }) {
         time,
         location: location.trim(),
         type: "Ponctuel",
-        matchFeePerPlayer: parseFeeInput(fee),
+        matchFeePerPlayer: null,
         participants: [],
         scores: { set1: "", set2: "", set3: "" },
         status: "À venir",
@@ -2370,19 +2741,10 @@ function CreateMatchModal({ onClose }) {
           placeholder="Ex. Terrain 2"
         />
       </Field>
-      <Field label="Tarif par joueur — € (optionnel)">
-        <input
-          type="text"
-          inputMode="decimal"
-          className={inputClass}
-          value={fee}
-          onChange={(e) => setFee(e.target.value)}
-          placeholder="Ex. 13,5"
-        />
-      </Field>
       <p className="text-xs text-[var(--color-text-dim)]">
-        Un terrain accueille 4 joueurs. Vous pourrez les sélectionner ensuite
-        directement depuis la carte du match, sur la page d'accueil.
+        Un match ponctuel accueille 4 joueurs, même après sa date (utile pour
+        enregistrer un match déjà passé). Il n'a pas de système de paiement —
+        seuls les matchs de saison sont comptabilisés dans les créances.
       </p>
     </Modal>
   );
@@ -2767,11 +3129,13 @@ function AdminView() {
   );
   const totalBalance = [...creditorAdjustedTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
-  const unpaidCount = matches.reduce(
-    (sum, m) =>
-      sum + (m.participants || []).filter((p) => p.paidStatus !== "paid").length,
-    0
-  );
+  const unpaidCount = matches
+    .filter((m) => m.type === "Saison")
+    .reduce(
+      (sum, m) =>
+        sum + (m.participants || []).filter((p) => p.paidStatus !== "paid").length,
+      0
+    );
 
   const stats = [
     { label: "Joueurs", value: players.length, icon: Icon.Users },
@@ -2779,6 +3143,16 @@ function AdminView() {
     { label: "Matchs à venir", value: upcomingCount, icon: Icon.Calendar },
     { label: "Paiements en attente", value: unpaidCount, icon: Icon.Coin },
   ];
+
+  // Classement par % de victoires — seuls les joueurs avec au moins un match
+  // décidé (victoire ou défaite) sont classés.
+  const ranked = players
+    .map((p) => ({ player: p, stats: computePlayerStats(p.id, matches) }))
+    .filter((r) => r.stats.wins + r.stats.losses > 0)
+    .sort(
+      (a, b) =>
+        b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins
+    );
 
   return (
     <div className="px-4 pt-4 pb-28">
@@ -2804,6 +3178,39 @@ function AdminView() {
           </Card>
         ))}
       </div>
+
+      <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-3">
+        Classement du club (% de victoires)
+      </h3>
+      {ranked.length === 0 ? (
+        <EmptyState
+          icon={<Icon.Trophy className="w-6 h-6" />}
+          title="Aucun match décidé pour l'instant"
+          subtitle="Le classement apparaîtra dès qu'un vainqueur sera renseigné sur un match."
+        />
+      ) : (
+        <div className="flex flex-col gap-2 mb-6">
+          {ranked.map((r, i) => (
+            <Card key={r.player.id} className="p-3.5 flex items-center gap-3">
+              <span className="w-6 text-center text-sm font-bold text-[var(--color-text-faint)] shrink-0">
+                {i + 1}
+              </span>
+              <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
+                {r.player.emoji || "🎾"}
+              </span>
+              <span className="flex-1 min-w-0 text-sm font-semibold truncate">
+                {r.player.name}
+              </span>
+              <span className="text-xs text-[var(--color-text-dim)] text-right shrink-0">
+                {r.stats.wins}V-{r.stats.losses}D
+              </span>
+              <span className="pm-mono font-bold text-emerald-600 text-sm shrink-0 w-12 text-right">
+                {r.stats.winRate}%
+              </span>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm text-[var(--color-text-dim)]">
@@ -2860,6 +3267,11 @@ function StatsView() {
   const myStats = computePlayerStats(connectedPlayer.id, matches);
   const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
 
+  const otherPlayers = players.filter((p) => p.id !== connectedPlayer.id);
+  const [h2hA, setH2hA] = useState(connectedPlayer.id);
+  const [h2hB, setH2hB] = useState(otherPlayers[0]?.id || "");
+  const h2h = h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null;
+
   return (
     <div className="px-4 pt-4 pb-28">
       <h2 className="pm-display font-bold text-xl mb-1">Statistiques</h2>
@@ -2885,6 +3297,31 @@ function StatsView() {
               value={`${myStats.wins}V — ${myStats.losses}D`}
               label={`${myStats.winRate}% de victoires`}
             />
+            <StatKpiCard
+              icon={Icon.Flame}
+              value={myStats.streak > 0 ? myStats.streak : "—"}
+              label={
+                myStats.streak > 0
+                  ? myStats.streakType === "win"
+                    ? "Victoires d'affilée"
+                    : "Défaites d'affilée"
+                  : "Pas de série en cours"
+              }
+            />
+            <StatKpiCard
+              icon={Icon.Chart}
+              value={myStats.favoritePosition || "—"}
+              label="Position la plus jouée"
+            />
+            <StatKpiCard
+              icon={Icon.Trophy}
+              value={myStats.bestPositionRatio ? `${myStats.bestPositionRatio.rate}%` : "—"}
+              label={
+                myStats.bestPositionRatio
+                  ? `Meilleur taux — ${myStats.bestPositionRatio.side}`
+                  : "Pas assez de matchs décidés"
+              }
+            />
           </div>
           <div className="flex flex-col gap-2 mb-6">
             {myStats.topPartner ? (
@@ -2904,6 +3341,26 @@ function StatsView() {
               <Card className="p-4">
                 <p className="text-xs text-[var(--color-text-faint)] italic">
                   Coéquipier fétiche : pas encore assez de matchs avec équipes renseignées.
+                </p>
+              </Card>
+            )}
+            {myStats.bestDuo ? (
+              <Card className="p-4 flex items-center gap-3">
+                <Icon.Trophy className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+                    Duo gagnant
+                  </span>
+                  <span className="block text-sm font-semibold truncate">
+                    {nameOf(myStats.bestDuo.id)} · {myStats.bestDuo.rate}% de victoires (
+                    {myStats.bestDuo.wins}/{myStats.bestDuo.count})
+                  </span>
+                </span>
+              </Card>
+            ) : (
+              <Card className="p-4">
+                <p className="text-xs text-[var(--color-text-faint)] italic">
+                  Duo gagnant : jouez au moins 2 matchs avec le même partenaire pour le voir apparaître.
                 </p>
               </Card>
             )}
@@ -2930,6 +3387,70 @@ function StatsView() {
           </div>
         </>
       )}
+
+      <h3 className="font-semibold text-sm text-[var(--color-text-dim)] mb-3">
+        Face-à-face
+      </h3>
+      <Card className="p-4 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <Field label="Joueur 1">
+            <select className={inputClass} value={h2hA} onChange={(e) => setH2hA(e.target.value)}>
+              {players.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Joueur 2">
+            <select className={inputClass} value={h2hB} onChange={(e) => setH2hB(e.target.value)}>
+              {players.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {h2hA === h2hB ? (
+          <p className="text-xs text-[var(--color-text-faint)] italic">
+            Choisissez deux joueurs différents.
+          </p>
+        ) : !h2h || (h2h.asOpponents === 0 && h2h.asPartners === 0) ? (
+          <p className="text-xs text-[var(--color-text-faint)] italic">
+            Aucun match commun trouvé entre {nameOf(h2hA)} et {nameOf(h2hB)}.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {h2h.asOpponents > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] mb-1">
+                  Adversaires — {h2h.asOpponents} confrontation{h2h.asOpponents > 1 ? "s" : ""}
+                </p>
+                <p className="text-sm font-semibold">
+                  {nameOf(h2hA)} {h2h.winsA} — {h2h.winsB} {nameOf(h2hB)}
+                  {h2h.undecided > 0 && (
+                    <span className="text-xs font-normal text-[var(--color-text-faint)]">
+                      {" "}
+                      ({h2h.undecided} sans résultat)
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+            {h2h.asPartners > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] mb-1">
+                  Coéquipiers — {h2h.asPartners} match{h2h.asPartners > 1 ? "s" : ""} ensemble
+                </p>
+                <p className="text-sm font-semibold">
+                  {h2h.partnerWins}/{h2h.asPartners} victoires en équipe
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {isAdmin && (
         <>
