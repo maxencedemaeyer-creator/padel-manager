@@ -384,7 +384,20 @@ function normalizeSide(value) {
 }
 const FEDERATION_OPTIONS = ["Aucune", "AFP", "AFT", "AFP + AFT"];
 
-const EMOJI_CHOICES = ["🎾", "🏆", "🔥", "⚡️", "😎", "🐐", "🚀", "💪", "🦁", "🎯"];
+const EMOJI_CHOICES = [
+  "🎾", "🏆", "🔥", "⚡️", "😎", "🐐", "🚀", "💪", "🦁", "🎯",
+  "🥇", "🐯", "🦅", "🐺", "🌪️", "⭐", "🍀", "🐸", "🦈", "🥷",
+];
+const AVATAR_COLOR_CHOICES = [
+  "#F4EFE7", // beige (défaut)
+  "#DCEEE6", // sauge
+  "#DCEEF7", // ciel
+  "#FCE4E4", // rose
+  "#FDF0D5", // ambre
+  "#EAE1F7", // violet
+  "#D9F2EA", // émeraude
+  "#FBE2D3", // orange
+];
 
 /* =============================================================================
    4. HOOKS FIRESTORE (lecture temps réel)
@@ -600,7 +613,10 @@ function PlayerTile({ player, onClick }) {
       onClick={onClick}
       className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all"
     >
-      <div className="w-14 h-14 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-2xl">
+      <div
+        className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
+        style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+      >
         {player.emoji || "🎾"}
       </div>
       <span className="text-xs font-semibold text-center leading-tight">
@@ -643,7 +659,10 @@ function PinKeypad({ player, onBack, onSuccess }) {
         <Icon.Chevron className="w-4 h-4 rotate-180" /> Retour
       </button>
 
-      <div className="w-16 h-16 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-3xl mb-3">
+      <div
+        className="w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-3"
+        style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+      >
         {player.emoji || "🎾"}
       </div>
       <p className="pm-display font-bold text-lg mb-1">{player.name}</p>
@@ -882,7 +901,10 @@ function Header() {
       </div>
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <span className="w-7 h-7 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-sm">
+          <span
+            className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
+            style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+          >
             {connectedPlayer.emoji || "🎾"}
           </span>
           <span className="text-xs font-semibold max-w-[80px] truncate">
@@ -952,6 +974,75 @@ function BottomNav({ view, setView }) {
 /* =============================================================================
    9. JOUEURS — liste + formulaire admin avec anti-doublon PIN
    ========================================================================= */
+function AvatarPicker({ emoji, color, onEmojiChange, onColorChange }) {
+  const [open, setOpen] = useState(false);
+  const bg = color || AVATAR_COLOR_CHOICES[0];
+
+  return (
+    <Field label="Avatar">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-3 w-full p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-left"
+      >
+        <span
+          className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border border-[var(--color-border)]"
+          style={{ backgroundColor: bg }}
+        >
+          {emoji || "🎾"}
+        </span>
+        <span className="flex-1 text-xs font-semibold text-[var(--color-text-dim)]">
+          {open ? "Choisir ci-dessous" : "Modifier l'icône et la couleur"}
+        </span>
+        <Icon.Chevron className={cn("w-4 h-4 text-[var(--color-text-faint)] transition-transform", open && "rotate-90")} />
+      </button>
+
+      {open && (
+        <div className="mt-2 p-3 rounded-xl border border-[var(--color-border)] bg-white">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+            Icône
+          </p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {EMOJI_CHOICES.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => onEmojiChange(e)}
+                className={cn(
+                  "w-9 h-9 rounded-lg flex items-center justify-center text-base border transition-all",
+                  emoji === e
+                    ? "border-[var(--color-lime)] bg-[var(--color-lime)]/15"
+                    : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                )}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+            Couleur de fond
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {AVATAR_COLOR_CHOICES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onColorChange(c)}
+                aria-label={c}
+                className={cn(
+                  "w-8 h-8 rounded-full border-2 transition-all",
+                  bg === c ? "border-sky-400 scale-110" : "border-white"
+                )}
+                style={{ backgroundColor: c, boxShadow: "0 0 0 1px var(--color-border)" }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </Field>
+  );
+}
+
 function InfoChip({ children }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border border-[var(--color-border)]">
@@ -975,6 +1066,7 @@ function EditPlayerModal({ player, onClose }) {
   const [name, setName] = useState(player.name || "");
   const [email, setEmail] = useState(player.email || "");
   const [emoji, setEmoji] = useState(player.emoji || "🎾");
+  const [avatarColor, setAvatarColor] = useState(player.avatarColor || AVATAR_COLOR_CHOICES[0]);
   const [accessCode, setAccessCode] = useState(player.accessCode || "");
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
@@ -1011,6 +1103,7 @@ function EditPlayerModal({ player, onClose }) {
           name: name.trim(),
           email: email.trim(),
           emoji,
+          avatarColor,
           accessCode,
           isAdmin: playerIsAdmin,
           isCreditor,
@@ -1050,24 +1143,12 @@ function EditPlayerModal({ player, onClose }) {
 
       {isAdmin && (
         <>
-          <Field label="Avatar">
-            <div className="flex flex-wrap gap-2">
-              {EMOJI_CHOICES.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => setEmoji(e)}
-                  className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center text-lg border transition-all",
-                    emoji === e
-                      ? "border-[var(--color-lime)] bg-[var(--color-lime)]/15"
-                      : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-                  )}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          </Field>
+          <AvatarPicker
+            emoji={emoji}
+            color={avatarColor}
+            onEmojiChange={setEmoji}
+            onColorChange={setAvatarColor}
+          />
 
           <Field label="Nom complet">
             <input
@@ -1212,7 +1293,10 @@ function PlayerRow({ player }) {
   return (
     <>
       <Card className="p-4 flex items-center gap-3">
-        <div className="w-11 h-11 shrink-0 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xl">
+        <div
+          className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-xl"
+          style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+        >
           {player.emoji || "🎾"}
         </div>
         <div className="min-w-0 flex-1">
@@ -1274,6 +1358,7 @@ function AddPlayerModal({ onClose }) {
     preferredSide: "Polyvalent",
     federation: "Aucune",
     emoji: "🎾",
+    avatarColor: AVATAR_COLOR_CHOICES[0],
   });
   const [saving, setSaving] = useState(false);
 
@@ -1304,6 +1389,7 @@ function AddPlayerModal({ onClose }) {
         level: form.level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
         emoji: form.emoji,
+        avatarColor: form.avatarColor,
         dominantHand: form.dominantHand,
         preferredSide: form.preferredSide,
         federation: form.federation,
@@ -1333,24 +1419,12 @@ function AddPlayerModal({ onClose }) {
         </>
       }
     >
-      <Field label="Avatar">
-        <div className="flex flex-wrap gap-2">
-          {EMOJI_CHOICES.map((e) => (
-            <button
-              key={e}
-              onClick={() => setF("emoji", e)}
-              className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center text-lg border transition-all",
-                form.emoji === e
-                  ? "border-[var(--color-lime)] bg-[var(--color-lime)]/15"
-                  : "border-[var(--color-border)] bg-[var(--color-surface-2)]"
-              )}
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-      </Field>
+      <AvatarPicker
+        emoji={form.emoji}
+        color={form.avatarColor}
+        onEmojiChange={(e) => setF("emoji", e)}
+        onColorChange={(c) => setF("avatarColor", c)}
+      />
 
       <Field label="Nom complet">
         <input
@@ -1614,7 +1688,10 @@ function PaymentModal({ match, participant, onClose }) {
                 onClick={() => confirmPayment(c)}
                 className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all disabled:opacity-50"
               >
-                <span className="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-lg">
+                <span
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                  style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+                >
                   {c.emoji || "🎾"}
                 </span>
                 <span className="flex-1 text-left">
@@ -1925,6 +2002,12 @@ function getInitials(name) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
+// Isole le prénom (premier mot du nom complet) — utilisé sur mobile où la
+// place est trop réduite pour afficher le nom complet.
+function getFirstName(name) {
+  const first = String(name || "").trim().split(/\s+/)[0];
+  return first || name || "?";
+}
 
 // Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
 // joueur qui les occupe : Team A-Droite (haut-gauche), Team A-Gauche
@@ -1981,10 +2064,14 @@ function PlayerSlotCard({
   onAssignClick,
   onPayClick,
 }) {
+  // Étiquette de position — dans le flux normal (pas en position absolue) pour
+  // ne jamais chevaucher le nom du joueur, même sur un écran mobile étroit.
   const slotTag = (
-    <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
-      Team {slotTeam} · {slotSide}
-    </span>
+    <div className="flex justify-end mb-1">
+      <span className="px-1.5 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
+        Team {slotTeam} · {slotSide}
+      </span>
+    </div>
   );
 
   if (!participant) {
@@ -1994,15 +2081,17 @@ function PlayerSlotCard({
         tabIndex={canAssign ? 0 : undefined}
         onClick={canAssign ? onAssignClick : undefined}
         className={cn(
-          "relative flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 border-dashed min-h-[86px] text-center",
+          "flex flex-col p-3 rounded-xl border-2 border-dashed min-h-[86px]",
           canAssign
             ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
             : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
         )}
       >
         {slotTag}
-        <Icon.Plus className="w-4 h-4" />
-        <span className="text-[11px] font-medium">Emplacement libre</span>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <Icon.Plus className="w-4 h-4" />
+          <span className="text-[11px] font-medium">Emplacement libre</span>
+        </div>
       </div>
     );
   }
@@ -2020,43 +2109,52 @@ function PlayerSlotCard({
       tabIndex={canAssign ? 0 : undefined}
       onClick={canAssign ? onAssignClick : undefined}
       className={cn(
-        "relative flex items-start gap-2 p-3 rounded-xl border min-h-[86px]",
+        "flex flex-col p-3 rounded-xl border min-h-[86px]",
         isWinningTeam ? "bg-amber-50 border-amber-300" : "bg-white border-[var(--color-border)]",
         canAssign && "cursor-pointer hover:border-sky-300"
       )}
     >
       {slotTag}
-      <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0">
-        {getInitials(participant.name)}
-      </span>
-      <span className="min-w-0 flex-1 pr-10">
-        <span className="block text-sm font-semibold truncate">
-          {isWinningTeam && "🏆 "}
-          {participant.name}
+      <div className="flex items-start gap-2">
+        <span
+          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0"
+          style={{ backgroundColor: playerRecord?.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+        >
+          {getInitials(participant.name)}
         </span>
-        <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
-        {trackPayments && (
-          <span className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              disabled={!canPay || paid}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (canPay && !paid) onPayClick();
-              }}
-            >
-              <Badge tone={badgeTone} className="!px-1.5 !py-0.5 !text-[10px]">
-                {badgeLabel}
-              </Badge>
-            </button>
-            {isCreditorParticipant && (
-              <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
-                Créancier
-              </Badge>
-            )}
+        <span className="min-w-0 flex-1">
+          <span className="block sm:hidden text-sm font-semibold truncate">
+            {isWinningTeam && "🏆 "}
+            {getFirstName(participant.name)}
           </span>
-        )}
-      </span>
+          <span className="hidden sm:block text-sm font-semibold truncate">
+            {isWinningTeam && "🏆 "}
+            {participant.name}
+          </span>
+          <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
+          {trackPayments && (
+            <span className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                disabled={!canPay || paid}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canPay && !paid) onPayClick();
+                }}
+              >
+                <Badge tone={badgeTone} className="!px-1.5 !py-0.5 !text-[10px]">
+                  {badgeLabel}
+                </Badge>
+              </button>
+              {isCreditorParticipant && (
+                <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
+                  Créancier
+                </Badge>
+              )}
+            </span>
+          )}
+        </span>
+      </div>
     </div>
   );
 }
@@ -3242,7 +3340,10 @@ function AdminView() {
               <span className="w-6 text-center text-sm font-bold text-[var(--color-text-faint)] shrink-0">
                 {i + 1}
               </span>
-              <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
+              <span
+                className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
+                style={{ backgroundColor: r.player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+              >
                 {r.player.emoji || "🎾"}
               </span>
               <span className="flex-1 min-w-0 text-sm font-semibold truncate">
@@ -3280,7 +3381,10 @@ function AdminView() {
             .sort((a, b) => (creditorAdjustedTotals.get(b.id) || 0) - (creditorAdjustedTotals.get(a.id) || 0))
             .map((c) => (
               <Card key={c.id} className="p-4 flex items-center gap-3">
-                <span className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-lg">
+                <span
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                  style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+                >
                   {c.emoji || "🎾"}
                 </span>
                 <span className="flex-1 font-semibold text-sm">{c.name}</span>
@@ -3509,7 +3613,10 @@ function StatsView() {
               const s = computePlayerStats(p.id, matches);
               return (
                 <Card key={p.id} className="p-3.5 flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
+                  <span
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
+                    style={{ backgroundColor: p.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+                  >
                     {p.emoji || "🎾"}
                   </span>
                   <span className="flex-1 min-w-0 text-sm font-semibold truncate">
