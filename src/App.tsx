@@ -100,6 +100,7 @@ function GlobalStyles() {
 
       :root{
         --color-bg: #4361EE;
+        --color-nav: #FAF8F5;
         --color-surface: #FFFFFF;
         --color-surface-2: #F4EFE7;
         --color-border: #E8E2D8;
@@ -914,7 +915,7 @@ function AuthGate({ children }) {
 function Header() {
   const { connectedPlayer, isAdmin, logout } = useAppData();
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-[var(--color-bg)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
       <div className="flex items-center gap-2">
         <Icon.Ball className="w-5 h-5 text-[var(--color-lime)]" />
         <span className="pm-display font-extrabold text-base">Padel Manager</span>
@@ -960,7 +961,7 @@ function BottomNav({ view, setView }) {
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-bg)]/95 backdrop-blur-md border-t border-[var(--color-border)] flex px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-nav)]/95 backdrop-blur-md border-t border-[var(--color-border)] flex px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
       {tabs.map((t) => {
         const active = view === t.id;
         const IconEl = t.icon;
