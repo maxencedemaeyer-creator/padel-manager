@@ -49,6 +49,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
@@ -229,6 +230,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  ),
+  Trash: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M4 7h16M9 7V4.5A1.5 1.5 0 0110.5 3h3A1.5 1.5 0 0115 4.5V7m2 0v13a2 2 0 01-2 2H9a2 2 0 01-2-2V7h10z" />
+      <path d="M10 11v6M14 11v6" />
     </svg>
   ),
   Chart: (p) => (
@@ -626,7 +633,7 @@ function PlayerTile({ player, onClick }) {
   );
 }
 
-function PinKeypad({ player, onBack, onSuccess }) {
+function PinKeypad({ player, players, onBack, onSuccess }) {
   const [digits, setDigits] = useState("");
   const [error, setError] = useState(false);
 
@@ -638,13 +645,23 @@ function PinKeypad({ player, onBack, onSuccess }) {
       setTimeout(() => {
         if (next === player.accessCode) {
           onSuccess(player);
-        } else {
-          setError(true);
-          setTimeout(() => {
-            setError(false);
-            setDigits("");
-          }, 550);
+          return;
         }
+        // Code PIN secondaire : connecte discrètement sur un autre profil
+        // (ex. un compte test), sans qu'aucune nouvelle carte n'apparaisse
+        // jamais sur cet écran de connexion.
+        if (player.secondaryTestCode && next === player.secondaryTestCode) {
+          const linked = players.find((p) => p.id === player.secondaryTestPlayerId);
+          if (linked) {
+            onSuccess(linked);
+            return;
+          }
+        }
+        setError(true);
+        setTimeout(() => {
+          setError(false);
+          setDigits("");
+        }, 550);
       }, 120);
     }
   };
@@ -865,6 +882,7 @@ function AuthGate({ children }) {
       ) : selectedForPin ? (
         <PinKeypad
           player={selectedForPin}
+          players={players}
           onBack={() => setSelectedForPin(null)}
           onSuccess={login}
         />
@@ -878,9 +896,11 @@ function AuthGate({ children }) {
             Sélectionnez votre profil pour vous connecter
           </p>
           <div className="grid grid-cols-3 gap-3">
-            {players.map((p) => (
-              <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
-            ))}
+            {players
+              .filter((p) => !p.isTest)
+              .map((p) => (
+                <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
+              ))}
           </div>
         </div>
       )}
@@ -1070,6 +1090,11 @@ function EditPlayerModal({ player, onClose }) {
   const [accessCode, setAccessCode] = useState(player.accessCode || "");
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
+  const [isTest, setIsTest] = useState(player.isTest === true);
+  const [secondaryTestCode, setSecondaryTestCode] = useState(player.secondaryTestCode || "");
+  const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState(
+    player.secondaryTestPlayerId || ""
+  );
   const [advancedAmount, setAdvancedAmount] = useState(
     player.advancedAmount != null ? String(player.advancedAmount) : ""
   );
@@ -1107,6 +1132,9 @@ function EditPlayerModal({ player, onClose }) {
           accessCode,
           isAdmin: playerIsAdmin,
           isCreditor,
+          isTest,
+          secondaryTestCode: secondaryTestCode || null,
+          secondaryTestPlayerId: secondaryTestPlayerId || null,
           advancedAmount: parseFeeInput(advancedAmount),
         });
       }
@@ -1275,6 +1303,58 @@ function EditPlayerModal({ player, onClose }) {
               />
             </Field>
           )}
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={isTest}
+              onChange={(e) => setIsTest(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Compte test (invisible sur l'écran de connexion et pour les autres joueurs)
+          </label>
+
+          <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
+            <p className="text-xs font-semibold text-[var(--color-text-dim)] mb-1">
+              Connexion secrète (optionnel)
+            </p>
+            <p className="text-[11px] text-[var(--color-text-faint)] mb-2">
+              Un second code PIN sur CETTE fiche connecte directement vers un
+              autre profil (ex. un compte test) — sans qu'aucune nouvelle
+              carte n'apparaisse jamais sur l'écran de connexion.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Code PIN secondaire">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+                  value={secondaryTestCode}
+                  onChange={(e) =>
+                    setSecondaryTestCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+                  }
+                  placeholder="0000"
+                />
+              </Field>
+              <Field label="Connecte vers">
+                <select
+                  className={inputClass}
+                  value={secondaryTestPlayerId}
+                  onChange={(e) => setSecondaryTestPlayerId(e.target.value)}
+                >
+                  <option value="">— Choisir un joueur —</option>
+                  {players
+                    .filter((p) => p.id !== player.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.isTest ? " (test)" : ""}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            </div>
+          </div>
         </div>
       )}
     </Modal>
@@ -1310,6 +1390,11 @@ function PlayerRow({ player }) {
             {player.isCreditor && (
               <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[10px]">
                 Créancier
+              </Badge>
+            )}
+            {player.isTest && isAdmin && (
+              <Badge tone="danger" className="!px-1.5 !py-0.5 !text-[10px]">
+                Test
               </Badge>
             )}
           </div>
@@ -1353,6 +1438,7 @@ function AddPlayerModal({ onClose }) {
     accessCode: "",
     isAdmin: false,
     isCreditor: false,
+    isTest: false,
     level: "Pas de niveau",
     dominantHand: "Droitier",
     preferredSide: "Polyvalent",
@@ -1385,6 +1471,7 @@ function AddPlayerModal({ onClose }) {
         accessCode: form.accessCode,
         isAdmin: form.isAdmin,
         isCreditor: form.isCreditor,
+        isTest: form.isTest,
         creditBalance: 0,
         level: form.level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
@@ -1540,6 +1627,15 @@ function AddPlayerModal({ onClose }) {
           />
           Créancier (peut recevoir des paiements de match)
         </label>
+        <label className="flex items-center gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={form.isTest}
+            onChange={(e) => setF("isTest", e.target.checked)}
+            className="w-4 h-4 accent-[var(--color-lime)]"
+          />
+          Compte test (invisible sur l'écran de connexion et pour les autres joueurs)
+        </label>
       </div>
     </Modal>
   );
@@ -1564,7 +1660,7 @@ function PlayersView() {
       p.isCreditor
         ? getCreditorAccounting(p.id, matches).totalPaidAllTime + (p.manualAdjustment || 0)
         : 0;
-    const arr = [...players];
+    const arr = [...players].filter((p) => isAdmin || !p.isTest);
     switch (sortBy) {
       case "name-desc":
         arr.sort((a, b) => b.name.localeCompare(a.name));
@@ -2545,7 +2641,7 @@ function EditMatchDateTimeModal({ match, onClose }) {
   );
 }
 
-function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore }) {
+function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore, onPickDelete }) {
   return (
     <Modal title="Paramètres du terrain" onClose={onClose}>
       <div className="flex flex-col gap-2">
@@ -2565,7 +2661,58 @@ function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore }) {
           <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
           Modifier le score du match
         </button>
+        <button
+          type="button"
+          onClick={onPickDelete}
+          className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 hover:border-rose-400 text-left text-sm font-semibold text-rose-700"
+        >
+          <Icon.Trash className="w-4 h-4 text-rose-600 shrink-0" />
+          Supprimer le match
+        </button>
       </div>
+    </Modal>
+  );
+}
+
+function DeleteMatchConfirmModal({ match, onClose }) {
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, "matches", match.id));
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Supprimer ce match ?"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={deleting}>
+            Annuler
+          </Button>
+          <Button variant="danger" onClick={confirmDelete} disabled={deleting}>
+            {deleting ? "Suppression..." : "Supprimer définitivement"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-[var(--color-text-dim)]">
+        Cette action est irréversible. Le match du{" "}
+        <span className="font-semibold text-[var(--color-text)]">
+          {formatDateFR(match.date)}
+          {match.time ? ` à ${match.time}` : ""}
+        </span>
+        {match.location ? ` (${match.location})` : ""} sera définitivement
+        supprimé, ainsi que les joueurs assignés, le score et l'historique de
+        paiement associés à ce match.
+      </p>
     </Modal>
   );
 }
@@ -2575,6 +2722,7 @@ function CourtPanel({ match, now }) {
   const [showEnd, setShowEnd] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pickSlot, setPickSlot] = useState(null); // { team, courtSide, participant } | null
   const [paymentTarget, setPaymentTarget] = useState(null);
 
@@ -2759,10 +2907,17 @@ function CourtPanel({ match, now }) {
             setShowSettingsMenu(false);
             setShowEnd(true);
           }}
+          onPickDelete={() => {
+            setShowSettingsMenu(false);
+            setShowDeleteConfirm(true);
+          }}
         />
       )}
       {showDateTime && (
         <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
+      )}
+      {showDeleteConfirm && (
+        <DeleteMatchConfirmModal match={match} onClose={() => setShowDeleteConfirm(false)} />
       )}
       {pickSlot && (
         <PickPlayerModal
