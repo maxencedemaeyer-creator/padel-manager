@@ -1810,6 +1810,15 @@ function PaymentModal({ match, participant, onClose }) {
    11. MATCHS — cartes, création (ponctuel / saison), fin de match
    ========================================================================= */
 const MATCH_DURATION_MINUTES = 60; // un match dure 1h : commence à l'heure encodée, terminé 1h plus tard
+const SELF_REGISTRATION_WINDOW_DAYS = 14; // auto-inscription ouverte seulement dans les 14 jours avant le match
+
+// Nombre de jours calendaires avant le match (0 = aujourd'hui, négatif = déjà passé).
+function daysUntilMatch(match, now) {
+  const start = getMatchStart(match);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((startDay - nowDay) / (1000 * 60 * 60 * 24));
+}
 
 function getMatchStart(match) {
   return new Date(`${match.date}T${match.time || "00:00"}:00`);
@@ -2151,6 +2160,8 @@ function PlayerSlotCard({
   participant,
   playerRecord,
   canAssign,
+  canSelfManage,
+  isSelfSlot,
   canPay,
   isCreditorParticipant,
   trackPayments,
@@ -2159,8 +2170,12 @@ function PlayerSlotCard({
   isWinningTeam,
   isAdmin,
   onAssignClick,
+  onSelfClick,
   onPayClick,
 }) {
+  const clickable = canAssign || canSelfManage;
+  const handleClick = canAssign ? onAssignClick : canSelfManage ? onSelfClick : undefined;
+
   // Étiquette de position — dans le flux normal (pas en position absolue) pour
   // ne jamais chevaucher le nom du joueur, même sur un écran mobile étroit.
   const slotTag = (
@@ -2174,12 +2189,12 @@ function PlayerSlotCard({
   if (!participant) {
     return (
       <div
-        role={canAssign ? "button" : undefined}
-        tabIndex={canAssign ? 0 : undefined}
-        onClick={canAssign ? onAssignClick : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onClick={handleClick}
         className={cn(
           "flex flex-col p-3 rounded-xl border-2 border-dashed min-h-[86px]",
-          canAssign
+          clickable
             ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
             : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
         )}
@@ -2187,7 +2202,9 @@ function PlayerSlotCard({
         {slotTag}
         <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
           <Icon.Plus className="w-4 h-4" />
-          <span className="text-[11px] font-medium">Emplacement libre</span>
+          <span className="text-[11px] font-medium">
+            {canSelfManage ? "S'inscrire ici" : "Emplacement libre"}
+          </span>
         </div>
       </div>
     );
@@ -2202,13 +2219,13 @@ function PlayerSlotCard({
 
   return (
     <div
-      role={canAssign ? "button" : undefined}
-      tabIndex={canAssign ? 0 : undefined}
-      onClick={canAssign ? onAssignClick : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={handleClick}
       className={cn(
         "flex flex-col p-3 rounded-xl border min-h-[86px]",
         isWinningTeam ? "bg-amber-50 border-amber-300" : "bg-white border-[var(--color-border)]",
-        canAssign && "cursor-pointer hover:border-sky-300"
+        clickable && "cursor-pointer hover:border-sky-300"
       )}
     >
       {slotTag}
@@ -2228,7 +2245,10 @@ function PlayerSlotCard({
             {isWinningTeam && "🏆 "}
             {participant.name}
           </span>
-          <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">{roleLabel}</span>
+          <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">
+            {roleLabel}
+            {isSelfSlot && canSelfManage && " · toucher pour se désinscrire"}
+          </span>
           {trackPayments && (
             <span className="flex flex-wrap items-center gap-1">
               <button
@@ -2718,13 +2738,14 @@ function DeleteMatchConfirmModal({ match, onClose }) {
 }
 
 function CourtPanel({ match, now }) {
-  const { isAdmin, connectedPlayer, players } = useAppData();
+  const { isAdmin, connectedPlayer, players, matches } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pickSlot, setPickSlot] = useState(null); // { team, courtSide, participant } | null
   const [paymentTarget, setPaymentTarget] = useState(null);
+  const [selfBusy, setSelfBusy] = useState(false);
 
   const participants = match.participants || [];
   const filledCount = participants.length;
@@ -2739,6 +2760,62 @@ function CourtPanel({ match, now }) {
   // L'assignation reste possible même après la fin du match (ex. match créé
   // rétroactivement) — seul un admin peut le faire.
   const canAssign = isAdmin;
+
+  // Auto-inscription : un joueur non-admin peut s'ajouter lui-même sur une
+  // place libre d'un match PAS ENCORE commencé, et se désinscrire ensuite —
+  // avec la même protection anti-double-réservation que pour l'admin.
+  // L'admin garde la main en premier : l'auto-inscription ne s'ouvre que
+  // dans les SELF_REGISTRATION_WINDOW_DAYS jours précédant le match.
+  const alreadyElsewhereToday = matches.some(
+    (m) =>
+      m.id !== match.id &&
+      m.date === match.date &&
+      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+  );
+  const withinSelfRegWindow = daysUntilMatch(match, now) <= SELF_REGISTRATION_WINDOW_DAYS;
+  const canSelfJoin =
+    !isAdmin && timing === "upcoming" && !isParticipant && !alreadyElsewhereToday;
+  const canSelfLeave = !isAdmin && timing === "upcoming" && isParticipant;
+
+  const selfJoin = async (def) => {
+    if (!withinSelfRegWindow) {
+      alert(
+        "Vous ne pouvez pas encore vous inscrire à ce match. Veuillez contacter Maxence ou un administrateur pour vous inscrire à ce match."
+      );
+      return;
+    }
+    setSelfBusy(true);
+    try {
+      const newParticipant = {
+        playerId: connectedPlayer.id,
+        name: connectedPlayer.name,
+        paidStatus: "unpaid",
+        creditorId: null,
+        team: def.team,
+        courtSide: def.side,
+      };
+      await updateDoc(doc(db, "matches", match.id), {
+        participants: [...participants, newParticipant],
+      });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSelfBusy(false);
+    }
+  };
+
+  const selfLeave = async () => {
+    setSelfBusy(true);
+    try {
+      const remaining = participants.filter((p) => p.playerId !== connectedPlayer.id);
+      await updateDoc(doc(db, "matches", match.id), { participants: remaining });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSelfBusy(false);
+    }
+  };
+
   const creditorPlayerIds = new Set(
     players.filter((p) => p.isCreditor === true).map((p) => p.id)
   );
@@ -2754,12 +2831,17 @@ function CourtPanel({ match, now }) {
 
   const renderSlot = (def) => {
     const participant = slots[def.key];
+    const isMe = Boolean(participant) && participant.playerId === connectedPlayer.id;
+    const isEmpty = !participant;
+    const selfClickable = (isEmpty && canSelfJoin) || (isMe && canSelfLeave);
     return (
       <PlayerSlotCard
         key={def.key}
         participant={participant}
         playerRecord={participant ? playerById(participant.playerId) : null}
         canAssign={canAssign}
+        canSelfManage={selfClickable}
+        isSelfSlot={isMe}
         canPay={canManagePayments}
         isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
         trackPayments={trackPayments}
@@ -2768,6 +2850,7 @@ function CourtPanel({ match, now }) {
         isWinningTeam={Boolean(match.winningTeam) && match.winningTeam === def.team}
         isAdmin={isAdmin}
         onAssignClick={() => setPickSlot({ team: def.team, courtSide: def.side, participant })}
+        onSelfClick={() => (isEmpty ? selfJoin(def) : selfLeave())}
         onPayClick={() => setPaymentTarget(participant)}
       />
     );
