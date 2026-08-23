@@ -1197,7 +1197,7 @@ function BottomNav({ view, setView }) {
       : []),
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
-  return (
+  const content = (
     <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-nav)]/95 backdrop-blur-md border-t border-[var(--color-border)] flex px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
       {tabs.map((t) => {
         const active = view === t.id;
@@ -1227,6 +1227,10 @@ function BottomNav({ view, setView }) {
       })}
     </nav>
   );
+  // Portail : la barre est attachée directement à <body>, donc jamais
+  // affectée par un ancêtre (transform, filtre...) ou une bizarrerie de
+  // Safari iOS qui casserait son positionnement "fixed".
+  return createPortal(content, document.body);
 }
 
 /* =============================================================================
@@ -1309,6 +1313,19 @@ function InfoChip({ children }) {
   );
 }
 
+// Abréviations compactes pour l'affichage en colonnes de la liste des joueurs.
+function handAbbrev(hand) {
+  if (hand === "Gaucher") return "G";
+  if (hand === "Ambidextre") return "A";
+  return "D";
+}
+function sideAbbrev(side) {
+  const s = normalizeSide(side);
+  if (s === "Gauche") return "G";
+  if (s === "Polyvalent") return "P";
+  return "D";
+}
+
 function EditPlayerModal({ player, onClose }) {
   const { isAdmin, players } = useAppData();
 
@@ -1340,14 +1357,14 @@ function EditPlayerModal({ player, onClose }) {
   const [saving, setSaving] = useState(false);
 
   const duplicateOwner = useMemo(
-    () => (isAdmin ? findDuplicateOwner(players, accessCode, player.id) : null),
-    [isAdmin, players, accessCode, player.id]
+    () => findDuplicateOwner(players, accessCode, player.id),
+    [players, accessCode, player.id]
   );
   const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
 
   const canSubmit = isAdmin
     ? name.trim().length > 0 && accessCode.length === 4 && !duplicateOwner
-    : true;
+    : accessCode.length === 4 && !duplicateOwner;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -1360,6 +1377,7 @@ function EditPlayerModal({ player, onClose }) {
         federation,
         level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
+        accessCode,
       };
       if (isAdmin) {
         Object.assign(payload, {
@@ -1367,7 +1385,6 @@ function EditPlayerModal({ player, onClose }) {
           email: email.trim(),
           emoji,
           avatarColor,
-          accessCode,
           isAdmin: playerIsAdmin,
           isCreditor,
           isTest,
@@ -1402,9 +1419,36 @@ function EditPlayerModal({ player, onClose }) {
       }
     >
       {!isAdmin && (
-        <p className="text-xs text-[var(--color-text-dim)] mb-4">
-          Seules les informations de jeu ci-dessous peuvent être modifiées ici.
-        </p>
+        <>
+          <p className="text-xs text-[var(--color-text-dim)] mb-4">
+            Vous pouvez modifier vos informations de jeu et votre code PIN de
+            connexion ci-dessous.
+          </p>
+          <Field label="Code PIN de connexion (4 chiffres)">
+            <div className="flex gap-2">
+              <input
+                className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+                value={accessCode}
+                maxLength={4}
+                onChange={(e) =>
+                  setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+              />
+              <button
+                onClick={generateCode}
+                className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+              >
+                <Icon.Dice className="w-4 h-4" /> Générer
+              </button>
+            </div>
+            {duplicateOwner && (
+              <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
+                ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
+                choisir un autre.
+              </p>
+            )}
+          </Field>
+        </>
       )}
 
       {isAdmin && (
@@ -1610,58 +1654,77 @@ function PlayerRow({ player }) {
 
   return (
     <>
-      <Card className="p-4 flex items-center gap-3">
-        <div
-          className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-xl"
-          style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-        >
-          {player.emoji || "🎾"}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold text-sm truncate">{player.name}</span>
-            {isPlayerAdmin(player) && (
-              <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
-                Admin
-              </Badge>
-            )}
-            {player.isCreditor && (
-              <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[10px]">
-                Créancier
-              </Badge>
-            )}
-            {player.isTest && isAdmin && (
-              <Badge tone="danger" className="!px-1.5 !py-0.5 !text-[10px]">
-                Test
-              </Badge>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            <InfoChip>{levelInfo?.label || player.level || "Pas de niveau"}</InfoChip>
-            <InfoChip>{player.dominantHand || "—"}</InfoChip>
-            <InfoChip>Côté {normalizeSide(player.preferredSide) || "—"}</InfoChip>
-            {player.federation && player.federation !== "Aucune" && (
-              <InfoChip>{player.federation}</InfoChip>
-            )}
-          </div>
-        </div>
-        {player.isCreditor && (
-          <div className="text-right shrink-0">
-            <p className="pm-mono font-bold text-[var(--color-lime)] text-sm">
-              {adjustedBalance.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-[10px] text-[var(--color-text-faint)]">solde</p>
-          </div>
-        )}
-        {canEdit && (
-          <button
-            onClick={() => setShowEdit(true)}
-            aria-label="Modifier le profil"
-            className="p-2.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+      <Card className="p-3">
+        <div className="grid grid-cols-[36px_1fr_44px_24px_24px_auto] items-center gap-2.5">
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-base"
+            style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
           >
-            <Icon.Edit className="w-4 h-4" />
-          </button>
-        )}
+            {player.emoji || "🎾"}
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="font-semibold text-sm truncate">{player.name}</span>
+              {isPlayerAdmin(player) && (
+                <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[9px]">
+                  Admin
+                </Badge>
+              )}
+              {player.isCreditor && (
+                <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[9px]">
+                  Créancier
+                </Badge>
+              )}
+              {player.isTest && isAdmin && (
+                <Badge tone="danger" className="!px-1.5 !py-0.5 !text-[9px]">
+                  Test
+                </Badge>
+              )}
+              {player.federation && player.federation !== "Aucune" && (
+                <span className="text-[10px] text-[var(--color-text-faint)]">
+                  {player.federation}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <span
+            className="text-[11px] font-semibold text-[var(--color-text-dim)] text-center truncate"
+            title="Niveau"
+          >
+            {levelInfo?.label || "—"}
+          </span>
+          <span
+            className="w-6 h-6 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-dim)] flex items-center justify-center"
+            title={`Main : ${player.dominantHand || "—"}`}
+          >
+            {handAbbrev(player.dominantHand)}
+          </span>
+          <span
+            className="w-6 h-6 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-dim)] flex items-center justify-center"
+            title={`Côté : ${normalizeSide(player.preferredSide) || "—"}`}
+          >
+            {sideAbbrev(player.preferredSide)}
+          </span>
+
+          <div className="flex items-center gap-1.5 justify-end">
+            {player.isCreditor && (
+              <span className="pm-mono font-bold text-[var(--color-lime)] text-xs whitespace-nowrap">
+                {adjustedBalance.toLocaleString("fr-FR")} €
+              </span>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => setShowEdit(true)}
+                aria-label="Modifier le profil"
+                className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+              >
+                <Icon.Edit className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </Card>
       {showEdit && <EditPlayerModal player={player} onClose={() => setShowEdit(false)} />}
     </>
@@ -1956,11 +2019,27 @@ function PlayersView() {
           subtitle="Ajoutez les membres de votre club pour commencer."
         />
       ) : (
-        <div className="flex flex-col gap-3">
-          {sorted.map((p) => (
-            <PlayerRow key={p.id} player={p} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-[36px_1fr_44px_24px_24px_auto] items-center gap-2.5 px-3 mb-1.5">
+            <span />
+            <span />
+            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
+              Niv.
+            </span>
+            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
+              Main
+            </span>
+            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
+              Côté
+            </span>
+            <span />
+          </div>
+          <div className="flex flex-col gap-2">
+            {sorted.map((p) => (
+              <PlayerRow key={p.id} player={p} />
+            ))}
+          </div>
+        </>
       )}
 
       {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} />}
@@ -3307,6 +3386,121 @@ function SessionCard({ sessionMatches, now }) {
   );
 }
 
+// Résultat compact d'un terrain — juste les noms et le score, pour la carte
+// "Dernier match joué" (purement informative, pas besoin des détails).
+function CompactMatchResult({ match }) {
+  const { isAdmin } = useAppData();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showDateTime, setShowDateTime] = useState(false);
+  const [showEnd, setShowEnd] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const teamA = (match.participants || []).filter((p) => p.team === "A");
+  const teamB = (match.participants || []).filter((p) => p.team === "B");
+  const untracked = (match.participants || []).filter((p) => p.team !== "A" && p.team !== "B");
+  const labelOf = (list) =>
+    list.length ? list.map((p) => getFirstName(p.name)).join(" & ") : "—";
+  const teamALabel = labelOf(teamA.length ? teamA : untracked.slice(0, 2));
+  const teamBLabel = labelOf(teamB.length ? teamB : untracked.slice(2, 4));
+
+  const scoreEntered = hasMatchScore(match);
+  const scoreText = ["set1", "set2", "set3"]
+    .map((k) => getSetDisplay(match.scores?.[k]))
+    .filter(Boolean)
+    .join(" · ");
+  const aWon = match.winningTeam === "A";
+  const bWon = match.winningTeam === "B";
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-amber-200/70 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "text-sm truncate",
+            aWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
+          )}
+        >
+          {aWon && "🏆 "}
+          {teamALabel}
+        </p>
+        <p
+          className={cn(
+            "text-sm truncate",
+            bWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
+          )}
+        >
+          {bWon && "🏆 "}
+          {teamBLabel}
+        </p>
+      </div>
+      <div className="shrink-0 flex items-center gap-2">
+        {scoreEntered ? (
+          <span className="pm-mono text-sm font-bold text-amber-900">{scoreText}</span>
+        ) : (
+          <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
+        )}
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowMenu(true)}
+            aria-label="Paramètres du terrain"
+            className="p-1.5 rounded-full bg-white border border-amber-200 text-amber-700 hover:border-amber-400 shrink-0"
+          >
+            <Icon.Settings className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {showMenu && (
+        <CourtSettingsMenu
+          onClose={() => setShowMenu(false)}
+          onPickDateTime={() => {
+            setShowMenu(false);
+            setShowDateTime(true);
+          }}
+          onPickScore={() => {
+            setShowMenu(false);
+            setShowEnd(true);
+          }}
+          onPickDelete={() => {
+            setShowMenu(false);
+            setShowDeleteConfirm(true);
+          }}
+        />
+      )}
+      {showDateTime && (
+        <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
+      )}
+      {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
+      {showDeleteConfirm && (
+        <DeleteMatchConfirmModal match={match} onClose={() => setShowDeleteConfirm(false)} />
+      )}
+    </div>
+  );
+}
+
+// Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
+// et volontairement simplifiée : juste la date, les noms et le score.
+function LastMatchCard({ sessionMatches }) {
+  const first = sessionMatches[0];
+  return (
+    <div className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white shadow-sm p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon.Trophy className="w-4 h-4 text-amber-600 shrink-0" />
+        <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
+          Dernier résultat
+        </p>
+      </div>
+      <p className="text-sm font-semibold text-amber-900 mb-1">{formatDateFR(first.date)}</p>
+      <div className="flex flex-col">
+        {sessionMatches.map((m) => (
+          <CompactMatchResult key={m.id} match={m} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CreateMatchModal({ onClose }) {
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("20:00");
@@ -3586,6 +3780,112 @@ function CreateSeasonModal({ onClose }) {
   );
 }
 
+// Bandeau personnel — répond directement à "est-ce que je joue bientôt ?" et
+// "est-ce que je dois de l'argent ?", sans dupliquer les cartes détaillées
+// juste en dessous. Concerne le joueur connecté, admin ou non.
+function MyMatchSummary({ now }) {
+  const { connectedPlayer, players, matches } = useAppData();
+
+  const myUpcoming = [...matches]
+    .filter(
+      (m) =>
+        getMatchTiming(m, now) !== "finished" &&
+        (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+    )
+    .sort((a, b) => getMatchStart(a) - getMatchStart(b))[0];
+
+  const myLastFinished = [...matches]
+    .filter(
+      (m) =>
+        m.type === "Saison" &&
+        getMatchTiming(m, now) === "finished" &&
+        (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+    )
+    .sort((a, b) => getMatchStart(b) - getMatchStart(a))[0];
+
+  let owesMoney = null;
+  if (myLastFinished && !connectedPlayer.isCreditor) {
+    const me = myLastFinished.participants.find((p) => p.playerId === connectedPlayer.id);
+    if (me && me.paidStatus !== "paid") owesMoney = myLastFinished;
+  }
+
+  let partnerNames = "";
+  if (myUpcoming) {
+    const me = myUpcoming.participants.find((p) => p.playerId === connectedPlayer.id);
+    const partners = (myUpcoming.participants || []).filter(
+      (p) => me?.team && p.team === me.team && p.playerId !== connectedPlayer.id
+    );
+    partnerNames = partners.map((p) => getFirstName(p.name)).join(" & ");
+  }
+
+  // Accroche motivante — reprend les stats déjà calculées ailleurs (série,
+  // classement), juste mise en avant ici pour donner envie de se connecter.
+  const myStats = computePlayerStats(connectedPlayer.id, matches);
+  const ranked = players
+    .map((p) => ({ id: p.id, stats: computePlayerStats(p.id, matches) }))
+    .filter((r) => r.stats.wins + r.stats.losses > 0)
+    .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins);
+  const myRank = ranked.findIndex((r) => r.id === connectedPlayer.id) + 1;
+
+  let hook = null;
+  if (myStats.streak >= 2 && myStats.streakType === "win") {
+    hook = `🔥 ${myStats.streak} victoires d'affilée — en forme !`;
+  } else if (myRank > 0 && myRank <= 3) {
+    hook = `🏆 ${myRank}${myRank === 1 ? "er" : "ème"} au classement du club`;
+  } else if (myStats.streak >= 2 && myStats.streakType === "loss") {
+    hook = `💪 ${myStats.streak} défaites d'affilée — la revanche approche`;
+  } else if (myStats.bestDuo) {
+    const partnerName = players.find((p) => p.id === myStats.bestDuo.id)?.name;
+    if (partnerName) hook = `🤝 Duo du feu avec ${getFirstName(partnerName)}`;
+  }
+
+  return (
+    <div className="rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
+      <p className="text-sm text-white/80">Bonjour</p>
+      <p className="pm-display font-bold text-lg mb-1">
+        {getFirstName(connectedPlayer.name)} 👋
+      </p>
+      {hook && (
+        <span className="inline-block bg-white/15 rounded-full px-2.5 py-1 text-xs font-semibold mb-2">
+          {hook}
+        </span>
+      )}
+
+      {myUpcoming ? (
+        <p className="text-sm">
+          📅 Vous jouez <span className="font-semibold">{formatDateFR(myUpcoming.date)}</span> à{" "}
+          {myUpcoming.time}
+          {myUpcoming.location ? ` (${myUpcoming.location})` : ""}
+          {partnerNames ? (
+            <>
+              {" "}
+              avec <span className="font-semibold">{partnerNames}</span>
+            </>
+          ) : (
+            ""
+          )}
+          .
+        </p>
+      ) : (
+        <p className="text-sm text-white/90">
+          🎾 Une place vous attend — inscrivez-vous en un tap ci-dessous avant qu'elle
+          ne parte !
+        </p>
+      )}
+
+      {owesMoney && (
+        <p className="text-sm mt-2 pt-2 border-t border-white/20">
+          ⚠️ Vous devez encore régler{" "}
+          <span className="font-semibold">
+            {(owesMoney.matchFeePerPlayer || 0).toLocaleString("fr-FR")} €
+          </span>{" "}
+          pour le match du {formatDateFR(owesMoney.date)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MatchesView() {
   const { matches, isAdmin } = useAppData();
   const now = useNow();
@@ -3619,6 +3919,8 @@ function MatchesView() {
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
       <h2 className="pm-display font-bold text-xl mb-4 text-white">Matchs</h2>
 
+      <MyMatchSummary now={now} />
+
       <div className="mb-6">
         <h3 className="font-semibold text-sm text-white mb-2">
           Prochain match
@@ -3651,12 +3953,11 @@ function MatchesView() {
           <h3 className="font-semibold text-sm text-white mb-2">
             Dernier match joué
           </h3>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {groupMatchesBySession(lastGroup).map((session) => (
-              <SessionCard
+              <LastMatchCard
                 key={`${session[0].date}|${session[0].time}`}
                 sessionMatches={session}
-                now={now}
               />
             ))}
           </div>
