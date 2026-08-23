@@ -1128,7 +1128,7 @@ function WithdrawalAlertsModal({ alerts, onClose }) {
   );
 }
 
-function Header() {
+function Header({ setView }) {
   const { connectedPlayer, isAdmin, logout } = useAppData();
   const withdrawalAlerts = useWithdrawalAlerts();
   const [showAlerts, setShowAlerts] = useState(false);
@@ -1141,7 +1141,11 @@ function Header() {
         <span className="pm-display font-extrabold text-base">Padel Manager</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <button
+          onClick={() => setView("stats")}
+          aria-label="Mon profil"
+          className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-sky-300"
+        >
           <span
             className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
             style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
@@ -1156,7 +1160,7 @@ function Header() {
               Admin
             </Badge>
           )}
-        </div>
+        </button>
         {isAdmin && (
           <button
             onClick={() => setShowAlerts(true)}
@@ -1190,8 +1194,8 @@ function BottomNav({ view, setView }) {
   const { isAdmin, connectedPlayer } = useAppData();
   const tabs = [
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
-    { id: "players", label: "Joueurs", icon: Icon.Users },
-    { id: "stats", label: "Stats", icon: Icon.Chart },
+    { id: "players", label: "Équipe", icon: Icon.Users },
+    { id: "stats", label: "Mon profil", icon: Icon.Chart },
     ...(connectedPlayer.isCreditor
       ? [{ id: "accounting", label: "Compta", icon: Icon.Coin }]
       : []),
@@ -1651,6 +1655,7 @@ function PlayerRow({ player }) {
   const adjustedBalance = player.isCreditor
     ? getCreditorAccounting(player.id, matches).totalPaidAllTime + (player.manualAdjustment || 0)
     : 0;
+  const playerStats = computePlayerStats(player.id, matches);
 
   return (
     <>
@@ -1671,7 +1676,7 @@ function PlayerRow({ player }) {
                   Admin
                 </Badge>
               )}
-              {player.isCreditor && (
+              {player.isCreditor && isAdmin && (
                 <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[9px]">
                   Créancier
                 </Badge>
@@ -1687,6 +1692,11 @@ function PlayerRow({ player }) {
                 </span>
               )}
             </div>
+            <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5 truncate">
+              {playerStats.played === 0
+                ? "Aucune statistique"
+                : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V-${playerStats.losses}D · ${playerStats.winRate}%`}
+            </p>
           </div>
 
           <span
@@ -1709,7 +1719,7 @@ function PlayerRow({ player }) {
           </span>
 
           <div className="flex items-center gap-1.5 justify-end">
-            {player.isCreditor && (
+            {player.isCreditor && (isAdmin || player.id === connectedPlayer.id) && (
               <span className="pm-mono font-bold text-[var(--color-lime)] text-xs whitespace-nowrap">
                 {adjustedBalance.toLocaleString("fr-FR")} €
               </span>
@@ -1950,6 +1960,53 @@ const PLAYER_SORT_OPTIONS = [
   { id: "balance-asc", label: "Solde (débiteur → créditeur)" },
 ];
 
+// Classement du club — top 5 (ou moins si moins de 5 joueurs ont un match
+// décidé), dans le même style que le bandeau "Bonjour". Visible par tous.
+function ClubRankingBanner({ players, matches }) {
+  const ranked = players
+    .map((p) => ({ player: p, stats: computePlayerStats(p.id, matches) }))
+    .filter((r) => r.stats.wins + r.stats.losses > 0)
+    .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins)
+    .slice(0, 5);
+
+  if (ranked.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
+      <p className="text-sm font-semibold text-white/90 mb-3">
+        🏆 Classement du club (% de victoires)
+      </p>
+      <div className="flex flex-col gap-2">
+        {ranked.map((r, i) => (
+          <div
+            key={r.player.id}
+            className="flex items-center gap-3 bg-white/10 rounded-xl px-3 py-2"
+          >
+            <span className="w-4 text-center text-sm font-bold text-white/70 shrink-0">
+              {i + 1}
+            </span>
+            <span
+              className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
+              style={{ backgroundColor: r.player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+            >
+              {r.player.emoji || "🎾"}
+            </span>
+            <span className="flex-1 min-w-0 text-sm font-semibold truncate">
+              {r.player.name}
+            </span>
+            <span className="text-xs text-white/70 shrink-0">
+              {r.stats.wins}V-{r.stats.losses}D
+            </span>
+            <span className="pm-mono font-bold text-sm shrink-0 w-11 text-right">
+              {r.stats.winRate}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PlayersView() {
   const { players, matches, isAdmin } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
@@ -1985,7 +2042,7 @@ function PlayersView() {
   return (
     <div className="px-4 pt-4 pb-28">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="pm-display font-bold text-xl text-white">Joueurs</h2>
+        <h2 className="pm-display font-bold text-xl text-white">Équipe</h2>
         {isAdmin && (
           <Button variant="secondary" className="!py-2 !px-3" onClick={() => setShowAdd(true)}>
             <span className="flex items-center gap-1.5">
@@ -1994,6 +2051,8 @@ function PlayersView() {
           </Button>
         )}
       </div>
+
+      <ClubRankingBanner players={players} matches={matches} />
 
       <div className="mb-4">
         <label className="block text-xs font-semibold uppercase tracking-wide text-white/80 mb-1.5">
@@ -2362,6 +2421,28 @@ function computePlayerStats(playerId, matches) {
     streak,
     streakType,
   };
+}
+
+// Série des 10 derniers matchs (du plus ancien au plus récent) — V (victoire),
+// R (revers/défaite), ou X (match sans résultat exploitable : pas de score,
+// ou équipes changées en cours de match).
+function getRecentForm(playerId, matches, limit = 10) {
+  const relevant = matches
+    .filter(
+      (m) =>
+        getMatchTiming(m) === "finished" &&
+        (m.participants || []).some((p) => p.playerId === playerId)
+    )
+    .sort((a, b) => getMatchStart(a) - getMatchStart(b));
+
+  return relevant.slice(-limit).map((m) => {
+    const me = m.participants.find((p) => p.playerId === playerId);
+    let result = "X";
+    if (!m.teamsUnreliable && me?.team && m.winningTeam) {
+      result = me.team === m.winningTeam ? "V" : "R";
+    }
+    return { id: m.id, date: m.date, result };
+  });
 }
 
 // Face-à-face entre deux joueurs choisis : équipiers et adversaires,
@@ -3917,8 +3998,6 @@ function MatchesView() {
 
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
-      <h2 className="pm-display font-bold text-xl mb-4 text-white">Matchs</h2>
-
       <MyMatchSummary now={now} />
 
       <div className="mb-6">
@@ -4084,16 +4163,6 @@ function AdminView() {
     { label: "Paiements en attente", value: unpaidCount, icon: Icon.Coin },
   ];
 
-  // Classement par % de victoires — seuls les joueurs avec au moins un match
-  // décidé (victoire ou défaite) sont classés.
-  const ranked = players
-    .map((p) => ({ player: p, stats: computePlayerStats(p.id, matches) }))
-    .filter((r) => r.stats.wins + r.stats.losses > 0)
-    .sort(
-      (a, b) =>
-        b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins
-    );
-
   return (
     <div className="px-4 pt-4 pb-28">
       <div className="flex items-center justify-between mb-4">
@@ -4118,42 +4187,6 @@ function AdminView() {
           </Card>
         ))}
       </div>
-
-      <h3 className="font-semibold text-sm text-white mb-3">
-        Classement du club (% de victoires)
-      </h3>
-      {ranked.length === 0 ? (
-        <EmptyState
-          icon={<Icon.Trophy className="w-6 h-6" />}
-          title="Aucun match décidé pour l'instant"
-          subtitle="Le classement apparaîtra dès qu'un vainqueur sera renseigné sur un match."
-        />
-      ) : (
-        <div className="flex flex-col gap-2 mb-6">
-          {ranked.map((r, i) => (
-            <Card key={r.player.id} className="p-3.5 flex items-center gap-3">
-              <span className="w-6 text-center text-sm font-bold text-[var(--color-text-faint)] shrink-0">
-                {i + 1}
-              </span>
-              <span
-                className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
-                style={{ backgroundColor: r.player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-              >
-                {r.player.emoji || "🎾"}
-              </span>
-              <span className="flex-1 min-w-0 text-sm font-semibold truncate">
-                {r.player.name}
-              </span>
-              <span className="text-xs text-[var(--color-text-dim)] text-right shrink-0">
-                {r.stats.wins}V-{r.stats.losses}D
-              </span>
-              <span className="pm-mono font-bold text-emerald-600 text-sm shrink-0 w-12 text-right">
-                {r.stats.winRate}%
-              </span>
-            </Card>
-          ))}
-        </div>
-      )}
 
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm text-white">
@@ -4209,8 +4242,9 @@ function StatKpiCard({ icon: IconEl, value, label }) {
 }
 
 function StatsView() {
-  const { connectedPlayer, isAdmin, players, matches } = useAppData();
+  const { connectedPlayer, players, matches } = useAppData();
   const myStats = computePlayerStats(connectedPlayer.id, matches);
+  const recentForm = getRecentForm(connectedPlayer.id, matches);
   const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
 
   const otherPlayers = players.filter((p) => p.id !== connectedPlayer.id);
@@ -4218,16 +4252,19 @@ function StatsView() {
   const [h2hB, setH2hB] = useState(otherPlayers[0]?.id || "");
   const h2h = h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null;
 
+  const formStyle = {
+    V: "bg-emerald-500 text-white",
+    R: "bg-rose-500 text-white",
+    X: "bg-amber-500 text-white",
+  };
+
   return (
     <div className="px-4 pt-4 pb-28">
-      <h2 className="pm-display font-bold text-xl mb-1 text-white">Statistiques</h2>
+      <h2 className="pm-display font-bold text-xl mb-1 text-white">Mon profil</h2>
       <p className="text-xs text-white/80 mb-4">
         Calculées uniquement sur les matchs déjà terminés.
       </p>
 
-      <h3 className="font-semibold text-sm text-white mb-3">
-        Mes statistiques
-      </h3>
       {myStats.played === 0 ? (
         <Card className="p-5 mb-6">
           <p className="text-sm text-[var(--color-text-dim)] text-center">
@@ -4236,13 +4273,44 @@ function StatsView() {
         </Card>
       ) : (
         <>
+          {/* Bandeau "Forme" — pourcentage de victoires + 10 derniers résultats */}
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold">
+                  Forme actuelle
+                </p>
+                <p className="pm-display text-4xl font-extrabold leading-none mt-1">
+                  {myStats.winRate}%
+                </p>
+                <p className="text-xs text-[var(--color-text-dim)] mt-1">
+                  {myStats.wins}V — {myStats.losses}D sur {myStats.played} match
+                  {myStats.played > 1 ? "s" : ""}
+                </p>
+              </div>
+              <Icon.Trophy className="w-9 h-9 text-amber-400 shrink-0" />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {recentForm.map((f, i) => (
+                <span
+                  key={f.id + i}
+                  title={formatDateFR(f.date)}
+                  className={cn(
+                    "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+                    formStyle[f.result]
+                  )}
+                >
+                  {f.result}
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] text-[var(--color-text-faint)] mt-1.5">
+              {recentForm.length} dernier{recentForm.length > 1 ? "s" : ""} match
+              {recentForm.length > 1 ? "s" : ""} · du plus ancien au plus récent
+            </p>
+          </Card>
+
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <StatKpiCard icon={Icon.Trophy} value={myStats.played} label="Matchs joués" />
-            <StatKpiCard
-              icon={Icon.Check}
-              value={`${myStats.wins}V — ${myStats.losses}D`}
-              label={`${myStats.winRate}% de victoires`}
-            />
             <StatKpiCard
               icon={Icon.Flame}
               value={myStats.streak > 0 ? myStats.streak : "—"}
@@ -4397,41 +4465,6 @@ function StatsView() {
           </div>
         )}
       </Card>
-
-      {isAdmin && (
-        <>
-          <h3 className="font-semibold text-sm text-white mb-3">
-            Tous les joueurs
-          </h3>
-          <div className="flex flex-col gap-2">
-            {players.map((p) => {
-              const s = computePlayerStats(p.id, matches);
-              return (
-                <Card key={p.id} className="p-3.5 flex items-center gap-3">
-                  <span
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
-                    style={{ backgroundColor: p.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-                  >
-                    {p.emoji || "🎾"}
-                  </span>
-                  <span className="flex-1 min-w-0 text-sm font-semibold truncate">
-                    {p.name}
-                  </span>
-                  {s.played === 0 ? (
-                    <span className="text-xs text-[var(--color-text-faint)] italic shrink-0">
-                      Aucune statistique
-                    </span>
-                  ) : (
-                    <span className="text-xs text-[var(--color-text-dim)] text-right shrink-0">
-                      {s.played} matchs · {s.wins}V-{s.losses}D · {s.winRate}%
-                    </span>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -4644,7 +4677,7 @@ function MainApp() {
       value={{ ...useAppData(), matches: matchesHook.matches }}
     >
       <div className="pm-root">
-        <Header />
+        <Header setView={setView} />
         {matchesHook.loading ? (
           <Spinner />
         ) : view === "matches" ? (
