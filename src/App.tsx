@@ -2439,7 +2439,7 @@ function getRecentForm(playerId, matches, limit = 10) {
     const me = m.participants.find((p) => p.playerId === playerId);
     let result = "X";
     if (!m.teamsUnreliable && me?.team && m.winningTeam) {
-      result = me.team === m.winningTeam ? "V" : "R";
+      result = me.team === m.winningTeam ? "V" : "D";
     }
     return { id: m.id, date: m.date, result };
   });
@@ -4347,8 +4347,8 @@ function StatsView() {
 
   const formStyle = {
     V: "bg-emerald-500 text-white",
-    R: "bg-rose-500 text-white",
-    X: "bg-amber-500 text-white",
+    D: "bg-rose-500 text-white",
+    X: "bg-amber-500",
   };
 
   // Résumé matchs — total joués vs 10 derniers, avec victoires pour chaque
@@ -4489,12 +4489,13 @@ function StatsView() {
                       formStyle[f.result]
                     )}
                   >
-                    {f.result}
+                    {f.result !== "X" && f.result}
                   </span>
                 ))}
               </div>
               <p className="text-[10px] text-[var(--color-text-faint)] mt-2">
-                Du plus ancien au plus récent · V vert, R rouge, X orange (sans score)
+                Du plus ancien au plus récent · V vert (victoire), D rouge (défaite), pastille
+                orange (sans score)
               </p>
             </Card>
 
