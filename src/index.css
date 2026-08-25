@@ -1,3 +1,10 @@
+/* 1. TOUJOURS les imports d'URL externes (ex: Google Fonts) tout en haut */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+/* 2. L'import de Tailwind CSS juste après */
+@import "tailwindcss";
+
+/* 3. Vos variables et votre CSS personnalisés en dessous */
 /* ─────────────────────────────────────────────────────────────────────────
    Design tokens — palette "crème pastel élégante" (blanc chaud / bleu doux /
    sauge). Anciennement injecté via un composant <GlobalStyles/> ; c'est
@@ -5,7 +12,6 @@
    (import "./index.css") — plus rapide (pas de <style> réinjecté à chaque
    rendu) et plus conventionnel.
    ───────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
 :root{
   --color-bg: #4361EE;
