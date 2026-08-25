@@ -1,5 +1,73 @@
-@import "tailwindcss";
+/* ─────────────────────────────────────────────────────────────────────────
+   Design tokens — palette "crème pastel élégante" (blanc chaud / bleu doux /
+   sauge). Anciennement injecté via un composant <GlobalStyles/> ; c'est
+   maintenant un fichier CSS normal, importé une seule fois dans main.jsx
+   (import "./index.css") — plus rapide (pas de <style> réinjecté à chaque
+   rendu) et plus conventionnel.
+   ───────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
-body {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+:root{
+  --color-bg: #4361EE;
+  --color-nav: #FAF8F5;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F4EFE7;
+  --color-border: #E8E2D8;
+  --color-text: #1E293B;
+  --color-text-dim: #64748B;
+  --color-text-faint: #94A3B8;
+  --color-lime: #6FA98A;
+  --color-lime-dim: #5B8F73;
+  --color-blue: #7DB8DB;
+  --color-paid: #34D399;
+  --color-unpaid: #FB923C;
+  --color-danger: #F87171;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
+
+.pm-root{
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(111,169,138,0.07), transparent 40%),
+    radial-gradient(circle at 100% 20%, rgba(125,184,219,0.09), transparent 45%),
+    var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+}
+.pm-root *{ font-family: inherit; }
+.pm-display{ font-family: var(--font-display); letter-spacing: -0.02em; }
+.pm-mono{ font-family: var(--font-mono); }
+
+.pm-scroll::-webkit-scrollbar{ display:none; }
+.pm-scroll{ -ms-overflow-style:none; scrollbar-width:none; }
+
+.pm-scroll-visible{ scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+.pm-scroll-visible::-webkit-scrollbar{ width: 6px; }
+.pm-scroll-visible::-webkit-scrollbar-track{ background: transparent; }
+.pm-scroll-visible::-webkit-scrollbar-thumb{ background-color: var(--color-border); border-radius: 999px; }
+
+@keyframes pm-pulse{
+  0%,100%{ opacity:1; } 50%{ opacity:.45; }
+}
+.pm-pulse{ animation: pm-pulse 1.6s ease-in-out infinite; }
+
+@keyframes pm-shake{
+  10%,90%{ transform: translateX(-2px); }
+  20%,80%{ transform: translateX(4px); }
+  30%,50%,70%{ transform: translateX(-8px); }
+  40%,60%{ transform: translateX(8px); }
+}
+.pm-shake{ animation: pm-shake 0.5s cubic-bezier(.36,.07,.19,.97); }
+
+@keyframes pm-rise{
+  from{ opacity:0; transform: translateY(12px); }
+  to{ opacity:1; transform: translateY(0); }
+}
+.pm-rise{ animation: pm-rise .35s ease-out both; }
+
+@keyframes pm-fade{
+  from{ opacity:0; } to{ opacity:1; }
+}
+.pm-fade{ animation: pm-fade .2s ease-out both; }
