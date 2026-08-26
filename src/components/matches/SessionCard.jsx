@@ -4,10 +4,10 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
-import { hasMatchScore, getSetDisplay } from "../../lib/matchLogic";
+import { hasMatchScore, getSetDisplay, getMatchTiming } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Card, Badge } from "../ui";
+import { Card, Badge, Modal } from "../ui";
 import { CourtPanel } from "./CourtPanel";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { EndMatchModal } from "./EndMatchModal";
@@ -93,21 +93,72 @@ export function SessionCard({ sessionMatches, now }) {
 // accès qu'aux boutons de présence et à leurs totaux : on n'affiche alors que
 // le(s) nom(s) de club (sans numéro de terrain), placé(s) directement après
 // l'heure, dans la même police que la date/heure.
-export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false }) {
+//
+// Une fois le match terminé (onglet "Terminés" de "Reste de la saison") :
+// - si le joueur connecté y a participé, le score s'affiche directement
+//   (même présentation que le bloc "Dernier match joué", en plus petit) ;
+// - sinon, seules la date/heure/le(s) club(s) restent affichées (plus de
+//   boutons de présence, le match ayant déjà commencé) — un clic dessus
+//   ouvre une petite fenêtre montrant, elle aussi, le score.
+export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false, now }) {
+  const { connectedPlayer } = useAppData();
+  const [showResult, setShowResult] = useState(false);
   const first = sessionMatches[0];
 
   if (restOfSeason) {
     const clubs = [
       ...new Set(sessionMatches.map((m) => clubNameOnly(m.location)).filter(Boolean)),
     ];
+    const dateLine = (
+      <p className="pm-display font-bold text-base">
+        {formatDateFR(first.date)} · {formatTimeFR(first.time)}
+        {clubs.length > 0 && <> · {clubs.join(" · ")}</>}
+      </p>
+    );
+    const isFinished = getMatchTiming(first, now) === "finished";
+    const participated = sessionMatches.some((m) =>
+      (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
+    );
+
+    if (isFinished && participated) {
+      return (
+        <Card className="p-4 pm-rise">
+          <div className="mb-2.5">{dateLine}</div>
+          <MatchResultBlock sessionMatches={sessionMatches} compact />
+        </Card>
+      );
+    }
+
+    if (isFinished) {
+      return (
+        <>
+          <Card className="p-4 pm-rise">
+            <button
+              type="button"
+              onClick={() => setShowResult(true)}
+              className="w-full text-left"
+            >
+              <p className="pm-display font-bold text-base underline decoration-dotted decoration-2 underline-offset-2 decoration-[var(--color-text-faint)]">
+                {formatDateFR(first.date)} · {formatTimeFR(first.time)}
+                {clubs.length > 0 && <> · {clubs.join(" · ")}</>}
+              </p>
+              <p className="text-[11px] text-[var(--color-text-faint)] mt-1">
+                Match terminé · touchez pour voir le score
+              </p>
+            </button>
+          </Card>
+          {showResult && (
+            <Modal title="Résultat du match" onClose={() => setShowResult(false)}>
+              <MatchResultBlock sessionMatches={sessionMatches} compact />
+            </Modal>
+          )}
+        </>
+      );
+    }
+
     return (
       <Card className="p-4 pm-rise">
-        <div className="mb-3">
-          <p className="pm-display font-bold text-base">
-            {formatDateFR(first.date)} · {formatTimeFR(first.time)}
-            {clubs.length > 0 && <> · {clubs.join(" · ")}</>}
-          </p>
-        </div>
+        <div className="mb-3">{dateLine}</div>
         <AvailabilityButtons sessionMatches={sessionMatches} />
       </Card>
     );
@@ -131,8 +182,10 @@ export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false }
 }
 
 // Résultat compact d'un terrain — juste les noms et le score, pour la carte
-// "Dernier match joué" (purement informative, pas besoin des détails).
-export function CompactMatchResult({ match }) {
+// "Dernier match joué" (purement informative, pas besoin des détails), et,
+// en version "compact" (encore plus petite), pour les matchs terminés de
+// "Reste de la saison".
+export function CompactMatchResult({ match, compact = false }) {
   const { isAdmin } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
@@ -156,11 +209,17 @@ export function CompactMatchResult({ match }) {
   const bWon = match.winningTeam === "B";
 
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-amber-200/70 last:border-b-0">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 border-b border-amber-200/70 last:border-b-0",
+        compact ? "py-1.5" : "py-2.5"
+      )}
+    >
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            "text-sm truncate",
+            "truncate",
+            compact ? "text-xs" : "text-sm",
             aWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
           )}
         >
@@ -169,7 +228,8 @@ export function CompactMatchResult({ match }) {
         </p>
         <p
           className={cn(
-            "text-sm truncate",
+            "truncate",
+            compact ? "text-xs" : "text-sm",
             bWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
           )}
         >
@@ -179,7 +239,14 @@ export function CompactMatchResult({ match }) {
       </div>
       <div className="shrink-0 flex items-center gap-2">
         {scoreEntered ? (
-          <span className="pm-mono text-sm font-bold text-amber-900">{scoreText}</span>
+          <span
+            className={cn(
+              "pm-mono font-bold text-amber-900",
+              compact ? "text-xs" : "text-sm"
+            )}
+          >
+            {scoreText}
+          </span>
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
@@ -223,24 +290,45 @@ export function CompactMatchResult({ match }) {
   );
 }
 
-// Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
-// et volontairement simplifiée : juste la date, les noms et le score.
-export function LastMatchCard({ sessionMatches }) {
+// Bloc "score" réutilisable — accent doré, une ligne de titre + la date +
+// le(s) résultat(s) compact(s). Utilisé en taille normale pour la carte
+// "Dernier match joué", et en taille réduite (compact = true) pour les
+// matchs terminés de "Reste de la saison" (affichage direct ou dans la
+// petite fenêtre de résultat).
+export function MatchResultBlock({ sessionMatches, compact = false, label = "Résultat" }) {
   const first = sessionMatches[0];
   return (
-    <div className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white shadow-sm p-4">
+    <div
+      className={cn(
+        "rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white",
+        compact ? "p-3" : "shadow-sm p-4"
+      )}
+    >
       <div className="flex items-center gap-2 mb-1">
-        <Icon.Trophy className="w-4 h-4 text-amber-600 shrink-0" />
-        <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-          Dernier résultat
+        <Icon.Trophy className={cn("text-amber-600 shrink-0", compact ? "w-3.5 h-3.5" : "w-4 h-4")} />
+        <p
+          className={cn(
+            "font-bold uppercase tracking-wide text-amber-700",
+            compact ? "text-[10px]" : "text-xs"
+          )}
+        >
+          {label}
         </p>
       </div>
-      <p className="text-sm font-semibold text-amber-900 mb-1">{formatDateFR(first.date)}</p>
+      <p className={cn("font-semibold text-amber-900 mb-1", compact ? "text-xs" : "text-sm")}>
+        {formatDateFR(first.date)}
+      </p>
       <div className="flex flex-col">
         {sessionMatches.map((m) => (
-          <CompactMatchResult key={m.id} match={m} />
+          <CompactMatchResult key={m.id} match={m} compact={compact} />
         ))}
       </div>
     </div>
   );
+}
+
+// Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
+// et volontairement simplifiée : juste la date, les noms et le score.
+export function LastMatchCard({ sessionMatches }) {
+  return <MatchResultBlock sessionMatches={sessionMatches} label="Dernier résultat" />;
 }
