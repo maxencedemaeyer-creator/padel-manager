@@ -149,6 +149,13 @@ const Icon = {
       <path d="M12 13v3M9 20h6M10 20v-2h4v2" />
     </svg>
   ),
+  Question: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.2 9.5a2.8 2.8 0 015.4 1c0 1.9-2.6 2.1-2.6 4" />
+      <circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 };
 
 
