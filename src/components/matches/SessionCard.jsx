@@ -11,13 +11,20 @@ import { Card, Badge } from "../ui";
 import { CourtPanel } from "./CourtPanel";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { EndMatchModal } from "./EndMatchModal";
-import { AvailabilityButtons, RespondedPlayersPanel } from "./Availability";
+import {
+  AvailabilityButtons,
+  RespondedPlayersPanel,
+  ManagePresenceModal,
+} from "./Availability";
 
 export function SessionCard({ sessionMatches, now }) {
   const { isAdmin } = useAppData();
   // Admin : joueur sélectionné dans le panneau "réponses" pour un placement
   // rapide sur le terrain (touche le joueur, puis touche une place vide).
   const [quickAssignPlayer, setQuickAssignPlayer] = useState(null);
+  // Admin : modale permettant de modifier la présence (la sienne ou celle
+  // d'un autre joueur) sans passer par le placement sur le terrain.
+  const [showManagePresence, setShowManagePresence] = useState(false);
   const first = sessionMatches[0];
   return (
     <Card className="p-4 pm-rise">
@@ -30,6 +37,17 @@ export function SessionCard({ sessionMatches, now }) {
         </Badge>
       </div>
 
+      {isAdmin && (
+        <div className="flex items-center justify-end mb-1">
+          <button
+            type="button"
+            onClick={() => setShowManagePresence(true)}
+            className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
+          >
+            Modifier une présence
+          </button>
+        </div>
+      )}
       {isAdmin && (
         <RespondedPlayersPanel
           sessionMatches={sessionMatches}
@@ -50,13 +68,18 @@ export function SessionCard({ sessionMatches, now }) {
         ))}
       </div>
 
-      {!isAdmin && (
-        <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
-            Votre présence
-          </p>
-          <AvailabilityButtons sessionMatches={sessionMatches} />
-        </div>
+      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+          Votre présence
+        </p>
+        <AvailabilityButtons sessionMatches={sessionMatches} />
+      </div>
+
+      {showManagePresence && (
+        <ManagePresenceModal
+          sessionMatches={sessionMatches}
+          onClose={() => setShowManagePresence(false)}
+        />
       )}
     </Card>
   );
