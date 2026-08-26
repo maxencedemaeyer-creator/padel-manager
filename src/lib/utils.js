@@ -19,6 +19,28 @@ export function formatDateFR(dateStr) {
   })}`;
 }
 
+// Formate une heure "HH:MM" en écriture française courante ("20:00" → "20h",
+// "19:45" → "19h45", "04:05" → "04h05") : on masque les minutes quand elles
+// sont nulles, sinon on les garde sur 2 chiffres.
+export function formatTimeFR(timeStr) {
+  if (!timeStr) return "";
+  const [h, m] = String(timeStr).split(":");
+  if (!m) return `${h}h`;
+  const minutes = parseInt(m, 10);
+  if (!minutes) return `${h}h`;
+  return `${h}h${m.padStart(2, "0")}`;
+}
+
+// Isole le nom du club depuis un lieu de match ("Club VG — Terrain 6" →
+// "Club VG") en retirant le suffixe "Terrain N". Si le lieu ne contient pas
+// de nom de club (ex. "Terrain 3" sur un match ponctuel), on retombe sur le
+// lieu tel quel plutôt que d'afficher un texte vide.
+export function clubNameOnly(location) {
+  if (!location) return "";
+  const stripped = location.replace(/\s*[-—]\s*Terrain\s*\d+\s*$/i, "").trim();
+  return stripped || location;
+}
+
 // IMPORTANT : ne jamais utiliser .toISOString() pour obtenir une date
 // "YYYY-MM-DD" — ça convertit en UTC et peut faire basculer sur la veille
 // selon le fuseau horaire (ex. minuit en Belgique = 22h UTC la veille).
