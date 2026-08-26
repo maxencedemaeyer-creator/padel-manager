@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Matchs" — bandeau personnel, prochain match, dernier match joué,
+// Onglet "Matchs" — bandeau personnel, dernier match joué, prochain match,
 // reste de la saison, création d'un match ponctuel (admin).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
@@ -45,6 +45,22 @@ export function MatchesView() {
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
       <MyMatchSummary now={now} />
 
+      {lastGroup.length > 0 && (
+        <div className="mb-6">
+          <h3 className="font-semibold text-sm text-white mb-2">
+            Dernier match joué
+          </h3>
+          <div className="flex flex-col gap-3">
+            {groupMatchesBySession(lastGroup).map((session) => (
+              <LastMatchCard
+                key={`${session[0].date}|${session[0].time}`}
+                sessionMatches={session}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mb-6">
         <h3 className="font-semibold text-sm text-white mb-2">
           Prochain match
@@ -71,22 +87,6 @@ export function MatchesView() {
           />
         )}
       </div>
-
-      {lastGroup.length > 0 && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-sm text-white mb-2">
-            Dernier match joué
-          </h3>
-          <div className="flex flex-col gap-3">
-            {groupMatchesBySession(lastGroup).map((session) => (
-              <LastMatchCard
-                key={`${session[0].date}|${session[0].time}`}
-                sessionMatches={session}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       <div>
         <div className="flex items-center justify-between mb-3">
