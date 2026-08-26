@@ -49,6 +49,12 @@ const Icon = {
       <circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none" />
     </svg>
   ),
+  Key: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12.3L20 3.3M15.5 3.5L18.5 6.5M13 6L16 9" />
+    </svg>
+  ),
   Check: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" {...p}>
       <path d="M4 12l5 5L20 6" />
