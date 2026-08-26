@@ -1,13 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Onglet "Mon profil" — en-tête, statistiques (anneau de progression),
-// forme récente, personnes marquantes, préférences, face-à-face.
+// forme récente, personnes marquantes, préférences (éditables), face-à-face.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { cn, formatDateFR, getInitials, normalizeSide } from "../lib/utils";
-import { LEVELS, AVATAR_COLOR_CHOICES } from "../lib/constants";
+import {
+  LEVELS,
+  AVATAR_COLOR_CHOICES,
+  HAND_OPTIONS,
+  SIDE_OPTIONS,
+  FEDERATION_OPTIONS,
+} from "../lib/constants";
 import { computePlayerStats, getRecentForm, computeHeadToHead } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
-import { Card, Field, inputClass } from "../components/ui";
+import { Card, Field, inputClass, Modal, Button } from "../components/ui";
+import Icon from "../components/icons/Icon";
 
 function ProgressRing({ value, size = 110, stroke = 10, label }) {
   const radius = (size - stroke) / 2;
@@ -85,9 +94,11 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
 }
 
 // Ligne de préférence — icône ronde à gauche, libellé fin, valeur en gras.
-function PreferenceRow({ emoji, label, value }) {
+// Si `onEdit` est fourni, un petit bouton crayon apparaît en haut à droite
+// de la zone pour permettre de modifier cette préférence.
+function PreferenceRow({ emoji, label, value, onEdit }) {
   return (
-    <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-[var(--color-border)]">
+    <div className="relative flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-[var(--color-border)]">
       <span className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-lg shrink-0">
         {emoji}
       </span>
@@ -95,10 +106,80 @@ function PreferenceRow({ emoji, label, value }) {
         <p className="text-[11px] text-[var(--color-text-faint)]">{label}</p>
         <p className="text-sm font-bold truncate">{value}</p>
       </div>
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Modifier : ${label}`}
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+        >
+          <Icon.Edit className="w-3 h-3" />
+        </button>
+      )}
     </div>
   );
 }
 
+// Petite fenêtre de modification d'une préférence — s'ouvre au clic sur le
+// crayon d'une zone. Propose la liste de choix, "Valider" écrit directement
+// sur Firebase (collection players) et referme la fenêtre.
+function EditPreferenceModal({ player, field, title, options, onClose }) {
+  const initial =
+    field === "level"
+      ? player.level || "Pas de niveau"
+      : field === "preferredSide"
+      ? normalizeSide(player.preferredSide) || "Polyvalent"
+      : field === "federation"
+      ? player.federation || "Aucune"
+      : player.dominantHand || "Droitier";
+
+  const [value, setValue] = useState(initial);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const updates = { [field]: value };
+      if (field === "level") {
+        const levelInfo = LEVELS.find((l) => l.label === value);
+        updates.levelSortValue = levelInfo ? levelInfo.value : 0;
+      }
+      await updateDoc(doc(db, "players", player.id), updates);
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Modifier : ${title}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Enregistrement..." : "Valider"}
+          </Button>
+        </>
+      }
+    >
+      <Field label={title}>
+        <select className={inputClass} value={value} onChange={(e) => setValue(e.target.value)}>
+          {options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </Modal>
+  );
+}
 
 export function StatsView() {
   const { connectedPlayer, players, matches } = useAppData();
@@ -111,6 +192,8 @@ export function StatsView() {
   const [h2hA, setH2hA] = useState(connectedPlayer.id);
   const [h2hB, setH2hB] = useState(otherPlayers[0]?.id || "");
   const h2h = h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null;
+
+  const [editingPref, setEditingPref] = useState(null);
 
   const formStyle = {
     V: "bg-emerald-500 text-white",
@@ -148,11 +231,19 @@ export function StatsView() {
   ].filter(Boolean);
 
   const preferences = [
-    { emoji: "👋", label: "Main dominante", value: connectedPlayer.dominantHand || "Non renseigné" },
+    {
+      emoji: "👋",
+      label: "Main dominante",
+      value: connectedPlayer.dominantHand || "Non renseigné",
+      field: "dominantHand",
+      options: HAND_OPTIONS,
+    },
     {
       emoji: "📍",
       label: "Position sur le court",
       value: normalizeSide(connectedPlayer.preferredSide) || "Non renseigné",
+      field: "preferredSide",
+      options: SIDE_OPTIONS,
     },
     {
       emoji: "🎖️",
@@ -161,6 +252,8 @@ export function StatsView() {
         (LEVELS.find((l) => l.value === connectedPlayer.levelSortValue)?.label) ||
         connectedPlayer.level ||
         "Non renseigné",
+      field: "level",
+      options: LEVELS.map((l) => l.label),
     },
     {
       emoji: "🏛️",
@@ -169,6 +262,8 @@ export function StatsView() {
         connectedPlayer.federation && connectedPlayer.federation !== "Aucune"
           ? connectedPlayer.federation
           : "Non renseignée",
+      field: "federation",
+      options: FEDERATION_OPTIONS,
     },
   ];
 
@@ -284,13 +379,30 @@ export function StatsView() {
           </>
         )}
 
-        {/* Préférences du joueur */}
+        {/* Préférences du joueur — modifiables via le crayon en haut à droite
+            de chaque zone */}
         <h3 className="pm-display font-bold text-lg text-white mb-3">Préférences du joueur</h3>
         <div className="flex flex-col gap-2 mb-6">
           {preferences.map((p) => (
-            <PreferenceRow key={p.label} emoji={p.emoji} label={p.label} value={p.value} />
+            <PreferenceRow
+              key={p.label}
+              emoji={p.emoji}
+              label={p.label}
+              value={p.value}
+              onEdit={() => setEditingPref(p)}
+            />
           ))}
         </div>
+
+        {editingPref && (
+          <EditPreferenceModal
+            player={connectedPlayer}
+            field={editingPref.field}
+            title={editingPref.label}
+            options={editingPref.options}
+            onClose={() => setEditingPref(null)}
+          />
+        )}
 
         {/* Face-à-face — restylé plus léger */}
         <h3 className="pm-display font-bold text-lg text-white mb-3">Face-à-face</h3>
