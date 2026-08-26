@@ -24,9 +24,12 @@ import { CreateMatchModal } from "../components/matches/CreateMatchModal";
 const UPCOMING_WINDOW_DAYS = 15;
 // Nombre de dates de match (sessions) à afficher dans "Prochains matchs".
 const UPCOMING_SESSIONS_COUNT = 2;
+// Nombre de jours après SON dernier match joué pendant lesquels le bloc
+// "Dernier match joué" reste visible pour un joueur donné.
+const LAST_MATCH_WINDOW_DAYS = 15;
 
 export function MatchesView() {
-  const { matches, isAdmin } = useAppData();
+  const { matches, isAdmin, connectedPlayer } = useAppData();
   const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
@@ -50,8 +53,18 @@ export function MatchesView() {
   );
   const nextGroup = upcomingWithinWindow.filter((m) => nextDates.includes(m.date));
 
-  // Dernier match joué : toutes les rencontres du dernier jour déjà terminé.
-  const lastDate = finishedDesc[0]?.date;
+  // Dernier match joué : uniquement si LE JOUEUR CONNECTÉ a lui-même déjà
+  // joué un match terminé, et seulement tant que ce match date de moins de
+  // 15 jours calendrier — sinon le bloc disparaît pour lui (mais reste
+  // visible pour un autre joueur ayant, lui, joué plus récemment).
+  const myFinishedDesc = finishedDesc.filter((m) =>
+    (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+  );
+  const myLastPlayed = myFinishedDesc[0];
+  const lastDate =
+    myLastPlayed && daysUntilMatch(myLastPlayed, now) > -LAST_MATCH_WINDOW_DAYS
+      ? myLastPlayed.date
+      : null;
   const lastGroup = lastDate ? finishedDesc.filter((m) => m.date === lastDate) : [];
 
   const highlightedIds = new Set([...nextGroup, ...lastGroup].map((m) => m.id));
