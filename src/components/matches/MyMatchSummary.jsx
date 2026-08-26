@@ -2,7 +2,7 @@
 // Bandeau personnel en tête de l'onglet Matchs : prochain match perso,
 // rappel de paiement, accroche motivante (série/classement).
 // ─────────────────────────────────────────────────────────────────────────
-import { formatDateFR, getFirstName } from "../../lib/utils";
+import { formatDateFR, formatTimeFR, getFirstName } from "../../lib/utils";
 import { getMatchStart, getMatchTiming } from "../../lib/matchLogic";
 import { computePlayerStats } from "../../lib/stats";
 import { useAppData } from "../../context/AppContext";
@@ -77,7 +77,7 @@ export function MyMatchSummary({ now }) {
       {myUpcoming ? (
         <p className="text-sm">
           📅 Vous jouez <span className="font-semibold">{formatDateFR(myUpcoming.date)}</span> à{" "}
-          {myUpcoming.time}
+          {formatTimeFR(myUpcoming.time)}
           {myUpcoming.location ? ` (${myUpcoming.location})` : ""}
           {partnerNames ? (
             <>
