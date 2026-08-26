@@ -11,8 +11,20 @@ import { Card, Badge } from "../ui";
 import { CourtPanel } from "./CourtPanel";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { EndMatchModal } from "./EndMatchModal";
+import {
+  AvailabilityButtons,
+  RespondedPlayersPanel,
+  ManagePresenceModal,
+} from "./Availability";
 
 export function SessionCard({ sessionMatches, now }) {
+  const { isAdmin } = useAppData();
+  // Admin : joueur sélectionné dans le panneau "réponses" pour un placement
+  // rapide sur le terrain (touche le joueur, puis touche une place vide).
+  const [quickAssignPlayer, setQuickAssignPlayer] = useState(null);
+  // Admin : modale permettant de modifier la présence (la sienne ou celle
+  // d'un autre joueur) sans passer par le placement sur le terrain.
+  const [showManagePresence, setShowManagePresence] = useState(false);
   const first = sessionMatches[0];
   return (
     <Card className="p-4 pm-rise">
@@ -24,11 +36,73 @@ export function SessionCard({ sessionMatches, now }) {
           {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
         </Badge>
       </div>
+
+      {isAdmin && (
+        <div className="flex items-center justify-end mb-1">
+          <button
+            type="button"
+            onClick={() => setShowManagePresence(true)}
+            className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
+          >
+            Modifier une présence
+          </button>
+        </div>
+      )}
+      {isAdmin && (
+        <RespondedPlayersPanel
+          sessionMatches={sessionMatches}
+          selectedPlayerId={quickAssignPlayer?.id || null}
+          onSelectPlayer={setQuickAssignPlayer}
+        />
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sessionMatches.map((m) => (
-          <CourtPanel key={m.id} match={m} now={now} />
+          <CourtPanel
+            key={m.id}
+            match={m}
+            now={now}
+            quickAssignPlayer={quickAssignPlayer}
+            onQuickAssignDone={() => setQuickAssignPlayer(null)}
+          />
         ))}
       </div>
+
+      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+          Votre présence
+        </p>
+        <AvailabilityButtons sessionMatches={sessionMatches} />
+      </div>
+
+      {showManagePresence && (
+        <ManagePresenceModal
+          sessionMatches={sessionMatches}
+          onClose={() => setShowManagePresence(false)}
+        />
+      )}
+    </Card>
+  );
+}
+
+// Carte simplifiée pour "Reste de la saison" (joueurs non-admin) — un match
+// aussi lointain n'affiche pas encore la composition détaillée : juste la
+// date, le(s) lieu(x) et la présence.
+export function AvailabilitySessionCard({ sessionMatches }) {
+  const first = sessionMatches[0];
+  const locations = [...new Set(sessionMatches.map((m) => m.location).filter(Boolean))];
+
+  return (
+    <Card className="p-4 pm-rise">
+      <div className="mb-3">
+        <p className="pm-display font-bold text-base">
+          {formatDateFR(first.date)} · {first.time}
+        </p>
+        <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
+          {locations.length > 0 ? locations.join(" · ") : "Lieu à confirmer"}
+        </p>
+      </div>
+      <AvailabilityButtons sessionMatches={sessionMatches} />
     </Card>
   );
 }
