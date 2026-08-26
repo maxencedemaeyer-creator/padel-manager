@@ -53,10 +53,16 @@ function PlayerListModal({ title, players, onClose }) {
 // Bouton/compteur RSVP pour le joueur connecté (admin ou non). Avant réponse :
 // 3 boutons de choix. Après réponse : 3 compteurs cliquables ouvrant la liste
 // des joueurs correspondants, + un lien discret pour changer d'avis.
+//
+// "Modifier ma réponse" réinitialise VRAIMENT la présence dans Firestore
+// (et non plus un simple état local) : ça garantit que la remise en attente
+// survit à un changement d'onglet, et — via resetSessionAvailability — que
+// le joueur est aussi retiré de sa place sur le terrain s'il s'y était
+// auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
+// conservée).
 export function AvailabilityButtons({ sessionMatches }) {
   const { players, connectedPlayer } = useAppData();
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
 
   const { availability, present, absent, pending } = getAvailabilityGroups(
@@ -64,13 +70,36 @@ export function AvailabilityButtons({ sessionMatches }) {
     players
   );
   const myStatus = availability[connectedPlayer.id];
-  const hasAnswered = Boolean(myStatus) && !editing;
+  const hasAnswered = Boolean(myStatus);
+  const isSelfPlaced = (sessionMatches || []).some((m) =>
+    (m.participants || []).some(
+      (p) => p.playerId === connectedPlayer.id && p.selfJoined === true
+    )
+  );
 
   const respond = async (status) => {
     setSaving(true);
     try {
       await setSessionAvailability(sessionMatches, connectedPlayer.id, status);
-      setEditing(false);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeMind = async () => {
+    if (
+      isSelfPlaced &&
+      !window.confirm(
+        "Vous êtes actuellement placé sur le terrain — changer votre réponse vous en retirera. Continuer ?"
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await resetSessionAvailability(sessionMatches, connectedPlayer.id);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
@@ -113,8 +142,9 @@ export function AvailabilityButtons({ sessionMatches }) {
         </div>
         <button
           type="button"
-          onClick={() => setEditing(true)}
-          className="mt-2 text-[11px] font-semibold text-[var(--color-text-dim)] hover:text-sky-700 underline decoration-dotted"
+          disabled={saving}
+          onClick={changeMind}
+          className="mt-2 text-[11px] font-semibold text-[var(--color-text-dim)] hover:text-sky-700 underline decoration-dotted disabled:opacity-50"
         >
           Modifier ma réponse ({STATUS_META[myStatus]?.label || myStatus})
         </button>
