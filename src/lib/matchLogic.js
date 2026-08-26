@@ -105,6 +105,31 @@ export function getCourtSlots(match) {
 }
 
 
+// Extrait le numéro de terrain depuis le lieu ("Club VG — Terrain 6" → 6,
+// "Terrain 1" → 1) pour pouvoir toujours afficher les terrains d'une même
+// session dans le même ordre (le plus petit numéro en premier / à gauche),
+// même si Firestore les renvoie dans un ordre différent d'une session à
+// l'autre. Si aucun numéro n'est trouvé en fin de lieu (ex. match ponctuel
+// avec un lieu libre), on retombe sur un tri alphabétique du lieu, pour
+// rester stable et prévisible.
+function courtSortKey(match) {
+  const location = match.location || "";
+  const numMatch = location.match(/(\d+)\s*$/);
+  return {
+    num: numMatch ? Number(numMatch[1]) : null,
+    location,
+  };
+}
+
+function compareByCourt(a, b) {
+  const ka = courtSortKey(a);
+  const kb = courtSortKey(b);
+  if (ka.num != null && kb.num != null && ka.num !== kb.num) return ka.num - kb.num;
+  if (ka.num != null && kb.num == null) return -1;
+  if (ka.num == null && kb.num != null) return 1;
+  return ka.location.localeCompare(kb.location);
+}
+
 export function groupMatchesBySession(matches) {
   const map = new Map();
   matches.forEach((m) => {
@@ -112,6 +137,5 @@ export function groupMatchesBySession(matches) {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(m);
   });
-  return [...map.values()];
+  return [...map.values()].map((group) => [...group].sort(compareByCourt));
 }
-
