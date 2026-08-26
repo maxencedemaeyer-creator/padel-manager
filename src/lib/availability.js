@@ -3,6 +3,15 @@
 // encore composés. Un joueur répond au niveau de la SESSION (date + heure),
 // pas terrain par terrain — on écrit/lit donc la même réponse sur tous les
 // terrains de la session, pour rester cohérent qu'il y en ait un ou deux.
+//
+// Présence ⇄ placement sur le terrain : dès qu'un joueur n'est plus déclaré
+// "présent" (il répond "absent"/"je ne sais pas encore", ou sa réponse est
+// réinitialisée), on le retire automatiquement de sa place sur le terrain —
+// mais UNIQUEMENT s'il s'y est placé lui-même (participant.selfJoined ===
+// true, voir CourtPanel.selfJoin). Une place attribuée par un admin
+// (PickPlayerModal, placement rapide) n'a pas ce marqueur et n'est donc
+// jamais touchée ici : la priorité admin est toujours conservée, quelle que
+// soit la présence déclarée du joueur.
 // ─────────────────────────────────────────────────────────────────────────
 import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../firebase";
@@ -46,23 +55,50 @@ export function getAvailabilityGroups(sessionMatches, players) {
   return { availability, present, absent, pending, responded };
 }
 
-// Écrit la réponse d'un joueur sur TOUS les terrains de la session.
+// Retire un joueur de sa place sur le terrain pour un match donné, mais
+// seulement s'il s'y est placé lui-même (jamais une place attribuée par un
+// admin). Retourne `null` si rien à changer, sinon le nouveau tableau
+// `participants` à écrire.
+function dropSelfJoinedSlot(match, playerId) {
+  const participants = match.participants || [];
+  const hasSelfSlot = participants.some(
+    (p) => p.playerId === playerId && p.selfJoined === true
+  );
+  if (!hasSelfSlot) return null;
+  return participants.filter((p) => !(p.playerId === playerId && p.selfJoined === true));
+}
+
+// Écrit la réponse d'un joueur sur TOUS les terrains de la session. Si la
+// réponse n'est pas "présent", sa place éventuelle (auto-inscription
+// uniquement) est libérée dans la foulée pour rester cohérent avec sa
+// nouvelle réponse.
 export async function setSessionAvailability(sessionMatches, playerId, status) {
   await Promise.all(
-    (sessionMatches || []).map((m) =>
-      updateDoc(doc(db, "matches", m.id), { [`availability.${playerId}`]: status })
-    )
+    (sessionMatches || []).map((m) => {
+      const updates = { [`availability.${playerId}`]: status };
+      if (status !== "present") {
+        const nextParticipants = dropSelfJoinedSlot(m, playerId);
+        if (nextParticipants) updates.participants = nextParticipants;
+      }
+      return updateDoc(doc(db, "matches", m.id), updates);
+    })
   );
 }
 
 // Réinitialise la réponse d'un joueur sur TOUS les terrains de la session —
 // on supprime complètement le champ (pas juste "unknown") pour qu'il
-// redevienne "en attente" et doive répondre lui-même à nouveau. Réservé à
-// l'admin (voir ManagePresenceModal dans Availability.jsx).
+// redevienne "en attente" et doive répondre lui-même à nouveau. Comme il
+// n'est alors plus déclaré "présent", sa place auto-inscrite (le cas
+// échéant) est libérée en même temps — voir dropSelfJoinedSlot ci-dessus.
+// Utilisable par le joueur lui-même ("Modifier ma réponse") ou par l'admin
+// (voir ManagePresenceModal dans Availability.jsx).
 export async function resetSessionAvailability(sessionMatches, playerId) {
   await Promise.all(
-    (sessionMatches || []).map((m) =>
-      updateDoc(doc(db, "matches", m.id), { [`availability.${playerId}`]: deleteField() })
-    )
+    (sessionMatches || []).map((m) => {
+      const updates = { [`availability.${playerId}`]: deleteField() };
+      const nextParticipants = dropSelfJoinedSlot(m, playerId);
+      if (nextParticipants) updates.participants = nextParticipants;
+      return updateDoc(doc(db, "matches", m.id), updates);
+    })
   );
 }
