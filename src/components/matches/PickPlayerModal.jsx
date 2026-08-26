@@ -9,10 +9,29 @@ import { cn, formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
 import { Modal, Button, Badge, inputClass } from "../ui";
 
+// Visuel de présence par joueur — mêmes couleurs que le panneau "Réponses
+// des joueurs" (Availability.jsx), pour repérer d'un coup d'œil qui a
+// répondu "présent" à cette session, sans pour autant empêcher d'assigner
+// n'importe quel autre joueur du club.
+const PRESENCE_META = {
+  present: { dot: "bg-emerald-500", text: "text-emerald-700", label: "Présent" },
+  unknown: { dot: "bg-amber-500", text: "text-amber-700", label: "Incertain" },
+  absent: { dot: "bg-rose-500", text: "text-rose-500", label: "Absent" },
+};
+const NO_RESPONSE_META = { dot: "bg-stone-300", text: "text-[var(--color-text-faint)]", label: "Pas répondu" };
+// Ordre d'affichage : présents d'abord, puis incertains, puis ceux qui n'ont
+// pas répondu, puis absents en dernier (les moins probables à assigner).
+const PRESENCE_RANK = { present: 0, unknown: 1, absent: 3 };
+
 export function PickPlayerModal({ match, team, courtSide, currentParticipant, onClose }) {
   const { players, matches } = useAppData();
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Réponses de présence pour cette session — écrites sur chaque terrain de
+  // la session (voir setSessionAvailability dans lib/availability.js), donc
+  // déjà disponibles directement sur ce match.
+  const availability = match.availability || {};
 
   // Joueurs déjà engagés sur un AUTRE match le même jour (double terrain, etc.).
   const conflictByPlayerId = useMemo(() => {
@@ -33,9 +52,13 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
       .map((p) => p.playerId)
   );
 
-  const filteredPlayers = players.filter((p) =>
-    p.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
+  const filteredPlayers = players
+    .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => {
+      const ra = PRESENCE_RANK[availability[a.id]] ?? 2;
+      const rb = PRESENCE_RANK[availability[b.id]] ?? 2;
+      return ra - rb || a.name.localeCompare(b.name);
+    });
 
   // Choisir un joueur assigne immédiatement cette place et referme la fenêtre —
   // pas de bouton "Valider" séparé, chaque emplacement se gère indépendamment.
@@ -101,10 +124,23 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         </>
       }
     >
-      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+      <p className="text-xs text-[var(--color-text-dim)] mb-2">
         Choisissez un joueur pour cette place — {formatDateFR(match.date)}
         {match.time ? ` à ${match.time}` : ""}. La fenêtre se referme dès votre choix.
       </p>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
+        {Object.entries(PRESENCE_META).map(([key, meta]) => (
+          <span key={key} className="flex items-center gap-1 text-[10px] text-[var(--color-text-faint)]">
+            <span className={cn("w-2 h-2 rounded-full shrink-0", meta.dot)} />
+            {meta.label}
+          </span>
+        ))}
+        <span className="flex items-center gap-1 text-[10px] text-[var(--color-text-faint)]">
+          <span className={cn("w-2 h-2 rounded-full shrink-0", NO_RESPONSE_META.dot)} />
+          {NO_RESPONSE_META.label}
+        </span>
+      </div>
 
       <input
         className={cn(inputClass, "mb-3")}
@@ -125,6 +161,7 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
             const dayConflict = !isCurrent ? conflictByPlayerId.get(p.id) : null;
             const inThisMatch = !isCurrent && takenElsewhereIds.has(p.id);
             const disabled = saving || Boolean(dayConflict) || inThisMatch;
+            const presenceMeta = PRESENCE_META[availability[p.id]] || NO_RESPONSE_META;
             return (
               <button
                 key={p.id}
@@ -140,6 +177,10 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
                     : "border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-sky-300"
                 )}
               >
+                <span
+                  className={cn("w-2 h-2 rounded-full shrink-0", presenceMeta.dot)}
+                  title={presenceMeta.label}
+                />
                 <span className="flex-1 min-w-0 truncate">
                   {p.emoji} {p.name}
                 </span>
@@ -157,6 +198,11 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
                 {!dayConflict && inThisMatch && (
                   <span className="text-[10px] text-[var(--color-text-faint)] shrink-0">
                     Déjà sur ce terrain
+                  </span>
+                )}
+                {!dayConflict && !inThisMatch && !isCurrent && (
+                  <span className={cn("text-[10px] font-semibold shrink-0", presenceMeta.text)}>
+                    {presenceMeta.label}
                   </span>
                 )}
               </button>
