@@ -38,6 +38,38 @@ function CreditorBalanceEditor({ creditor, rawTotal }) {
   );
 }
 
+// Créance de départ — c'est le MÊME champ Firestore (`advancedAmount`) que
+// celui affiché en lecture/écriture dans la fiche joueur (onglet Équipe) et
+// lu tel quel dans l'onglet Compta ("Créance de départ"). En le modifiant
+// ici, la valeur est donc automatiquement identique partout — aucune
+// duplication, aucun champ séparé à resynchroniser.
+function AdvancedAmountEditor({ creditor }) {
+  const [value, setValue] = useState(
+    creditor.advancedAmount != null ? String(creditor.advancedAmount) : ""
+  );
+  const save = async () => {
+    const target = parseFeeInput(value);
+    try {
+      await updateDoc(doc(db, "players", creditor.id), {
+        advancedAmount: target,
+      });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    }
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder="0"
+      className="pm-mono font-bold text-sky-600 bg-transparent text-right w-24 focus:outline-none border-b border-transparent focus:border-sky-300"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+    />
+  );
+}
+
 export function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
@@ -93,7 +125,7 @@ export function AdminView() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="font-semibold text-sm text-white">
           Soldes des créanciers
         </h3>
@@ -101,6 +133,11 @@ export function AdminView() {
           Total : {totalBalance.toLocaleString("fr-FR")} €
         </span>
       </div>
+      <p className="text-[11px] text-[var(--color-text-faint)] mb-3">
+        « Créance de départ » = investissement initial (visible dans l'onglet
+        Compta du créancier). « Solde » = total perçu via les matchs, que
+        vous pouvez corriger manuellement.
+      </p>
 
       {creditors.length === 0 ? (
         <EmptyState
@@ -113,15 +150,34 @@ export function AdminView() {
           {[...creditors]
             .sort((a, b) => (creditorAdjustedTotals.get(b.id) || 0) - (creditorAdjustedTotals.get(a.id) || 0))
             .map((c) => (
-              <Card key={c.id} className="p-4 flex items-center gap-3">
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                  style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-                >
-                  {c.emoji || "🎾"}
-                </span>
-                <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
+              <Card key={c.id} className="p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                    style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+                  >
+                    {c.emoji || "🎾"}
+                  </span>
+                  <span className="flex-1 font-semibold text-sm">{c.name}</span>
+                </div>
+                <div className="flex items-center justify-between pl-[52px]">
+                  <span className="text-xs text-[var(--color-text-dim)]">
+                    Créance de départ
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <AdvancedAmountEditor creditor={c} />
+                    <span className="pm-mono text-xs font-bold text-sky-600">€</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pl-[52px]">
+                  <span className="text-xs text-[var(--color-text-dim)]">
+                    Solde (perçu + ajustement)
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
+                    <span className="pm-mono text-xs font-bold text-[var(--color-lime)]">€</span>
+                  </div>
+                </div>
               </Card>
             ))}
         </div>
