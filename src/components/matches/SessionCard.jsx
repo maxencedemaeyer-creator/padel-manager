@@ -3,7 +3,7 @@
 // et les variantes compactes utilisées pour "Dernier match joué".
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { cn, formatDateFR, getFirstName } from "../../lib/utils";
+import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
 import { hasMatchScore, getSetDisplay } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -30,7 +30,7 @@ export function SessionCard({ sessionMatches, now }) {
     <Card className="p-4 pm-rise">
       <div className="flex items-baseline justify-between mb-3">
         <p className="pm-display font-bold text-base">
-          {formatDateFR(first.date)} · {first.time}
+          {formatDateFR(first.date)} · {formatTimeFR(first.time)}
         </p>
         <Badge tone="neutral" className="!text-[10px]">
           {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
@@ -85,18 +85,41 @@ export function SessionCard({ sessionMatches, now }) {
   );
 }
 
-// Carte simplifiée pour "Reste de la saison" (joueurs non-admin) — un match
-// aussi lointain n'affiche pas encore la composition détaillée : juste la
-// date, le(s) lieu(x) et la présence.
-export function AvailabilitySessionCard({ sessionMatches }) {
+// Carte simplifiée pour "Prochains matchs" / "Reste de la saison" (joueurs
+// non-admin) — un match aussi lointain n'affiche pas encore la composition
+// détaillée : juste la date, le(s) lieu(x) et la présence.
+//
+// Dans la partie "Reste de la saison" (restOfSeason = true), les joueurs n'ont
+// accès qu'aux boutons de présence et à leurs totaux : on n'affiche alors que
+// le(s) nom(s) de club (sans numéro de terrain), placé(s) directement après
+// l'heure, dans la même police que la date/heure.
+export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false }) {
   const first = sessionMatches[0];
+
+  if (restOfSeason) {
+    const clubs = [
+      ...new Set(sessionMatches.map((m) => clubNameOnly(m.location)).filter(Boolean)),
+    ];
+    return (
+      <Card className="p-4 pm-rise">
+        <div className="mb-3">
+          <p className="pm-display font-bold text-base">
+            {formatDateFR(first.date)} · {formatTimeFR(first.time)}
+            {clubs.length > 0 && <> · {clubs.join(" · ")}</>}
+          </p>
+        </div>
+        <AvailabilityButtons sessionMatches={sessionMatches} />
+      </Card>
+    );
+  }
+
   const locations = [...new Set(sessionMatches.map((m) => m.location).filter(Boolean))];
 
   return (
     <Card className="p-4 pm-rise">
       <div className="mb-3">
         <p className="pm-display font-bold text-base">
-          {formatDateFR(first.date)} · {first.time}
+          {formatDateFR(first.date)} · {formatTimeFR(first.time)}
         </p>
         <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
           {locations.length > 0 ? locations.join(" · ") : "Lieu à confirmer"}
