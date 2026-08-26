@@ -19,9 +19,6 @@ import {
 
 export function SessionCard({ sessionMatches, now }) {
   const { isAdmin } = useAppData();
-  // Admin : joueur sélectionné dans le panneau "réponses" pour un placement
-  // rapide sur le terrain (touche le joueur, puis touche une place vide).
-  const [quickAssignPlayer, setQuickAssignPlayer] = useState(null);
   // Admin : modale permettant de modifier la présence (la sienne ou celle
   // d'un autre joueur) sans passer par le placement sur le terrain.
   const [showManagePresence, setShowManagePresence] = useState(false);
@@ -48,23 +45,11 @@ export function SessionCard({ sessionMatches, now }) {
           </button>
         </div>
       )}
-      {isAdmin && (
-        <RespondedPlayersPanel
-          sessionMatches={sessionMatches}
-          selectedPlayerId={quickAssignPlayer?.id || null}
-          onSelectPlayer={setQuickAssignPlayer}
-        />
-      )}
+      {isAdmin && <RespondedPlayersPanel sessionMatches={sessionMatches} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sessionMatches.map((m) => (
-          <CourtPanel
-            key={m.id}
-            match={m}
-            now={now}
-            quickAssignPlayer={quickAssignPlayer}
-            onQuickAssignDone={() => setQuickAssignPlayer(null)}
-          />
+          <CourtPanel key={m.id} match={m} now={now} />
         ))}
       </div>
 
