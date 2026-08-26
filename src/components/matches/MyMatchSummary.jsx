@@ -65,9 +65,8 @@ export function MyMatchSummary({ now }) {
 
   return (
     <div className="rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
-      <p className="text-sm text-white/80">Bonjour</p>
       <p className="pm-display font-bold text-lg mb-1">
-        {getFirstName(connectedPlayer.name)} 👋
+        Bonjour {getFirstName(connectedPlayer.name)} 👋
       </p>
       {hook && (
         <span className="inline-block bg-white/15 rounded-full px-2.5 py-1 text-xs font-semibold mb-2">
@@ -92,8 +91,7 @@ export function MyMatchSummary({ now }) {
         </p>
       ) : (
         <p className="text-sm text-white/90">
-          🎾 Une place vous attend — inscrivez-vous en un tap ci-dessous avant qu'elle
-          ne parte !
+          N'oublie pas d'indiquer tes présences ☺️
         </p>
       )}
 
