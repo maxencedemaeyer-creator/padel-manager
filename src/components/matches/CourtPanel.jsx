@@ -29,7 +29,7 @@ function StatusBadge({ match, now }) {
   return <Badge tone="blue">À venir</Badge>;
 }
 
-export function CourtPanel({ match, now }) {
+export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssignDone }) {
   const { isAdmin, connectedPlayer, players, matches } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -124,6 +124,59 @@ export function CourtPanel({ match, now }) {
     }
   };
 
+  // Placement rapide admin : un joueur a été sélectionné dans le panneau
+  // "réponses" (à côté de la date) — toucher une place l'y assigne
+  // directement, sans repasser par la fenêtre de recherche.
+  const handleQuickAssign = async (def, currentParticipant) => {
+    const player = quickAssignPlayer;
+    if (!player) return;
+    if (player.id === currentParticipant?.playerId) {
+      onQuickAssignDone && onQuickAssignDone();
+      return;
+    }
+    const conflict = matches.find(
+      (m) =>
+        m.id !== match.id &&
+        m.date === match.date &&
+        (m.participants || []).some((p) => p.playerId === player.id)
+    );
+    if (conflict) {
+      alert(
+        `${player.name} est déjà engagé sur un autre terrain ce jour-là` +
+          (conflict.location ? ` (${conflict.location})` : "") +
+          (conflict.time ? ` à ${conflict.time}` : "") +
+          ". Retirez-le de là d'abord pour le déplacer ici."
+      );
+      return;
+    }
+    if (currentParticipant && currentParticipant.playerId !== player.id) {
+      const ok = window.confirm(
+        `Remplacer ${currentParticipant.name} par ${player.name} à cette place ?`
+      );
+      if (!ok) return;
+    }
+    try {
+      const remaining = participants.filter(
+        (p) => p.playerId !== currentParticipant?.playerId && p.playerId !== player.id
+      );
+      const newParticipant = {
+        playerId: player.id,
+        name: player.name,
+        paidStatus: "unpaid",
+        creditorId: null,
+        team: def.team,
+        courtSide: def.side,
+      };
+      await updateDoc(doc(db, "matches", match.id), {
+        participants: [...remaining, newParticipant],
+      });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      onQuickAssignDone && onQuickAssignDone();
+    }
+  };
+
   const creditorPlayerIds = new Set(
     players.filter((p) => p.isCreditor === true).map((p) => p.id)
   );
@@ -157,7 +210,12 @@ export function CourtPanel({ match, now }) {
         slotSide={def.side}
         isWinningTeam={Boolean(match.winningTeam) && match.winningTeam === def.team}
         isAdmin={isAdmin}
-        onAssignClick={() => setPickSlot({ team: def.team, courtSide: def.side, participant })}
+        quickAssignActive={Boolean(quickAssignPlayer)}
+        onAssignClick={() =>
+          quickAssignPlayer
+            ? handleQuickAssign(def, participant)
+            : setPickSlot({ team: def.team, courtSide: def.side, participant })
+        }
         onSelfClick={() => (isEmpty ? selfJoin(def) : selfLeave())}
         onPayClick={() => setPaymentTarget(participant)}
       />
@@ -168,7 +226,8 @@ export function CourtPanel({ match, now }) {
     <Card
       className={cn(
         "p-4 pm-rise",
-        isParticipant && "border-[var(--color-lime)]/40"
+        isParticipant && "border-[var(--color-lime)]/40",
+        quickAssignPlayer && "ring-2 ring-sky-300"
       )}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
