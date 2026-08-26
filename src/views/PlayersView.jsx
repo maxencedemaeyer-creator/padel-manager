@@ -6,7 +6,7 @@ import { getCreditorAccounting } from "../lib/stats";
 import { PLAYER_SORT_OPTIONS } from "../lib/constants";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
-import { Button, EmptyState, inputClass } from "../components/ui";
+import { Button, EmptyState, inputClass, Modal } from "../components/ui";
 import { ClubRankingBanner } from "../components/players/ClubRankingBanner";
 import { PlayerRow } from "../components/players/PlayerRow";
 import { AddPlayerModal } from "../components/players/AddPlayerModal";
@@ -14,7 +14,15 @@ import { AddPlayerModal } from "../components/players/AddPlayerModal";
 export function PlayersView() {
   const { players, matches, isAdmin } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
+  const [showCodes, setShowCodes] = useState(false);
   const [sortBy, setSortBy] = useState("name-asc");
+
+  // Liste triée par nom pour l'annuaire des codes — inclut aussi les comptes
+  // test, réservés à l'admin de toute façon.
+  const codesList = useMemo(
+    () => [...players].sort((a, b) => a.name.localeCompare(b.name)),
+    [players]
+  );
 
   // Tri purement local à l'affichage — ne modifie jamais l'ordre dans Firestore.
   const sorted = useMemo(() => {
@@ -55,6 +63,17 @@ export function PlayersView() {
           </Button>
         )}
       </div>
+
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => setShowCodes(true)}
+          className="mb-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold active:scale-[0.98] transition-all"
+        >
+          <Icon.Key className="w-3.5 h-3.5" />
+          Afficher les codes de connexion
+        </button>
+      )}
 
       <ClubRankingBanner players={players} matches={matches} />
 
@@ -106,6 +125,41 @@ export function PlayersView() {
       )}
 
       {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} />}
+
+      {showCodes && isAdmin && (
+        <Modal
+          title="Codes de connexion"
+          onClose={() => setShowCodes(false)}
+          wide
+        >
+          <p className="text-xs text-[var(--color-text-dim)] mb-3">
+            Liste confidentielle des codes PIN de connexion — visible
+            uniquement par les administrateurs. Pensez à retirer ce bouton
+            une fois que vous n'en aurez plus besoin.
+          </p>
+          <div className="flex flex-col gap-2">
+            {codesList.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base shrink-0">{p.emoji || "🎾"}</span>
+                  <span className="text-sm font-semibold truncate">{p.name}</span>
+                  {p.isTest && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-rose-500 shrink-0">
+                      test
+                    </span>
+                  )}
+                </div>
+                <span className="pm-mono font-bold tracking-[0.3em] text-sm text-[var(--color-lime)] shrink-0">
+                  {p.accessCode || "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
