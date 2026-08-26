@@ -1,223 +1,128 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Cartes de session : SessionCard (un ou plusieurs terrains, vue complète),
-// et les variantes compactes utilisées pour "Dernier match joué".
+// Petites fonctions utilitaires partagées par plusieurs vues/composants.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
-import { cn, formatDateFR, getFirstName } from "../../lib/utils";
-import { hasMatchScore, getSetDisplay } from "../../lib/matchLogic";
-import { useAppData } from "../../context/AppContext";
-import Icon from "../icons/Icon";
-import { Card, Badge } from "../ui";
-import { CourtPanel } from "./CourtPanel";
-import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
-import { EndMatchModal } from "./EndMatchModal";
-import {
-  AvailabilityButtons,
-  RespondedPlayersPanel,
-  ManagePresenceModal,
-} from "./Availability";
+import { ADMIN_MASTER_CODE } from "../firebase";
 
-export function SessionCard({ sessionMatches, now }) {
-  const { isAdmin } = useAppData();
-  // Admin : joueur sélectionné dans le panneau "réponses" pour un placement
-  // rapide sur le terrain (touche le joueur, puis touche une place vide).
-  const [quickAssignPlayer, setQuickAssignPlayer] = useState(null);
-  // Admin : modale permettant de modifier la présence (la sienne ou celle
-  // d'un autre joueur) sans passer par le placement sur le terrain.
-  const [showManagePresence, setShowManagePresence] = useState(false);
-  const first = sessionMatches[0];
+export function cn(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+export const DAYS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+export const DAYS_SHORT_FR = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."];
+
+export function formatDateFR(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return dateStr;
+  return `${DAYS_SHORT_FR[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString("fr-FR", {
+    month: "long",
+  })}`;
+}
+
+// Formate une heure "HH:MM" en écriture française courante ("20:00" → "20h",
+// "19:45" → "19h45", "04:05" → "04h05") : on masque les minutes quand elles
+// sont nulles, sinon on les garde sur 2 chiffres.
+export function formatTimeFR(timeStr) {
+  if (!timeStr) return "";
+  const [h, m] = String(timeStr).split(":");
+  if (!m) return `${h}h`;
+  const minutes = parseInt(m, 10);
+  if (!minutes) return `${h}h`;
+  return `${h}h${m.padStart(2, "0")}`;
+}
+
+// Isole le nom du club depuis un lieu de match ("Club VG — Terrain 6" →
+// "Club VG") en retirant le suffixe "Terrain N". Si le lieu ne contient pas
+// de nom de club (ex. "Terrain 3" sur un match ponctuel), on retombe sur le
+// lieu tel quel plutôt que d'afficher un texte vide.
+export function clubNameOnly(location) {
+  if (!location) return "";
+  const stripped = location.replace(/\s*[-—]\s*Terrain\s*\d+\s*$/i, "").trim();
+  return stripped || location;
+}
+
+// IMPORTANT : ne jamais utiliser .toISOString() pour obtenir une date
+// "YYYY-MM-DD" — ça convertit en UTC et peut faire basculer sur la veille
+// selon le fuseau horaire (ex. minuit en Belgique = 22h UTC la veille).
+// Cette fonction lit les composants de la date en HEURE LOCALE.
+export function toLocalISODate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function todayISO() {
+  return toLocalISODate(new Date());
+}
+
+export function generateUniqueCode(players, excludeId = null) {
+  const taken = new Set(
+    players.filter((p) => p.id !== excludeId).map((p) => p.accessCode)
+  );
+  let code;
+  do {
+    code = String(Math.floor(1000 + Math.random() * 9000));
+  } while (taken.has(code));
+  return code;
+}
+
+export function findDuplicateOwner(players, code, excludeId = null) {
+  if (!code || code.length !== 4) return null;
   return (
-    <Card className="p-4 pm-rise">
-      <div className="flex items-baseline justify-between mb-3">
-        <p className="pm-display font-bold text-base">
-          {formatDateFR(first.date)} · {first.time}
-        </p>
-        <Badge tone="neutral" className="!text-[10px]">
-          {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
-        </Badge>
-      </div>
-
-      {isAdmin && (
-        <div className="flex items-center justify-end mb-1">
-          <button
-            type="button"
-            onClick={() => setShowManagePresence(true)}
-            className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
-          >
-            Modifier une présence
-          </button>
-        </div>
-      )}
-      {isAdmin && (
-        <RespondedPlayersPanel
-          sessionMatches={sessionMatches}
-          selectedPlayerId={quickAssignPlayer?.id || null}
-          onSelectPlayer={setQuickAssignPlayer}
-        />
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {sessionMatches.map((m) => (
-          <CourtPanel
-            key={m.id}
-            match={m}
-            now={now}
-            quickAssignPlayer={quickAssignPlayer}
-            onQuickAssignDone={() => setQuickAssignPlayer(null)}
-          />
-        ))}
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
-          Votre présence
-        </p>
-        <AvailabilityButtons sessionMatches={sessionMatches} />
-      </div>
-
-      {showManagePresence && (
-        <ManagePresenceModal
-          sessionMatches={sessionMatches}
-          onClose={() => setShowManagePresence(false)}
-        />
-      )}
-    </Card>
+    players.find((p) => p.accessCode === code && p.id !== excludeId) || null
   );
 }
 
-// Carte simplifiée pour "Reste de la saison" (joueurs non-admin) — un match
-// aussi lointain n'affiche pas encore la composition détaillée : juste la
-// date, le(s) lieu(x) et la présence.
-export function AvailabilitySessionCard({ sessionMatches }) {
-  const first = sessionMatches[0];
-  const locations = [...new Set(sessionMatches.map((m) => m.location).filter(Boolean))];
-
-  return (
-    <Card className="p-4 pm-rise">
-      <div className="mb-3">
-        <p className="pm-display font-bold text-base">
-          {formatDateFR(first.date)} · {first.time}
-        </p>
-        <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
-          {locations.length > 0 ? locations.join(" · ") : "Lieu à confirmer"}
-        </p>
-      </div>
-      <AvailabilityButtons sessionMatches={sessionMatches} />
-    </Card>
-  );
+export function isPlayerAdmin(player) {
+  if (!player) return false;
+  return player.isAdmin === true || player.accessCode === ADMIN_MASTER_CODE;
 }
 
-// Résultat compact d'un terrain — juste les noms et le score, pour la carte
-// "Dernier match joué" (purement informative, pas besoin des détails).
-export function CompactMatchResult({ match }) {
-  const { isAdmin } = useAppData();
-  const [showMenu, setShowMenu] = useState(false);
-  const [showDateTime, setShowDateTime] = useState(false);
-  const [showEnd, setShowEnd] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const teamA = (match.participants || []).filter((p) => p.team === "A");
-  const teamB = (match.participants || []).filter((p) => p.team === "B");
-  const untracked = (match.participants || []).filter((p) => p.team !== "A" && p.team !== "B");
-  const labelOf = (list) =>
-    list.length ? list.map((p) => getFirstName(p.name)).join(" & ") : "—";
-  const teamALabel = labelOf(teamA.length ? teamA : untracked.slice(0, 2));
-  const teamBLabel = labelOf(teamB.length ? teamB : untracked.slice(2, 4));
-
-  const scoreEntered = hasMatchScore(match);
-  const scoreText = ["set1", "set2", "set3"]
-    .map((k) => getSetDisplay(match.scores?.[k]))
-    .filter(Boolean)
-    .join(" · ");
-  const aWon = match.winningTeam === "A";
-  const bWon = match.winningTeam === "B";
-
-  return (
-    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-amber-200/70 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <p
-          className={cn(
-            "text-sm truncate",
-            aWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
-          )}
-        >
-          {aWon && "🏆 "}
-          {teamALabel}
-        </p>
-        <p
-          className={cn(
-            "text-sm truncate",
-            bWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
-          )}
-        >
-          {bWon && "🏆 "}
-          {teamBLabel}
-        </p>
-      </div>
-      <div className="shrink-0 flex items-center gap-2">
-        {scoreEntered ? (
-          <span className="pm-mono text-sm font-bold text-amber-900">{scoreText}</span>
-        ) : (
-          <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
-        )}
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setShowMenu(true)}
-            aria-label="Paramètres du terrain"
-            className="p-1.5 rounded-full bg-white border border-amber-200 text-amber-700 hover:border-amber-400 shrink-0"
-          >
-            <Icon.Settings className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-
-      {showMenu && (
-        <CourtSettingsMenu
-          onClose={() => setShowMenu(false)}
-          onPickDateTime={() => {
-            setShowMenu(false);
-            setShowDateTime(true);
-          }}
-          onPickScore={() => {
-            setShowMenu(false);
-            setShowEnd(true);
-          }}
-          onPickDelete={() => {
-            setShowMenu(false);
-            setShowDeleteConfirm(true);
-          }}
-        />
-      )}
-      {showDateTime && (
-        <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
-      )}
-      {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
-      {showDeleteConfirm && (
-        <DeleteMatchConfirmModal match={match} onClose={() => setShowDeleteConfirm(false)} />
-      )}
-    </div>
-  );
+export function getRecurringDates(startDateStr, intervalDays, count) {
+  const dates = [];
+  let d = new Date(startDateStr + "T00:00:00");
+  for (let i = 0; i < count; i++) {
+    dates.push(new Date(d));
+    d.setDate(d.getDate() + Number(intervalDays));
+  }
+  return dates.map((d) => toLocalISODate(d));
 }
 
-// Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
-// et volontairement simplifiée : juste la date, les noms et le score.
-export function LastMatchCard({ sessionMatches }) {
-  const first = sessionMatches[0];
-  return (
-    <div className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white shadow-sm p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon.Trophy className="w-4 h-4 text-amber-600 shrink-0" />
-        <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-          Dernier résultat
-        </p>
-      </div>
-      <p className="text-sm font-semibold text-amber-900 mb-1">{formatDateFR(first.date)}</p>
-      <div className="flex flex-col">
-        {sessionMatches.map((m) => (
-          <CompactMatchResult key={m.id} match={m} />
-        ))}
-      </div>
-    </div>
-  );
+export function parseFeeInput(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const n = parseFloat(String(value).replace(",", "."));
+  return isNaN(n) ? null : n;
+}
+
+// Rétrocompatibilité : d'anciennes fiches joueur en base peuvent encore
+// contenir l'ancienne valeur "Les deux" (avant le renommage en "Polyvalent").
+export function normalizeSide(value) {
+  return value === "Les deux" ? "Polyvalent" : value;
+}
+
+export function getInitials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+// Isole le prénom (premier mot du nom complet) — utilisé sur mobile où la
+// place est trop réduite pour afficher le nom complet.
+export function getFirstName(name) {
+  const first = String(name || "").trim().split(/\s+/)[0];
+  return first || name || "?";
+}
+
+// Abréviations compactes pour l'affichage en colonnes de la liste des joueurs.
+export function handAbbrev(hand) {
+  if (hand === "Gaucher") return "G";
+  if (hand === "Ambidextre") return "A";
+  return "D";
+}
+export function sideAbbrev(side) {
+  const s = normalizeSide(side);
+  if (s === "Gauche") return "G";
+  if (s === "Polyvalent") return "P";
+  return "D";
 }
