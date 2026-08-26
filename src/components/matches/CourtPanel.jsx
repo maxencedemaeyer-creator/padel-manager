@@ -85,6 +85,12 @@ export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssign
         creditorId: null,
         team: def.team,
         courtSide: def.side,
+        // Marque cette place comme une auto-inscription (par opposition à un
+        // placement admin) — voir lib/availability.js : si ce joueur répond
+        // ensuite "absent"/"je ne sais pas encore" à cette session, il est
+        // automatiquement retiré de cette place. Un placement admin, lui,
+        // n'a jamais ce marqueur et n'est donc jamais retiré automatiquement.
+        selfJoined: true,
       };
       await updateDoc(doc(db, "matches", match.id), {
         participants: [...participants, newParticipant],
