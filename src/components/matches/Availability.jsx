@@ -5,11 +5,10 @@
 // clairement la réponse du joueur — cliquable pour rouvrir une petite
 // fenêtre de changement de réponse — accompagné de 3 mini-compteurs (pastille
 // de couleur + chiffre) poussés à droite, avec pop-up listant les joueurs
-// par statut. Côté admin : le panneau "qui a répondu" à côté de la date,
-// avec sélection rapide pour placer un joueur sur le terrain sans repasser
-// par la recherche, ainsi qu'une modale "Gérer les présences" permettant à
-// l'admin de modifier sa propre présence ou celle de n'importe quel autre
-// joueur (même s'il n'a pas encore répondu), avec possibilité de
+// par statut. Côté admin : le panneau "qui a répondu" à côté de la date
+// (aperçu, non cliquable), ainsi qu'une modale "Gérer les présences"
+// permettant à l'admin de modifier sa propre présence ou celle de n'importe
+// quel autre joueur (même s'il n'a pas encore répondu), avec possibilité de
 // réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
@@ -281,10 +280,11 @@ export function AvailabilityButtons({ sessionMatches }) {
   );
 }
 
-// Panneau admin "qui a répondu" — chips cliquables triées présents / en
-// attente / absents. On en sélectionne un, puis on touche une place sur le
-// terrain pour l'y placer (voir CourtPanel : quickAssignPlayer).
-export function RespondedPlayersPanel({ sessionMatches, selectedPlayerId, onSelectPlayer }) {
+// Panneau admin "qui a répondu" — simple aperçu (non cliquable) trié
+// présents / en attente / absents. Le placement sur le terrain se fait
+// uniquement en touchant une place (voir CourtPanel → PickPlayerModal, qui
+// affiche lui aussi le statut de présence de chaque joueur).
+export function RespondedPlayersPanel({ sessionMatches }) {
   const { players } = useAppData();
   const { responded } = getAvailabilityGroups(sessionMatches, players);
 
@@ -307,31 +307,16 @@ export function RespondedPlayersPanel({ sessionMatches, selectedPlayerId, onSele
         Réponses des joueurs
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {sorted.map(({ player, status }) => {
-          const selected = selectedPlayerId === player.id;
-          return (
-            <button
-              key={player.id}
-              type="button"
-              onClick={() => onSelectPlayer(selected ? null : player)}
-              className={cn(
-                "flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition-all",
-                selected
-                  ? "bg-sky-200 border-sky-400 text-sky-900"
-                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:border-sky-300"
-              )}
-            >
-              <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_META[status]?.dot)} />
-              {getFirstName(player.name)}
-            </button>
-          );
-        })}
+        {sorted.map(({ player, status }) => (
+          <span
+            key={player.id}
+            className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium bg-[var(--color-surface-2)] border-[var(--color-border)]"
+          >
+            <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_META[status]?.dot)} />
+            {getFirstName(player.name)}
+          </span>
+        ))}
       </div>
-      {selectedPlayerId && (
-        <p className="text-[11px] text-sky-700 font-semibold mt-1.5">
-          Touchez une place sur le terrain pour l'y placer.
-        </p>
-      )}
     </div>
   );
 }
