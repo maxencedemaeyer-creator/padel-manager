@@ -164,8 +164,9 @@ const Icon = {
   ),
   Refresh: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
-      <path d="M3 12a9 9 0 0115.5-6.36M21 12a9 9 0 01-15.5 6.36" />
-      <path d="M19.5 3v5h-5M4.5 21v-5h5" />
+      <path d="M4 4v5h5" />
+      <path d="M20 20v-5h-5" />
+      <path d="M5.5 9a7 7 0 0112.3-2.5L20 9M18.5 15a7 7 0 01-12.3 2.5L4 15" />
     </svg>
   ),
 };
