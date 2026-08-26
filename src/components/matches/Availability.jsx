@@ -6,7 +6,7 @@
 // rapide pour placer un joueur sur le terrain sans repasser par la recherche,
 // ainsi qu'une modale "Gérer les présences" permettant à l'admin de modifier
 // sa propre présence ou celle de n'importe quel autre joueur (même s'il n'a
-// pas encore répondu).
+// pas encore répondu), avec possibilité de réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, getFirstName } from "../../lib/utils";
@@ -14,6 +14,7 @@ import {
   AVAILABILITY_STATUSES,
   getAvailabilityGroups,
   setSessionAvailability,
+  resetSessionAvailability,
 } from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -225,8 +226,9 @@ export function RespondedPlayersPanel({ sessionMatches, selectedPlayerId, onSele
 
 // Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
 // session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
-// Présent / Absent / Je ne sais pas encore. Permet à l'administrateur de
-// modifier sa propre présence ou celle de n'importe quel autre joueur.
+// Présent / Absent / Je ne sais pas encore, plus un 4e bouton pour
+// réinitialiser sa réponse. Permet à l'administrateur de modifier sa propre
+// présence ou celle de n'importe quel autre joueur.
 export function ManagePresenceModal({ sessionMatches, onClose }) {
   const { players } = useAppData();
   const [search, setSearch] = useState("");
@@ -242,6 +244,19 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
     setSavingId(playerId);
     try {
       await setSessionAvailability(sessionMatches, playerId, status);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Réinitialise la réponse d'un joueur — il redevient "en attente" et devra
+  // rechoisir lui-même (utile si un joueur s'est trompé de bouton).
+  const resetStatus = async (playerId) => {
+    setSavingId(playerId);
+    try {
+      await resetSessionAvailability(sessionMatches, playerId);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
@@ -314,6 +329,16 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    disabled={busy || !status}
+                    onClick={() => resetStatus(p.id)}
+                    aria-label="Réinitialiser sa réponse"
+                    title="Réinitialiser — il devra rechoisir lui-même"
+                    className="w-8 h-8 ml-1 rounded-full flex items-center justify-center border border-[var(--color-border)] bg-white text-[var(--color-text-faint)] hover:border-slate-400 hover:text-slate-600 disabled:opacity-30 transition-all"
+                  >
+                    <Icon.Refresh className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             );
