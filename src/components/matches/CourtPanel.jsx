@@ -10,24 +10,12 @@ import { COURT_SLOT_DEFS, SELF_REGISTRATION_WINDOW_DAYS, WITHDRAWAL_RESOLVE_DELA
 import { getMatchTiming, hasMatchScore, getSetDisplay, getCourtSlots, daysUntilMatch } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Card, Badge, Button } from "../ui";
+import { Card, Button } from "../ui";
 import { PlayerSlotCard } from "./PlayerSlotCard";
 import { EndMatchModal } from "./EndMatchModal";
 import { PickPlayerModal } from "./PickPlayerModal";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { PaymentModal } from "./PaymentModal";
-
-function StatusBadge({ match, now }) {
-  const timing = getMatchTiming(match, now);
-  if (timing === "ongoing")
-    return (
-      <Badge tone="lime" className="pm-pulse">
-        ● En cours
-      </Badge>
-    );
-  if (timing === "finished") return <Badge tone="neutral">Terminé</Badge>;
-  return <Badge tone="blue">À venir</Badge>;
-}
 
 export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssignDone }) {
   const { isAdmin, connectedPlayer, players, matches } = useAppData();
@@ -40,7 +28,6 @@ export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssign
   const [selfBusy, setSelfBusy] = useState(false);
 
   const participants = match.participants || [];
-  const filledCount = participants.length;
   const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
@@ -189,13 +176,6 @@ export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssign
   const playerById = (id) => players.find((p) => p.id === id);
   const slots = getCourtSlots(match);
 
-  const fillBadge =
-    filledCount === 4
-      ? "4/4 joueurs • Complet"
-      : filledCount === 0
-      ? "Créneau libre"
-      : `${filledCount}/4 joueurs`;
-
   const renderSlot = (def) => {
     const participant = slots[def.key];
     const isMe = Boolean(participant) && participant.playerId === connectedPlayer.id;
@@ -247,24 +227,16 @@ export function CourtPanel({ match, now, quickAssignPlayer = null, onQuickAssign
               : "Match ponctuel — hors comptabilité"}
           </p>
         </div>
-        <div className="flex items-start gap-1.5 shrink-0">
-          <div className="flex flex-col items-end gap-1.5">
-            <StatusBadge match={match} now={now} />
-            <Badge tone={filledCount === 4 ? "paid" : "neutral"} className="!text-[10px]">
-              {fillBadge}
-            </Badge>
-          </div>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowSettingsMenu(true)}
-              aria-label="Paramètres du terrain"
-              className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
-            >
-              <Icon.Settings className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowSettingsMenu(true)}
+            aria-label="Paramètres du terrain"
+            className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+          >
+            <Icon.Settings className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
