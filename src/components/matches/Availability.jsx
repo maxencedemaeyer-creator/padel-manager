@@ -1,12 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Présences pour les matchs "Reste de la saison" : les 3 boutons Présent /
-// Absent / Je ne sais pas encore (remplacés par leurs compteurs une fois
-// qu'on a répondu, avec pop-up listant les joueurs par statut), et — côté
-// admin — le panneau "qui a répondu" à côté de la date, avec sélection
-// rapide pour placer un joueur sur le terrain sans repasser par la recherche,
-// ainsi qu'une modale "Gérer les présences" permettant à l'admin de modifier
-// sa propre présence ou celle de n'importe quel autre joueur (même s'il n'a
-// pas encore répondu), avec possibilité de réinitialiser une réponse.
+// Absent / Je ne sais pas encore, remplacés une fois qu'on a répondu par un
+// rectangle plein (angles droits, couleur pleine, sans contour) affichant
+// clairement la réponse du joueur — cliquable pour rouvrir une petite
+// fenêtre de changement de réponse — accompagné de 3 mini-compteurs (pastille
+// de couleur + chiffre) poussés à droite, avec pop-up listant les joueurs
+// par statut. Côté admin : le panneau "qui a répondu" à côté de la date,
+// avec sélection rapide pour placer un joueur sur le terrain sans repasser
+// par la recherche, ainsi qu'une modale "Gérer les présences" permettant à
+// l'admin de modifier sa propre présence ou celle de n'importe quel autre
+// joueur (même s'il n'a pas encore répondu), avec possibilité de
+// réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, getFirstName } from "../../lib/utils";
@@ -24,6 +28,15 @@ const STATUS_META = {
   present: { label: "Présent", dot: "bg-emerald-500" },
   absent: { label: "Absent", dot: "bg-rose-500" },
   unknown: { label: "Je ne sais pas encore", dot: "bg-amber-500" },
+};
+
+// Couleurs pleines (non pastel) utilisées pour le rectangle "ma réponse" —
+// mêmes teintes -500 que les états actifs de ManagePresenceModal, pour
+// rester cohérent avec le reste de l'app.
+const STATUS_SOLID_CLASS = {
+  present: "bg-emerald-500 text-white",
+  absent: "bg-rose-500 text-white",
+  unknown: "bg-amber-500 text-white",
 };
 
 function PlayerListModal({ title, players, onClose }) {
@@ -50,13 +63,58 @@ function PlayerListModal({ title, players, onClose }) {
   );
 }
 
+// Petite fenêtre ouverte en cliquant sur le rectangle "ma réponse" — permet
+// de choisir directement un nouveau statut (Présent/Absent/Je ne sais pas)
+// sans repasser par un état "non répondu" intermédiaire.
+function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
+  const statusIcon = {
+    present: Icon.Check,
+    absent: Icon.X,
+    unknown: Icon.Question,
+  };
+
+  return (
+    <Modal title="Modifier ma présence" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Réponse actuelle : <strong>{STATUS_META[myStatus]?.label || myStatus}</strong>
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {AVAILABILITY_STATUSES.map((s) => {
+          const StatusIcon = statusIcon[s];
+          const active = myStatus === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              disabled={saving}
+              onClick={() => onChoose(s)}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 py-3 rounded-xl border transition-all disabled:opacity-50",
+                active
+                  ? cn(STATUS_SOLID_CLASS[s], "border-transparent")
+                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:border-sky-300"
+              )}
+            >
+              <StatusIcon className="w-4 h-4" />
+              <span className="text-[11px] font-bold text-center leading-tight">
+                {STATUS_META[s].label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 // Bouton/compteur RSVP pour le joueur connecté (admin ou non). Avant réponse :
-// 3 boutons de choix. Après réponse : 3 compteurs cliquables ouvrant la liste
-// des joueurs correspondants, + un lien discret pour changer d'avis.
+// 3 boutons de choix. Après réponse : un rectangle plein affichant la
+// réponse du joueur (cliquable → petite fenêtre de changement) + 3
+// mini-compteurs cliquables ouvrant la liste des joueurs correspondants.
 //
-// "Modifier ma réponse" réinitialise VRAIMENT la présence dans Firestore
-// (et non plus un simple état local) : ça garantit que la remise en attente
-// survit à un changement d'onglet, et — via resetSessionAvailability — que
+// Le changement de réponse écrit directement le nouveau statut dans
+// Firestore via setSessionAvailability (et non plus un reset complet) : ça
+// reste cohérent avec ManagePresenceModal, et — via setSessionAvailability —
 // le joueur est aussi retiré de sa place sur le terrain s'il s'y était
 // auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
 // conservée).
@@ -64,6 +122,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   const { players, connectedPlayer } = useAppData();
   const [saving, setSaving] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
+  const [showChangeModal, setShowChangeModal] = useState(false);
 
   const { availability, present, absent, pending } = getAvailabilityGroups(
     sessionMatches,
@@ -88,8 +147,13 @@ export function AvailabilityButtons({ sessionMatches }) {
     }
   };
 
-  const changeMind = async () => {
+  const chooseNewStatus = async (status) => {
+    if (status === myStatus) {
+      setShowChangeModal(false);
+      return;
+    }
     if (
+      status !== "present" &&
       isSelfPlaced &&
       !window.confirm(
         "Vous êtes actuellement placé sur le terrain — changer votre réponse vous en retirera. Continuer ?"
@@ -97,57 +161,66 @@ export function AvailabilityButtons({ sessionMatches }) {
     ) {
       return;
     }
-    setSaving(true);
-    try {
-      await resetSessionAvailability(sessionMatches, connectedPlayer.id);
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    } finally {
-      setSaving(false);
-    }
+    await respond(status);
+    setShowChangeModal(false);
   };
 
   if (hasAnswered) {
+    const myMeta = STATUS_META[myStatus];
     return (
       <div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="flex items-stretch gap-2">
           <button
             type="button"
-            onClick={() => setOpenList("present")}
-            className="flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-800 hover:bg-emerald-200 transition-colors"
+            disabled={saving}
+            onClick={() => setShowChangeModal(true)}
+            className={cn(
+              "flex-1 flex items-center justify-center px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide active:scale-[0.98] transition-transform disabled:opacity-50",
+              STATUS_SOLID_CLASS[myStatus]
+            )}
           >
-            <span className="text-base font-extrabold pm-mono">{present.length}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide">
-              Présent{present.length > 1 ? "s" : ""}
-            </span>
+            {myMeta?.label || myStatus}
           </button>
-          <button
-            type="button"
-            onClick={() => setOpenList("absent")}
-            className="flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-700 hover:bg-rose-200 transition-colors"
-          >
-            <span className="text-base font-extrabold pm-mono">{absent.length}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide">
-              Absent{absent.length > 1 ? "s" : ""}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpenList("pending")}
-            className="flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 transition-colors"
-          >
-            <span className="text-base font-extrabold pm-mono">{pending.length}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide">En attente</span>
-          </button>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setOpenList("present")}
+              className="flex flex-col items-center justify-center gap-0 px-2 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 hover:bg-emerald-200 transition-colors"
+            >
+              <span className="text-[11px] font-extrabold pm-mono leading-none">
+                {present.length}
+              </span>
+              <span className="text-[7px] font-semibold uppercase tracking-wide leading-none mt-0.5">
+                Prés.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpenList("absent")}
+              className="flex flex-col items-center justify-center gap-0 px-2 py-1.5 rounded-lg bg-rose-100 border border-rose-300 text-rose-700 hover:bg-rose-200 transition-colors"
+            >
+              <span className="text-[11px] font-extrabold pm-mono leading-none">
+                {absent.length}
+              </span>
+              <span className="text-[7px] font-semibold uppercase tracking-wide leading-none mt-0.5">
+                Abs.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpenList("pending")}
+              className="flex flex-col items-center justify-center gap-0 px-2 py-1.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 transition-colors"
+            >
+              <span className="text-[11px] font-extrabold pm-mono leading-none">
+                {pending.length}
+              </span>
+              <span className="text-[7px] font-semibold uppercase tracking-wide leading-none mt-0.5">
+                Att.
+              </span>
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={changeMind}
-          className="mt-2 text-[11px] font-semibold text-[var(--color-text-dim)] hover:text-sky-700 underline decoration-dotted disabled:opacity-50"
-        >
-          Modifier ma réponse ({STATUS_META[myStatus]?.label || myStatus})
-        </button>
 
         {openList && (
           <PlayerListModal
@@ -160,6 +233,15 @@ export function AvailabilityButtons({ sessionMatches }) {
             }
             players={openList === "present" ? present : openList === "absent" ? absent : pending}
             onClose={() => setOpenList(null)}
+          />
+        )}
+
+        {showChangeModal && (
+          <ChangeMyResponseModal
+            myStatus={myStatus}
+            saving={saving}
+            onChoose={chooseNewStatus}
+            onClose={() => setShowChangeModal(false)}
           />
         )}
       </div>
