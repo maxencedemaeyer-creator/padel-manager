@@ -182,7 +182,12 @@ export function MatchesView() {
               return isAdmin ? (
                 <SessionCard key={key} sessionMatches={session} now={now} />
               ) : (
-                <AvailabilitySessionCard key={key} sessionMatches={session} restOfSeason />
+                <AvailabilitySessionCard
+                  key={key}
+                  sessionMatches={session}
+                  restOfSeason
+                  now={now}
+                />
               );
             })}
           </div>
