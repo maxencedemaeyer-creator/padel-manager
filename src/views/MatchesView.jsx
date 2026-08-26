@@ -16,7 +16,7 @@ import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { EmptyState } from "../components/ui";
 import { MyMatchSummary } from "../components/matches/MyMatchSummary";
-import { SessionCard, LastMatchCard } from "../components/matches/SessionCard";
+import { SessionCard, LastMatchCard, AvailabilitySessionCard } from "../components/matches/SessionCard";
 import { CreateMatchModal } from "../components/matches/CreateMatchModal";
 
 // Nombre max de jours après la date de connexion pendant lesquels un match à
@@ -151,13 +151,18 @@ export function MatchesView() {
           />
         ) : (
           <div className="flex flex-col gap-4">
-            {groupMatchesBySession(otherFiltered).map((session) => (
-              <SessionCard
-                key={`${session[0].date}|${session[0].time}`}
-                sessionMatches={session}
-                now={now}
-              />
-            ))}
+            {groupMatchesBySession(otherFiltered).map((session) => {
+              const key = `${session[0].date}|${session[0].time}`;
+              // Les matchs encore lointains (> 15 jours) n'affichent pas la
+              // composition détaillée aux joueurs — juste date/lieu et leur
+              // présence. L'admin garde la vue complète pour composer à
+              // l'avance.
+              return isAdmin ? (
+                <SessionCard key={key} sessionMatches={session} now={now} />
+              ) : (
+                <AvailabilitySessionCard key={key} sessionMatches={session} />
+              );
+            })}
           </div>
         )}
       </div>
