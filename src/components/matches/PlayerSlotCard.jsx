@@ -20,7 +20,6 @@ export function PlayerSlotCard({
   slotSide,
   isWinningTeam,
   isAdmin,
-  quickAssignActive,
   onAssignClick,
   onSelfClick,
   onPayClick,
@@ -46,9 +45,7 @@ export function PlayerSlotCard({
         onClick={handleClick}
         className={cn(
           "flex flex-col p-3 rounded-xl border-2 border-dashed min-h-[86px]",
-          quickAssignActive
-            ? "border-sky-400 text-sky-600 bg-sky-50/60 cursor-pointer"
-            : clickable
+          clickable
             ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
             : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
         )}
@@ -57,7 +54,7 @@ export function PlayerSlotCard({
         <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
           <Icon.Plus className="w-4 h-4" />
           <span className="text-[11px] font-medium">
-            {quickAssignActive ? "Placer ici" : canSelfManage ? "S'inscrire ici" : "Emplacement libre"}
+            {canSelfManage ? "S'inscrire ici" : "Emplacement libre"}
           </span>
         </div>
       </div>
@@ -79,8 +76,7 @@ export function PlayerSlotCard({
       className={cn(
         "flex flex-col p-3 rounded-xl border min-h-[86px]",
         isWinningTeam ? "bg-amber-50 border-amber-300" : "bg-white border-[var(--color-border)]",
-        clickable && "cursor-pointer hover:border-sky-300",
-        quickAssignActive && "ring-2 ring-sky-300"
+        clickable && "cursor-pointer hover:border-sky-300"
       )}
     >
       {slotTag}
