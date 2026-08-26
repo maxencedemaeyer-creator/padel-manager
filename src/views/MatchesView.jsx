@@ -1,16 +1,29 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Matchs" — bandeau personnel, dernier match joué, prochain match,
-// reste de la saison, création d'un match ponctuel (admin).
+// Onglet "Matchs" — bandeau personnel, dernier match joué, prochains matchs
+// (les 2 prochaines dates, dans un horizon de 15 jours), reste de la saison,
+// création d'un match ponctuel (admin).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn } from "../lib/utils";
-import { getMatchStart, getMatchTiming, groupMatchesBySession, useNow } from "../lib/matchLogic";
+import {
+  daysUntilMatch,
+  getMatchStart,
+  getMatchTiming,
+  groupMatchesBySession,
+  useNow,
+} from "../lib/matchLogic";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { EmptyState } from "../components/ui";
 import { MyMatchSummary } from "../components/matches/MyMatchSummary";
 import { SessionCard, LastMatchCard } from "../components/matches/SessionCard";
 import { CreateMatchModal } from "../components/matches/CreateMatchModal";
+
+// Nombre max de jours après la date de connexion pendant lesquels un match à
+// venir peut apparaître dans "Prochains matchs".
+const UPCOMING_WINDOW_DAYS = 15;
+// Nombre de dates de match (sessions) à afficher dans "Prochains matchs".
+const UPCOMING_SESSIONS_COUNT = 2;
 
 export function MatchesView() {
   const { matches, isAdmin } = useAppData();
@@ -24,10 +37,18 @@ export function MatchesView() {
     .filter((m) => getMatchTiming(m, now) === "finished")
     .sort((a, b) => getMatchStart(b) - getMatchStart(a));
 
-  // Prochain match : toutes les rencontres du jour le plus proche à venir
-  // (ex. les 2 terrains du jeudi suivant).
-  const nextDate = notFinished[0]?.date;
-  const nextGroup = nextDate ? notFinished.filter((m) => m.date === nextDate) : [];
+  // Prochains matchs : les 2 prochaines dates de match à venir (que le
+  // joueur y participe ou non), en ne gardant que celles qui ont lieu dans
+  // les 15 jours suivant la date de connexion (ex. connexion le 1er
+  // septembre → matchs visibles jusqu'au 15 septembre inclus).
+  const upcomingWithinWindow = notFinished.filter(
+    (m) => daysUntilMatch(m, now) < UPCOMING_WINDOW_DAYS
+  );
+  const nextDates = [...new Set(upcomingWithinWindow.map((m) => m.date))].slice(
+    0,
+    UPCOMING_SESSIONS_COUNT
+  );
+  const nextGroup = upcomingWithinWindow.filter((m) => nextDates.includes(m.date));
 
   // Dernier match joué : toutes les rencontres du dernier jour déjà terminé.
   const lastDate = finishedDesc[0]?.date;
@@ -63,7 +84,7 @@ export function MatchesView() {
 
       <div className="mb-6">
         <h3 className="font-semibold text-sm text-white mb-2">
-          Prochain match
+          Prochains matchs
         </h3>
         {nextGroup.length > 0 ? (
           <div className="flex flex-col gap-4">
@@ -78,9 +99,15 @@ export function MatchesView() {
         ) : (
           <EmptyState
             icon={<Icon.Calendar className="w-6 h-6" />}
-            title="Aucun match à venir"
+            title={
+              notFinished.length > 0
+                ? "Aucun match dans les 15 prochains jours"
+                : "Aucun match à venir"
+            }
             subtitle={
-              isAdmin
+              notFinished.length > 0
+                ? "Le prochain match programmé a lieu dans plus de 15 jours."
+                : isAdmin
                 ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
                 : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
             }
