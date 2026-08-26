@@ -4,7 +4,7 @@
 // pas terrain par terrain — on écrit/lit donc la même réponse sur tous les
 // terrains de la session, pour rester cohérent qu'il y en ait un ou deux.
 // ─────────────────────────────────────────────────────────────────────────
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../firebase";
 
 export const AVAILABILITY_STATUSES = ["present", "absent", "unknown"];
@@ -51,6 +51,18 @@ export async function setSessionAvailability(sessionMatches, playerId, status) {
   await Promise.all(
     (sessionMatches || []).map((m) =>
       updateDoc(doc(db, "matches", m.id), { [`availability.${playerId}`]: status })
+    )
+  );
+}
+
+// Réinitialise la réponse d'un joueur sur TOUS les terrains de la session —
+// on supprime complètement le champ (pas juste "unknown") pour qu'il
+// redevienne "en attente" et doive répondre lui-même à nouveau. Réservé à
+// l'admin (voir ManagePresenceModal dans Availability.jsx).
+export async function resetSessionAvailability(sessionMatches, playerId) {
+  await Promise.all(
+    (sessionMatches || []).map((m) =>
+      updateDoc(doc(db, "matches", m.id), { [`availability.${playerId}`]: deleteField() })
     )
   );
 }
