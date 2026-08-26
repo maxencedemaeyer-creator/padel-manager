@@ -3,11 +3,18 @@
 // Absent / Je ne sais pas encore (remplacés par leurs compteurs une fois
 // qu'on a répondu, avec pop-up listant les joueurs par statut), et — côté
 // admin — le panneau "qui a répondu" à côté de la date, avec sélection
-// rapide pour placer un joueur sur le terrain sans repasser par la recherche.
+// rapide pour placer un joueur sur le terrain sans repasser par la recherche,
+// ainsi qu'une modale "Gérer les présences" permettant à l'admin de modifier
+// sa propre présence ou celle de n'importe quel autre joueur (même s'il n'a
+// pas encore répondu).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, getFirstName } from "../../lib/utils";
-import { getAvailabilityGroups, setSessionAvailability } from "../../lib/availability";
+import {
+  AVAILABILITY_STATUSES,
+  getAvailabilityGroups,
+  setSessionAvailability,
+} from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal } from "../ui";
@@ -42,9 +49,9 @@ function PlayerListModal({ title, players, onClose }) {
   );
 }
 
-// Bouton/compteur RSVP pour un joueur non-admin. Avant réponse : 3 boutons
-// de choix. Après réponse : 3 compteurs cliquables ouvrant la liste des
-// joueurs correspondants, + un lien discret pour changer d'avis.
+// Bouton/compteur RSVP pour le joueur connecté (admin ou non). Avant réponse :
+// 3 boutons de choix. Après réponse : 3 compteurs cliquables ouvrant la liste
+// des joueurs correspondants, + un lien discret pour changer d'avis.
 export function AvailabilityButtons({ sessionMatches }) {
   const { players, connectedPlayer } = useAppData();
   const [saving, setSaving] = useState(false);
@@ -213,5 +220,106 @@ export function RespondedPlayersPanel({ sessionMatches, selectedPlayerId, onSele
         </p>
       )}
     </div>
+  );
+}
+
+// Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
+// session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
+// Présent / Absent / Je ne sais pas encore. Permet à l'administrateur de
+// modifier sa propre présence ou celle de n'importe quel autre joueur.
+export function ManagePresenceModal({ sessionMatches, onClose }) {
+  const { players } = useAppData();
+  const [search, setSearch] = useState("");
+  const [savingId, setSavingId] = useState(null);
+
+  const { availability } = getAvailabilityGroups(sessionMatches, players);
+
+  const filteredPlayers = [...players]
+    .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const setStatus = async (playerId, status) => {
+    setSavingId(playerId);
+    try {
+      await setSessionAvailability(sessionMatches, playerId, status);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const statusIcon = {
+    present: Icon.Check,
+    absent: Icon.X,
+    unknown: Icon.Question,
+  };
+  const statusActiveClass = {
+    present: "bg-emerald-500 border-emerald-500 text-white",
+    absent: "bg-rose-500 border-rose-500 text-white",
+    unknown: "bg-amber-500 border-amber-500 text-white",
+  };
+
+  return (
+    <Modal title="Gérer les présences" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Modifiez la présence de n'importe quel joueur pour cette date — y compris la vôtre.
+      </p>
+
+      <input
+        className="w-full mb-3 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-sm outline-none focus:border-sky-300"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Rechercher un joueur..."
+        autoFocus
+      />
+
+      <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
+        {filteredPlayers.length === 0 ? (
+          <p className="text-xs text-[var(--color-text-faint)] italic py-2">
+            Aucun joueur ne correspond à cette recherche.
+          </p>
+        ) : (
+          filteredPlayers.map((p) => {
+            const status = availability[p.id];
+            const busy = savingId === p.id;
+            return (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              >
+                <span className="flex-1 min-w-0 truncate text-sm font-medium">
+                  {p.emoji} {p.name}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {AVAILABILITY_STATUSES.map((s) => {
+                    const StatusIcon = statusIcon[s];
+                    const active = status === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setStatus(p.id, s)}
+                        aria-label={STATUS_META[s].label}
+                        title={STATUS_META[s].label}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center border transition-all disabled:opacity-40",
+                          active
+                            ? statusActiveClass[s]
+                            : "bg-white border-[var(--color-border)] text-[var(--color-text-faint)] hover:border-sky-300"
+                        )}
+                      >
+                        <StatusIcon className="w-3.5 h-3.5" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Modal>
   );
 }
