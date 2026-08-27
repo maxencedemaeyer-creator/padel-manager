@@ -2,7 +2,7 @@
 // Formulaire "Ajouter un joueur" (admin uniquement).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, findDuplicateOwner, generateUniqueCode } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
@@ -12,7 +12,7 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function AddPlayerModal({ onClose }) {
-  const { players } = useAppData();
+  const { players, archivedPlayers } = useAppData();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -28,11 +28,26 @@ export function AddPlayerModal({ onClose }) {
     avatarColor: AVATAR_COLOR_CHOICES[0],
   });
   const [saving, setSaving] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
 
   const duplicateOwner = useMemo(
     () => findDuplicateOwner(players, form.accessCode),
     [players, form.accessCode]
   );
+
+  // Si un joueur supprimé (archivé) porte EXACTEMENT le même nom que celui en
+  // train d'être saisi, on le propose en réactivation plutôt que de forcer
+  // la création d'une fiche toute neuve — ça évite les doublons et ça
+  // conserve tout l'historique de matchs/statistiques de ce joueur.
+  const matchedArchived = useMemo(() => {
+    const normalized = form.name.trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      (archivedPlayers || []).find(
+        (p) => (p.name || "").trim().toLowerCase() === normalized
+      ) || null
+    );
+  }, [archivedPlayers, form.name]);
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -40,6 +55,22 @@ export function AddPlayerModal({ onClose }) {
 
   const canSubmit =
     form.name.trim().length > 0 && form.accessCode.length === 4 && !duplicateOwner;
+
+  const reactivate = async () => {
+    if (!matchedArchived) return;
+    setReactivating(true);
+    try {
+      await updateDoc(doc(db, "players", matchedArchived.id), {
+        archived: false,
+        archivedAt: null,
+      });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setReactivating(false);
+    }
+  };
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -102,6 +133,26 @@ export function AddPlayerModal({ onClose }) {
           placeholder="Ex. Camille Dupuis"
         />
       </Field>
+
+      {matchedArchived && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
+          <p className="text-xs text-amber-800 mb-2">
+            <strong>{matchedArchived.name}</strong> a déjà été supprimé du
+            club, mais son profil est conservé en interne. Réactiver ce
+            profil (plutôt que d'en créer un nouveau) lui rend l'accès et
+            conserve tout son historique.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full !py-2 !text-amber-800 !border-amber-300"
+            onClick={reactivate}
+            disabled={reactivating}
+          >
+            {reactivating ? "Réactivation..." : `Réactiver ${matchedArchived.name}`}
+          </Button>
+        </div>
+      )}
 
       <Field label="Email">
         <input
@@ -221,4 +272,3 @@ export function AddPlayerModal({ onClose }) {
     </Modal>
   );
 }
-
