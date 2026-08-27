@@ -4,7 +4,7 @@
 // Un joueur modifie ses propres infos de jeu et son PIN depuis "Mon profil".
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, findDuplicateOwner, generateUniqueCode, normalizeSide, parseFeeInput } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
@@ -14,7 +14,7 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function EditPlayerModal({ player, onClose }) {
-  const { isAdmin, players } = useAppData();
+  const { isAdmin, players, connectedPlayer } = useAppData();
 
   // Champs de jeu — modifiables par le joueur lui-même ou par l'admin
   const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
@@ -42,6 +42,8 @@ export function EditPlayerModal({ player, onClose }) {
   );
 
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const duplicateOwner = useMemo(
     () => findDuplicateOwner(players, accessCode, player.id),
@@ -82,6 +84,28 @@ export function EditPlayerModal({ player, onClose }) {
       setSaving(false);
     }
   };
+
+  // "Supprimer" un joueur ne l'efface jamais réellement de Firebase : on le
+  // marque simplement `archived: true`. Il disparaît alors immédiatement de
+  // toute l'app (écran de connexion, onglet Équipe, assignation aux matchs,
+  // etc.) mais reste conservé en base — si un jour quelqu'un recrée un
+  // joueur avec exactement le même nom, l'app proposera de réactiver ce
+  // profil au lieu d'en créer un nouveau (voir AddPlayerModal.jsx).
+  const archivePlayer = async () => {
+    setDeleting(true);
+    try {
+      await updateDoc(doc(db, "players", player.id), {
+        archived: true,
+        archivedAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+      setDeleting(false);
+    }
+  };
+
+  const isSelf = connectedPlayer && player.id === connectedPlayer.id;
 
   return (
     <Modal
@@ -280,6 +304,58 @@ export function EditPlayerModal({ player, onClose }) {
                 </select>
               </Field>
             </div>
+          </div>
+
+          <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
+            <p className="text-xs font-semibold text-[var(--color-danger)] mb-1">
+              Zone de danger
+            </p>
+            {!confirmDelete ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={isSelf}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold hover:border-rose-400 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <Icon.Trash className="w-4 h-4" /> Supprimer ce joueur
+                </button>
+                {isSelf && (
+                  <p className="text-[11px] text-[var(--color-text-faint)] mt-2">
+                    Vous ne pouvez pas supprimer votre propre compte pendant
+                    que vous êtes connecté dessus.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
+                <p className="text-xs text-rose-700 mb-3">
+                  {player.name} sera retiré de l'app : plus aucun accès, plus
+                  visible nulle part (connexion, équipe, matchs...). Son
+                  profil reste conservé en interne — s'il se réinscrit un
+                  jour avec exactement le même prénom et nom, l'app vous
+                  proposera de réactiver ce profil.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 !py-2"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="flex-1 !py-2"
+                    onClick={archivePlayer}
+                    disabled={deleting}
+                  >
+                    {deleting ? "Suppression..." : "Confirmer la suppression"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
