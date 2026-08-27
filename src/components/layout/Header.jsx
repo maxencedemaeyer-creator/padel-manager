@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────
-// En-tête fixe : profil (→ Mon profil), actualisation, clochette de
-// désinscriptions tardives (admin), déconnexion.
+// En-tête fixe : profil (→ Mon profil), clochette de désinscriptions
+// tardives (admin), déconnexion.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, formatDateFR, getFirstName } from "../../lib/utils";
+import { cn, formatDateFR } from "../../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useWithdrawalAlerts } from "../../lib/withdrawalWatcher";
 import { useAppData } from "../../context/AppContext";
@@ -107,11 +107,21 @@ export function Header({ setView }) {
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
-      <div className="flex items-center gap-2">
-        <Icon.Ball className="w-5 h-5 text-[var(--color-lime)]" />
-        <span className="pm-display font-extrabold text-base">Padel Manager</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon.Ball className="w-5 h-5 text-[var(--color-lime)] shrink-0" />
+        {/* Chez l'admin, la mention est réduite (et se réagrandit à partir
+            de sm:) pour laisser assez de place aux 3 boutons de droite
+            (profil, cloche, déconnexion) sans que rien ne soit coupé. */}
+        <span
+          className={cn(
+            "pm-display font-extrabold truncate",
+            isAdmin ? "text-xs sm:text-base" : "text-base"
+          )}
+        >
+          Padel Manager
+        </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={() => setView("stats")}
           aria-label="Mon profil"
@@ -124,21 +134,13 @@ export function Header({ setView }) {
             {connectedPlayer.emoji || "🎾"}
           </span>
           <span className="text-xs font-semibold max-w-[80px] truncate">
-            {getFirstName(connectedPlayer.name)}
+            {connectedPlayer.name}
           </span>
           {isAdmin && (
             <Badge tone="lime" className="!px-1.5 !py-0.5">
               Admin
             </Badge>
           )}
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          aria-label="Actualiser la page"
-          title="Actualiser la page"
-          className="p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
-        >
-          <Icon.Refresh className="w-4 h-4" />
         </button>
         {isAdmin && (
           <button
