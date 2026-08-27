@@ -2,10 +2,17 @@
 // Onglet "Mon profil" — en-tête, statistiques (anneau de progression),
 // forme récente, personnes marquantes, préférences (éditables), face-à-face.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { cn, formatDateFR, getInitials, normalizeSide } from "../lib/utils";
+import {
+  cn,
+  formatDateFR,
+  getInitials,
+  normalizeSide,
+  findDuplicateOwner,
+  generateUniqueCode,
+} from "../lib/utils";
 import {
   LEVELS,
   AVATAR_COLOR_CHOICES,
@@ -181,6 +188,79 @@ function EditPreferenceModal({ player, field, title, options, onClose }) {
   );
 }
 
+// Petite fenêtre dédiée au changement du code PIN de connexion — ouverte via
+// le bouton réglages sur l'en-tête de "Mon profil". Écrit directement sur
+// Firebase (collection players) et referme la fenêtre.
+function EditPinModal({ player, players, onClose }) {
+  const [accessCode, setAccessCode] = useState(player.accessCode || "");
+  const [saving, setSaving] = useState(false);
+
+  const duplicateOwner = useMemo(
+    () => findDuplicateOwner(players, accessCode, player.id),
+    [players, accessCode, player.id]
+  );
+  const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
+  const canSubmit = accessCode.length === 4 && !duplicateOwner;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "players", player.id), { accessCode });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Modifier mon code PIN"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-xs text-[var(--color-text-dim)] mb-4">
+        Ce code à 4 chiffres vous sert à vous connecter depuis l'écran d'accueil.
+      </p>
+      <Field label="Code PIN de connexion (4 chiffres)">
+        <div className="flex gap-2">
+          <input
+            className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+            value={accessCode}
+            maxLength={4}
+            onChange={(e) =>
+              setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+            }
+          />
+          <button
+            onClick={generateCode}
+            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+          >
+            <Icon.Dice className="w-4 h-4" /> Générer
+          </button>
+        </div>
+        {duplicateOwner && (
+          <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
+            ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
+            choisir un autre.
+          </p>
+        )}
+      </Field>
+    </Modal>
+  );
+}
+
 export function StatsView() {
   const { connectedPlayer, players, matches } = useAppData();
   const myStats = computePlayerStats(connectedPlayer.id, matches);
@@ -194,6 +274,7 @@ export function StatsView() {
   const h2h = h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null;
 
   const [editingPref, setEditingPref] = useState(null);
+  const [showPinEdit, setShowPinEdit] = useState(false);
 
   const formStyle = {
     V: "bg-emerald-500 text-white",
@@ -271,27 +352,46 @@ export function StatsView() {
     <div className="pb-28">
       {/* En-tête profil — grand avatar, nom, contexte */}
       <div className="px-4 pt-2 pb-6">
-        <div className="flex items-center gap-4">
-          <div
-            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl shrink-0 border-2 border-white/40"
-            style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div
+              className="w-20 h-20 rounded-full flex items-center justify-center text-4xl shrink-0 border-2 border-white/40"
+              style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+            >
+              {connectedPlayer.emoji || "🎾"}
+            </div>
+            <div className="min-w-0">
+              <p className="pm-display font-extrabold text-2xl text-white leading-tight truncate">
+                {connectedPlayer.name}
+              </p>
+              <p className="text-sm text-white/80 mt-1">
+                {connectedPlayer.isCreditor
+                  ? "Créancier du club"
+                  : connectedPlayer.isAdmin
+                  ? "Administrateur"
+                  : "Membre du club"}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPinEdit(true)}
+            aria-label="Modifier mon code PIN"
+            title="Modifier mon code PIN"
+            className="p-2.5 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all shrink-0"
           >
-            {connectedPlayer.emoji || "🎾"}
-          </div>
-          <div className="min-w-0">
-            <p className="pm-display font-extrabold text-2xl text-white leading-tight truncate">
-              {connectedPlayer.name}
-            </p>
-            <p className="text-sm text-white/80 mt-1">
-              {connectedPlayer.isCreditor
-                ? "Créancier du club"
-                : connectedPlayer.isAdmin
-                ? "Administrateur"
-                : "Membre du club"}
-            </p>
-          </div>
+            <Icon.Settings className="w-4 h-4" />
+          </button>
         </div>
       </div>
+
+      {showPinEdit && (
+        <EditPinModal
+          player={connectedPlayer}
+          players={players}
+          onClose={() => setShowPinEdit(false)}
+        />
+      )}
 
       <div className="px-4">
         {myStats.played === 0 ? (
