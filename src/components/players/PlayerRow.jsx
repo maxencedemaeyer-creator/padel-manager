@@ -15,7 +15,9 @@ export function PlayerRow({ player }) {
   const { isAdmin, connectedPlayer, matches } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
-  const canEdit = isAdmin || player.id === connectedPlayer.id;
+  // Seul l'admin peut ouvrir la fiche complète depuis "Équipe" — un joueur
+  // modifie désormais son propre code PIN depuis "Mon profil".
+  const canEdit = isAdmin;
   const adjustedBalance = player.isCreditor
     ? getCreditorAccounting(player.id, matches).totalPaidAllTime + (player.manualAdjustment || 0)
     : 0;
@@ -104,4 +106,3 @@ export function PlayerRow({ player }) {
     </>
   );
 }
-
