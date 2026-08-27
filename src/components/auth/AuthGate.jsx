@@ -69,7 +69,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
     <div className="flex flex-col items-center pm-rise">
       <button
         onClick={onBack}
-        className="self-start flex items-center gap-1 text-sm text-[var(--color-text-dim)] mb-4"
+        className="self-start flex items-center gap-1 text-sm text-white mb-4"
       >
         <Icon.Chevron className="w-4 h-4 rotate-180" /> Retour
       </button>
@@ -81,7 +81,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
         {player.emoji || "🎾"}
       </div>
       <p className="pm-display font-bold text-lg mb-1">{player.name}</p>
-      <p className="text-xs text-[var(--color-text-dim)] mb-6">
+      <p className="text-xs text-white mb-6">
         Entrez votre code à 4 chiffres
       </p>
 
@@ -207,6 +207,21 @@ export function BootstrapAdmin() {
   );
 }
 
+// Bandeau "Padel Manager" affiché en haut de l'écran de sélection du profil
+// (avant connexion) — même style que l'en-tête de l'app une fois connecté,
+// mais sans la pastille joueur ni le bouton de déconnexion (inexistants
+// tant que personne n'est identifié). Sert uniquement la cohérence visuelle.
+function AuthBrandHeader() {
+  return (
+    <header className="sticky top-0 z-30 flex items-center px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
+      <div className="flex items-center gap-2">
+        <Icon.Ball className="w-5 h-5 text-[var(--color-lime)]" />
+        <span className="pm-display font-extrabold text-base">Padel Manager</span>
+      </div>
+    </header>
+  );
+}
+
 export function AuthGate({ children }) {
   const { players, loading } = usePlayers();
   const [connectedPlayer, setConnectedPlayer] = useState(null);
@@ -273,35 +288,39 @@ export function AuthGate({ children }) {
     );
   }
 
+  // Le bandeau "Padel Manager" n'apparaît que sur l'écran de sélection du
+  // profil (clic sur son nom) — pas sur la création du 1er compte admin, ni
+  // sur le clavier PIN, qui gardent leur mise en page centrée d'origine.
+  const showBrandHeader = players.length > 0 && !selectedForPin;
+
   return (
-    <div className="pm-root flex flex-col items-center justify-center min-h-screen px-6 py-10">
-      {players.length === 0 ? (
-        <BootstrapAdmin />
-      ) : selectedForPin ? (
-        <PinKeypad
-          player={selectedForPin}
-          players={players}
-          onBack={() => setSelectedForPin(null)}
-          onSuccess={login}
-        />
-      ) : (
-        <div className="w-full max-w-sm pm-rise">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon.Ball className="w-7 h-7 text-[var(--color-lime)]" />
-            <h1 className="pm-display font-extrabold text-2xl">Padel Manager</h1>
+    <div className="pm-root min-h-screen flex flex-col">
+      {showBrandHeader && <AuthBrandHeader />}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+        {players.length === 0 ? (
+          <BootstrapAdmin />
+        ) : selectedForPin ? (
+          <PinKeypad
+            player={selectedForPin}
+            players={players}
+            onBack={() => setSelectedForPin(null)}
+            onSuccess={login}
+          />
+        ) : (
+          <div className="w-full max-w-sm pm-rise">
+            <p className="text-sm text-white mb-7">
+              Sélectionnez votre profil pour vous connecter
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {players
+                .filter((p) => !p.isTest)
+                .map((p) => (
+                  <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
+                ))}
+            </div>
           </div>
-          <p className="text-sm text-[var(--color-text-dim)] mb-7">
-            Sélectionnez votre profil pour vous connecter
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {players
-              .filter((p) => !p.isTest)
-              .map((p) => (
-                <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
-              ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
