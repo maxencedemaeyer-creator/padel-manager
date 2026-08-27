@@ -52,8 +52,18 @@ export function CourtPanel({ match, now }) {
       (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
   );
   const withinSelfRegWindow = daysUntilMatch(match, now) <= SELF_REGISTRATION_WINDOW_DAYS;
+  // Un joueur ne peut s'auto-inscrire sur une place que s'il a explicitement
+  // répondu "présent" à la session — un joueur "absent" ou qui n'a "pas
+  // encore répondu"/"je ne sais pas encore" ne doit pas pouvoir cliquer sur
+  // une place, même s'il voit la disposition du terrain.
+  const myAvailabilityStatus = match.availability ? match.availability[connectedPlayer.id] : undefined;
+  const hasConfirmedPresence = myAvailabilityStatus === "present";
   const canSelfJoin =
-    !isAdmin && timing === "upcoming" && !isParticipant && !alreadyElsewhereToday;
+    !isAdmin &&
+    timing === "upcoming" &&
+    !isParticipant &&
+    !alreadyElsewhereToday &&
+    hasConfirmedPresence;
   const canSelfLeave = !isAdmin && timing === "upcoming" && isParticipant;
 
   const selfJoin = async (def) => {
