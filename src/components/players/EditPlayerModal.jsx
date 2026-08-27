@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Fiche joueur en édition. Admin : tous les champs (nom, email, PIN, rôles,
-// connexion secrète test). Non-admin : ses propres infos de jeu + son PIN.
+// Fiche joueur en édition — réservée à l'admin (accessible uniquement depuis
+// l'onglet "Équipe") : nom, email, PIN, rôles, connexion secrète test.
+// Un joueur modifie ses propres infos de jeu et son PIN depuis "Mon profil".
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
@@ -48,9 +49,7 @@ export function EditPlayerModal({ player, onClose }) {
   );
   const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
 
-  const canSubmit = isAdmin
-    ? name.trim().length > 0 && accessCode.length === 4 && !duplicateOwner
-    : accessCode.length === 4 && !duplicateOwner;
+  const canSubmit = name.trim().length > 0 && accessCode.length === 4 && !duplicateOwner;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -64,21 +63,17 @@ export function EditPlayerModal({ player, onClose }) {
         level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
         accessCode,
+        name: name.trim(),
+        email: email.trim(),
+        emoji,
+        avatarColor,
+        isAdmin: playerIsAdmin,
+        isCreditor,
+        isTest,
+        secondaryTestCode: secondaryTestCode || null,
+        secondaryTestPlayerId: secondaryTestPlayerId || null,
+        advancedAmount: parseFeeInput(advancedAmount),
       };
-      if (isAdmin) {
-        Object.assign(payload, {
-          name: name.trim(),
-          email: email.trim(),
-          emoji,
-          avatarColor,
-          isAdmin: playerIsAdmin,
-          isCreditor,
-          isTest,
-          secondaryTestCode: secondaryTestCode || null,
-          secondaryTestPlayerId: secondaryTestPlayerId || null,
-          advancedAmount: parseFeeInput(advancedAmount),
-        });
-      }
       await updateDoc(doc(db, "players", player.id), payload);
       onClose();
     } catch (error) {
@@ -104,93 +99,56 @@ export function EditPlayerModal({ player, onClose }) {
         </>
       }
     >
-      {!isAdmin && (
-        <>
-          <p className="text-xs text-[var(--color-text-dim)] mb-4">
-            Vous pouvez modifier vos informations de jeu et votre code PIN de
-            connexion ci-dessous.
-          </p>
-          <Field label="Code PIN de connexion (4 chiffres)">
-            <div className="flex gap-2">
-              <input
-                className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
-                value={accessCode}
-                maxLength={4}
-                onChange={(e) =>
-                  setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
-                }
-              />
-              <button
-                onClick={generateCode}
-                className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
-              >
-                <Icon.Dice className="w-4 h-4" /> Générer
-              </button>
-            </div>
-            {duplicateOwner && (
-              <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
-                ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
-                choisir un autre.
-              </p>
-            )}
-          </Field>
-        </>
-      )}
+      <AvatarPicker
+        emoji={emoji}
+        color={avatarColor}
+        onEmojiChange={setEmoji}
+        onColorChange={setAvatarColor}
+      />
 
-      {isAdmin && (
-        <>
-          <AvatarPicker
-            emoji={emoji}
-            color={avatarColor}
-            onEmojiChange={setEmoji}
-            onColorChange={setAvatarColor}
+      <Field label="Nom complet">
+        <input
+          className={inputClass}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ex. Camille Dupuis"
+        />
+      </Field>
+
+      <Field label="Email">
+        <input
+          type="email"
+          className={inputClass}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="camille@email.com"
+        />
+      </Field>
+
+      <Field label="Code PIN (4 chiffres)">
+        <div className="flex gap-2">
+          <input
+            className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+            value={accessCode}
+            maxLength={4}
+            onChange={(e) =>
+              setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+            }
           />
-
-          <Field label="Nom complet">
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex. Camille Dupuis"
-            />
-          </Field>
-
-          <Field label="Email">
-            <input
-              type="email"
-              className={inputClass}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="camille@email.com"
-            />
-          </Field>
-
-          <Field label="Code PIN (4 chiffres)">
-            <div className="flex gap-2">
-              <input
-                className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
-                value={accessCode}
-                maxLength={4}
-                onChange={(e) =>
-                  setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
-                }
-              />
-              <button
-                onClick={generateCode}
-                className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
-              >
-                <Icon.Dice className="w-4 h-4" /> Générer
-              </button>
-            </div>
-            {duplicateOwner && (
-              <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
-                ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
-                choisir un autre.
-              </p>
-            )}
-          </Field>
-        </>
-      )}
+          <button
+            onClick={generateCode}
+            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+          >
+            <Icon.Dice className="w-4 h-4" /> Générer
+          </button>
+        </div>
+        {duplicateOwner && (
+          <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
+            ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
+            choisir un autre.
+          </p>
+        )}
+      </Field>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Main dominante">
@@ -328,4 +286,3 @@ export function EditPlayerModal({ player, onClose }) {
     </Modal>
   );
 }
-
