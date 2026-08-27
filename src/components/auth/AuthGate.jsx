@@ -2,7 +2,7 @@
 // Authentification — sélection joueur + clavier PIN tactile + création du
 // premier compte admin + le Provider racine (AuthGate).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, SESSION_KEY, ADMIN_MASTER_CODE } from "../../firebase";
 import { cn, isPlayerAdmin } from "../../lib/utils";
@@ -223,7 +223,16 @@ function AuthBrandHeader() {
 }
 
 export function AuthGate({ children }) {
-  const { players, loading } = usePlayers();
+  const { players: allPlayers, loading } = usePlayers();
+  // Un joueur "supprimé" par l'admin n'est jamais vraiment effacé de Firebase :
+  // il est simplement marqué `archived: true` (voir EditPlayerModal). On le
+  // garde donc en mémoire (archivedPlayers, pour la suggestion de
+  // réactivation dans "Ajouter un joueur") mais il disparaît de partout
+  // ailleurs dans l'app — écran de connexion, onglet Équipe, assignation aux
+  // matchs, etc. — puisque `players` (celui distribué à toute l'app via le
+  // contexte) ne contient plus que les joueurs actifs.
+  const players = useMemo(() => allPlayers.filter((p) => !p.archived), [allPlayers]);
+  const archivedPlayers = useMemo(() => allPlayers.filter((p) => p.archived), [allPlayers]);
   const [connectedPlayer, setConnectedPlayer] = useState(null);
   const [selectedForPin, setSelectedForPin] = useState(null);
   const [restoring, setRestoring] = useState(true);
@@ -244,11 +253,16 @@ export function AuthGate({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // Garder le joueur connecté synchronisé avec les mises à jour temps réel
+  // Garder le joueur connecté synchronisé avec les mises à jour temps réel —
+  // et le déconnecter immédiatement si un admin vient de le supprimer.
   useEffect(() => {
     if (connectedPlayer) {
       const fresh = players.find((p) => p.id === connectedPlayer.id);
-      if (fresh && JSON.stringify(fresh) !== JSON.stringify(connectedPlayer)) {
+      if (!fresh) {
+        logout();
+        return;
+      }
+      if (JSON.stringify(fresh) !== JSON.stringify(connectedPlayer)) {
         setConnectedPlayer(fresh);
       }
     }
@@ -281,7 +295,13 @@ export function AuthGate({ children }) {
   if (connectedPlayer) {
     return (
       <AppDataContext.Provider
-        value={{ connectedPlayer, isAdmin: isPlayerAdmin(connectedPlayer), logout, players }}
+        value={{
+          connectedPlayer,
+          isAdmin: isPlayerAdmin(connectedPlayer),
+          logout,
+          players,
+          archivedPlayers,
+        }}
       >
         {children}
       </AppDataContext.Provider>
