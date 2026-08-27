@@ -2,7 +2,7 @@
 // Une case de terrain : vide (cliquable pour assigner/s'inscrire) ou
 // occupée par un participant (nom, statut de paiement, position fixe).
 // ─────────────────────────────────────────────────────────────────────────
-import { cn, getInitials, getFirstName, normalizeSide } from "../../lib/utils";
+import { cn, getFirstName, normalizeSide } from "../../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import Icon from "../icons/Icon";
 import { Badge } from "../ui";
@@ -82,10 +82,10 @@ export function PlayerSlotCard({
       {slotTag}
       <div className="flex items-start gap-2">
         <span
-          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
           style={{ backgroundColor: playerRecord?.avatarColor || AVATAR_COLOR_CHOICES[0] }}
         >
-          {getInitials(participant.name)}
+          {playerRecord?.emoji || "🎾"}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block sm:hidden text-sm font-semibold truncate">
