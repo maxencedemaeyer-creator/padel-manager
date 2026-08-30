@@ -15,7 +15,7 @@ import {
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { EmptyState } from "../components/ui";
-import { getSessionAvailability } from "../lib/availability";
+import { isCompositionPublished } from "../lib/composition";
 import { MyMatchSummary } from "../components/matches/MyMatchSummary";
 import { SessionCard, LastMatchCard, AvailabilitySessionCard } from "../components/matches/SessionCard";
 import { CreateMatchModal } from "../components/matches/CreateMatchModal";
@@ -104,14 +104,13 @@ export function MatchesView() {
           <div className="flex flex-col gap-4">
             {groupMatchesBySession(nextGroup).map((session) => {
               const key = `${session[0].date}|${session[0].time}`;
-              // Tant que le joueur connecté n'a pas répondu à cette session
-              // (présent / absent / je ne sais pas encore), on affiche la
-              // carte simplifiée "présence" plutôt que la disposition du
-              // terrain — l'admin, lui, garde toujours la vue complète pour
-              // pouvoir composer les équipes.
-              const hasAnswered =
-                isAdmin || Boolean(getSessionAvailability(session)[connectedPlayer.id]);
-              return hasAnswered ? (
+              // La disposition du terrain (qui joue où) ne s'affiche plus
+              // automatiquement : elle reste masquée aux joueurs tant que
+              // l'administrateur n'a pas cliqué sur "Publier la
+              // composition" pour cette session — lui, garde toujours la
+              // vue complète pour pouvoir composer les équipes tranquillement.
+              const showComposition = isAdmin || isCompositionPublished(session);
+              return showComposition ? (
                 <SessionCard key={key} sessionMatches={session} now={now} />
               ) : (
                 <AvailabilitySessionCard key={key} sessionMatches={session} />
@@ -175,11 +174,15 @@ export function MatchesView() {
           <div className="flex flex-col gap-4">
             {groupMatchesBySession(otherFiltered).map((session) => {
               const key = `${session[0].date}|${session[0].time}`;
-              // Les matchs encore lointains (> 15 jours) n'affichent pas la
-              // composition détaillée aux joueurs — juste date/lieu et leur
-              // présence. L'admin garde la vue complète pour composer à
-              // l'avance.
-              return isAdmin ? (
+              // Un match déjà terminé garde son affichage résultat habituel
+              // (score compact) quel que soit l'état de publication — la
+              // publication ne concerne que la composition d'un match à
+              // venir. Pour un match pas encore joué, la composition ne
+              // s'affiche aux joueurs qu'une fois publiée par l'admin ; lui,
+              // garde la vue complète pour composer à l'avance.
+              const finished = getMatchTiming(session[0], now) === "finished";
+              const showComposition = isAdmin || (!finished && isCompositionPublished(session));
+              return showComposition ? (
                 <SessionCard key={key} sessionMatches={session} now={now} />
               ) : (
                 <AvailabilitySessionCard
