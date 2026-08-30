@@ -7,55 +7,48 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdminEmail() {
-      return isSignedIn() && 
-        request.auth.token.email != null && 
-        (
-          request.auth.token.email.lower() == 'maxence.de.maeyer@gmail.com' ||
-          request.auth.token.email.lower() == 'maxencedemaeyer@gmail.com'
-        );
-    }
-
-    function isAdmin() {
-      return isAdminEmail();
-    }
-
-    function isNotAnonymous() {
-      return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
-    }
-
-    // Default deny
+    // Default deny — toute collection non listée explicitement ci-dessous
+    // reste totalement inaccessible.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // 1. Club Settings & Configuration
-    match /settings/{settingId} {
-      allow read: if true;
-      allow write: if true;
-    }
-
-    // 2. Players collection
+    // 1. Players collection
+    // Lu par tous les visiteurs authentifiés (y compris avant la sélection
+    // du profil / saisie du code PIN, qui est gérée côté application, pas
+    // par Firebase Auth). L'app ne supprime jamais un joueur (elle le
+    // marque "archived: true"), donc aucune permission de suppression n'est
+    // accordée ici.
     match /players/{playerId} {
-      // Directory and player list is readable by all users & guests
-      allow read: if true;
-      
-      // Allow create and update for all members & guests
-      allow create, update: if true;
-
-      // Deletion allowed
-      allow delete: if true;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
     }
 
-    // 3. Matches collection
+    // 2. Matches collection
     match /matches/{matchId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
     }
 
-    // 4. Password / Code Recovery Requests
-    match /password_requests/{requestId} {
-      allow read, write: if true;
+    // 3. Withdrawals collection (détection des désinscriptions tardives —
+    // src/lib/withdrawalWatcher.js, CourtPanel.jsx, Header.jsx). Absente des
+    // règles précédentes : toutes ces lectures/écritures étaient refusées
+    // en silence, rendant la fonctionnalité inopérante en production.
+    match /withdrawals/{withdrawalId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
     }
+
+    // Remarque : "isSignedIn()" est vrai dès qu'un visiteur charge le site,
+    // même sans code PIN valide, car l'app se connecte automatiquement à
+    // Firebase de façon anonyme (voir src/firebase.js). Cela bloque l'accès
+    // direct à la base par un script/robot qui ne charge jamais le site,
+    // mais ne distingue pas un joueur d'un administrateur au niveau de la
+    // base de données : cette distinction reste gérée côté application
+    // uniquement. Une isolation plus stricte (empêcher un joueur non-admin
+    // d'écrire dans les documents d'un autre joueur, par exemple) nécessite
+    // une vraie authentification Firebase par compte (email ou téléphone)
+    // avec des rôles ("custom claims"), ce qui est une évolution plus lourde
+    // à prévoir séparément si le besoin s'en fait sentir.
   }
 }
