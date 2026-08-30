@@ -34,27 +34,38 @@ export function PlayerTile({ player, onClick }) {
 export function PinKeypad({ player, players, onBack, onSuccess }) {
   const [digits, setDigits] = useState("");
   const [error, setError] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const press = (d) => {
-    if (digits.length >= 4 || error) return;
+    if (digits.length >= 4 || error || checking) return;
     const next = digits + d;
     setDigits(next);
     if (next.length === 4) {
-      setTimeout(() => {
-        if (next === player.accessCode) {
-          onSuccess(player);
-          return;
-        }
-        // Code PIN secondaire : connecte discrètement sur un autre profil
-        // (ex. un compte test), sans qu'aucune nouvelle carte n'apparaisse
-        // jamais sur cet écran de connexion.
-        if (player.secondaryTestCode && next === player.secondaryTestCode) {
-          const linked = players.find((p) => p.id === player.secondaryTestPlayerId);
-          if (linked) {
-            onSuccess(linked);
-            return;
+      setTimeout(async () => {
+        setChecking(true);
+        // Le code n'est jamais comparé dans le navigateur : on demande au
+        // serveur (api/verify-pin.js) de vérifier, car lui seul a le droit
+        // de lire les codes PIN réels (voir firestore.rules —
+        // player_credentials est totalement verrouillée côté client).
+        try {
+          const response = await fetch("/api/verify-pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ playerId: player.id, pin: next }),
+          });
+          const data = await response.json();
+          if (data.ok && data.loginAsPlayerId) {
+            const target = players.find((p) => p.id === data.loginAsPlayerId);
+            if (target) {
+              setChecking(false);
+              onSuccess(target);
+              return;
+            }
           }
+        } catch (e) {
+          console.error("Erreur de vérification du code PIN :", e);
         }
+        setChecking(false);
         setError(true);
         setTimeout(() => {
           setError(false);
@@ -148,10 +159,13 @@ export function BootstrapAdmin() {
     if (!name.trim() || code.length !== 4) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, "players"), {
+      // Le code PIN n'est plus jamais écrit sur la fiche joueur elle-même
+      // (lisible par tous) : la fiche est créée sans lui, puis le code est
+      // enregistré séparément via le serveur, dans la collection verrouillée
+      // player_credentials (voir api/manage-pin.js).
+      const playerRef = await addDoc(collection(db, "players"), {
         name: name.trim(),
         email: "",
-        accessCode: code,
         isAdmin: true,
         isCreditor: true,
         creditBalance: 0,
@@ -163,8 +177,17 @@ export function BootstrapAdmin() {
         federation: "Aucune",
         createdAt: serverTimestamp(),
       });
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", playerId: playerRef.id, accessCode: code }),
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+      }
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur : " + error.message);
     } finally {
       setSaving(false);
     }
