@@ -3,10 +3,10 @@
 // l'onglet "Équipe") : nom, email, PIN, rôles, connexion secrète test.
 // Un joueur modifie ses propres infos de jeu et son PIN depuis "Mon profil".
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, findDuplicateOwner, generateUniqueCode, normalizeSide, parseFeeInput } from "../../lib/utils";
+import { cn, normalizeSide, parseFeeInput } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -29,29 +29,78 @@ export function EditPlayerModal({ player, onClose }) {
   const [email, setEmail] = useState(player.email || "");
   const [emoji, setEmoji] = useState(player.emoji || "🎾");
   const [avatarColor, setAvatarColor] = useState(player.avatarColor || AVATAR_COLOR_CHOICES[0]);
-  const [accessCode, setAccessCode] = useState(player.accessCode || "");
+  // Les codes PIN ne sont plus jamais lisibles depuis le navigateur (voir
+  // firestore.rules) : ces champs partent donc TOUJOURS vides, même si un
+  // code existe déjà. Laisser vide = ne change rien au code actuel ;
+  // remplir 4 chiffres = définit un nouveau code.
+  const [accessCode, setAccessCode] = useState("");
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
   const [isTest, setIsTest] = useState(player.isTest === true);
-  const [secondaryTestCode, setSecondaryTestCode] = useState(player.secondaryTestCode || "");
-  const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState(
-    player.secondaryTestPlayerId || ""
-  );
+  const [secondaryTestCode, setSecondaryTestCode] = useState("");
+  const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState("");
+  const [clearSecondary, setClearSecondary] = useState(false);
   const [advancedAmount, setAdvancedAmount] = useState(
     player.advancedAmount != null ? String(player.advancedAmount) : ""
   );
 
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [duplicateOwner, setDuplicateOwner] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const duplicateOwner = useMemo(
-    () => findDuplicateOwner(players, accessCode, player.id),
-    [players, accessCode, player.id]
-  );
-  const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
+  // Vérification de doublon via le serveur (api/manage-pin.js) : seul lui a
+  // accès aux codes réels (collection verrouillée player_credentials).
+  useEffect(() => {
+    if (accessCode.length !== 4) {
+      setDuplicateOwner(null);
+      return undefined;
+    }
+    let cancelled = false;
+    fetch("/api/manage-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check", code: accessCode, excludePlayerId: player.id }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const owner = data.ok && data.duplicatePlayerId
+          ? players.find((p) => p.id === data.duplicatePlayerId) || null
+          : null;
+        setDuplicateOwner(owner);
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicateOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessCode, players, player.id]);
 
-  const canSubmit = name.trim().length > 0 && accessCode.length === 4 && !duplicateOwner;
+  const generateCode = async () => {
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", excludePlayerId: player.id }),
+      });
+      const data = await response.json();
+      if (data.ok) setAccessCode(data.code);
+    } catch (e) {
+      alert("Erreur lors de la génération du code.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // "Laisser vide" est valide (= ne pas changer le code actuel) : seul un
+  // code partiel (1 à 3 chiffres) bloque l'enregistrement.
+  const canSubmit =
+    name.trim().length > 0 &&
+    (accessCode === "" || (accessCode.length === 4 && !duplicateOwner));
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -64,7 +113,6 @@ export function EditPlayerModal({ player, onClose }) {
         federation,
         level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
-        accessCode,
         name: name.trim(),
         email: email.trim(),
         emoji,
@@ -72,14 +120,35 @@ export function EditPlayerModal({ player, onClose }) {
         isAdmin: playerIsAdmin,
         isCreditor,
         isTest,
-        secondaryTestCode: secondaryTestCode || null,
-        secondaryTestPlayerId: secondaryTestPlayerId || null,
         advancedAmount: parseFeeInput(advancedAmount),
       };
       await updateDoc(doc(db, "players", player.id), payload);
+
+      // Codes PIN : uniquement si un changement a été explicitement demandé
+      // (nouveau code saisi, nouveau code secondaire saisi, ou suppression
+      // du code secondaire cochée) — jamais écrits sur la fiche ci-dessus.
+      const pinUpdate = {};
+      if (accessCode.length === 4) pinUpdate.accessCode = accessCode;
+      if (clearSecondary) {
+        pinUpdate.secondaryTestCode = null;
+        pinUpdate.secondaryTestPlayerId = null;
+      } else {
+        if (secondaryTestCode.length === 4) pinUpdate.secondaryTestCode = secondaryTestCode;
+        if (secondaryTestPlayerId) pinUpdate.secondaryTestPlayerId = secondaryTestPlayerId;
+      }
+      if (Object.keys(pinUpdate).length > 0) {
+        const response = await fetch("/api/manage-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "set", playerId: player.id, ...pinUpdate }),
+        });
+        const data = await response.json();
+        if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+      }
+
       onClose();
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur : " + error.message);
     } finally {
       setSaving(false);
     }
@@ -155,17 +224,23 @@ export function EditPlayerModal({ player, onClose }) {
             className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
             value={accessCode}
             maxLength={4}
+            placeholder="Laisser vide = inchangé"
             onChange={(e) =>
               setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
             }
           />
           <button
             onClick={generateCode}
-            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+            disabled={generating}
+            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0 disabled:opacity-50"
           >
-            <Icon.Dice className="w-4 h-4" /> Générer
+            <Icon.Dice className="w-4 h-4" /> {generating ? "..." : "Générer"}
           </button>
         </div>
+        <p className="text-[11px] text-[var(--color-text-faint)] mt-1.5">
+          Pour des raisons de sécurité, le code actuel ne s'affiche plus ici.
+          Laissez ce champ vide pour ne pas le changer.
+        </p>
         {duplicateOwner && (
           <p className="text-[var(--color-danger)] text-xs font-semibold mt-2">
             ⚠️ Ce code est déjà attribué à {duplicateOwner.name}. Veuillez en
@@ -270,15 +345,19 @@ export function EditPlayerModal({ player, onClose }) {
             <p className="text-[11px] text-[var(--color-text-faint)] mb-2">
               Un second code PIN sur CETTE fiche connecte directement vers un
               autre profil (ex. un compte test) — sans qu'aucune nouvelle
-              carte n'apparaisse jamais sur l'écran de connexion.
+              carte n'apparaisse jamais sur l'écran de connexion. Pour les
+              mêmes raisons de sécurité que ci-dessus, le code existant (s'il
+              y en a un) ne s'affiche pas ici — laissez les champs vides pour
+              ne rien changer.
             </p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Code PIN secondaire">
+              <Field label="Nouveau code secondaire">
                 <input
                   type="text"
                   inputMode="numeric"
                   maxLength={4}
-                  className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
+                  disabled={clearSecondary}
+                  className={cn(inputClass, "pm-mono tracking-[0.3em] text-center", clearSecondary && "opacity-50")}
                   value={secondaryTestCode}
                   onChange={(e) =>
                     setSecondaryTestCode(e.target.value.replace(/\D/g, "").slice(0, 4))
@@ -290,6 +369,7 @@ export function EditPlayerModal({ player, onClose }) {
                 <select
                   className={inputClass}
                   value={secondaryTestPlayerId}
+                  disabled={clearSecondary}
                   onChange={(e) => setSecondaryTestPlayerId(e.target.value)}
                 >
                   <option value="">— Choisir un joueur —</option>
@@ -304,6 +384,15 @@ export function EditPlayerModal({ player, onClose }) {
                 </select>
               </Field>
             </div>
+            <label className="flex items-center gap-2.5 text-sm mt-2">
+              <input
+                type="checkbox"
+                checked={clearSecondary}
+                onChange={(e) => setClearSecondary(e.target.checked)}
+                className="w-4 h-4 accent-[var(--color-lime)]"
+              />
+              Retirer le code secondaire existant (s'il y en a un)
+            </label>
           </div>
 
           <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
