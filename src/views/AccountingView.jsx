@@ -18,6 +18,11 @@ export function AccountingView() {
     matches
   );
   const advanced = connectedPlayer.advancedAmount || 0;
+  // Correction manuelle éventuellement appliquée par l'administrateur (onglet
+  // Administration, champ "Solde"). Avant ce correctif, ce montant n'était
+  // visible que côté admin : le créancier voyait un "reste à récupérer" qui
+  // ne correspondait pas à ce que l'admin avait corrigé de son côté.
+  const manualAdjustment = connectedPlayer.manualAdjustment || 0;
 
   const creditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
@@ -54,8 +59,9 @@ export function AccountingView() {
   const unpaidCount = unpaidPast.length;
   const allSettled = unpaidCount === 0;
 
-  // Bloc 5 — synthèse : créance − (ma saison) − (déjà perçu des autres).
-  const remainingNet = advanced - selfSeasonTotal - totalPaidPastMatches;
+  // Bloc 5 — synthèse : créance − (ma saison) − (déjà perçu des autres) −
+  // (correction manuelle de l'admin, positive ou négative).
+  const remainingNet = advanced - selfSeasonTotal - totalPaidPastMatches - manualAdjustment;
 
   return (
     <div className="min-h-screen px-4 pt-4 pb-28" style={{ backgroundColor: "#F8FAFC" }}>
@@ -150,6 +156,39 @@ export function AccountingView() {
           <p className="text-xs text-slate-500 mt-0.5">À percevoir (engagé, matchs à venir)</p>
         </div>
       </div>
+
+      {/* 4bis. Correction manuelle de l'admin — visible seulement si non nulle,
+          pour que "Ma comptabilité" et l'onglet Administration racontent
+          toujours exactement la même histoire. */}
+      {manualAdjustment !== 0 && (
+        <div
+          className={cn(
+            "rounded-2xl border p-4 mb-5",
+            manualAdjustment > 0
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-orange-50 border-orange-200"
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Ajustement manuel (administration)
+            </span>
+            <span
+              className={cn(
+                "pm-mono text-base font-extrabold",
+                manualAdjustment > 0 ? "text-emerald-700" : "text-orange-700"
+              )}
+            >
+              {manualAdjustment > 0 ? "+" : ""}
+              {manualAdjustment.toLocaleString("fr-FR")} €
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Correction appliquée par l'administrateur (ex. paiement reçu hors
+            application) — déjà pris en compte dans le total ci-dessous.
+          </p>
+        </div>
+      )}
 
       {/* 5. Synthèse — reste net à récupérer */}
       <div
