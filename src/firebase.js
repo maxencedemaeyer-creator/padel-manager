@@ -7,6 +7,7 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCGKon9mVdOn0FIBY3BvtVX9DPiudF6LJA",
@@ -20,6 +21,31 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 export const db = getFirestore(firebaseApp);
+export const auth = getAuth(firebaseApp);
+
+// ─────────────────────────────────────────────────────────────────────────
+// Connexion Firebase anonyme automatique.
+// Depuis la mise à jour des règles Firestore, lire ou écrire la moindre
+// donnée exige un utilisateur authentifié — même anonyme. Ce mécanisme est
+// entièrement invisible pour les joueurs : il ne remplace pas l'écran de
+// connexion par code PIN de l'app (AuthGate), il tourne en coulisses dès le
+// chargement de la page pour obtenir ce laissez-passer technique. Sans lui,
+// plus aucune lecture/écriture Firestore n'est possible.
+// ⚠️ Nécessite que l'authentification "Anonyme" soit activée dans la
+// Console Firebase (Authentication > Sign-in method) — sinon toute l'app
+// reste bloquée sur l'écran de chargement.
+// ─────────────────────────────────────────────────────────────────────────
+export const authReady = new Promise((resolve) => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user) {
+      unsubscribe();
+      resolve(user);
+    }
+  });
+  signInAnonymously(auth).catch((error) => {
+    console.error("Erreur de connexion Firebase (anonyme) :", error);
+  });
+});
 
 // Analytics : chargé uniquement côté navigateur, et seulement si le
 // contexte le supporte (évite toute erreur en SSR ou navigateurs restrictifs).
