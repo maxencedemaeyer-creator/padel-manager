@@ -33,6 +33,28 @@ export function getCreditorAccounting(creditorId, matches) {
   return { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived };
 }
 
+// Estimation du nombre de matchs couverts par la "créance de départ" d'un
+// créancier, à partir de trois informations indicatives renseignées sur sa
+// fiche joueur : `advancedAmountPeriodStart`, `advancedAmountPeriodEnd` et
+// `advancedAmountCourts`. On compte le nombre de séances "Saison"
+// réellement enregistrées dans cette période (une séance = une date
+// distincte), multiplié par le nombre de terrains couverts. Retourne null
+// tant que les trois informations ne sont pas toutes renseignées — c'est
+// un indicateur, pas un décompte contractuel exact.
+export function getCoveredMatchesEstimate(creditor, matches) {
+  const start = creditor?.advancedAmountPeriodStart;
+  const end = creditor?.advancedAmountPeriodEnd;
+  const courts = creditor?.advancedAmountCourts;
+  if (!start || !end || !courts) return null;
+
+  const sessionDates = new Set(
+    matches
+      .filter((m) => m.type === "Saison" && m.date >= start && m.date <= end)
+      .map((m) => m.date)
+  );
+  return sessionDates.size * courts;
+}
+
 // Statistiques d'un joueur — uniquement sur les matchs déjà terminés.
 // Coéquipier/adversaire ne sont comptabilisés que si l'équipe (team: "A"/"B")
 // a été renseignée lors de l'assignation ; victoire/défaite uniquement si
