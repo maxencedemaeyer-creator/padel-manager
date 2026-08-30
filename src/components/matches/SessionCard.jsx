@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
 import { hasMatchScore, getSetDisplay, getMatchTiming } from "../../lib/matchLogic";
+import { isCompositionPublished, setCompositionPublished } from "../../lib/composition";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Modal } from "../ui";
@@ -16,6 +17,65 @@ import {
   RespondedPlayersPanel,
   ManagePresenceModal,
 } from "./Availability";
+
+// Bandeau admin permettant de publier/dépublier la composition d'une
+// session (tous les terrains de la date à la fois) — tant qu'elle n'est pas
+// publiée, les joueurs ne voient que leurs boutons de présence (voir
+// MatchesView.jsx qui décide, pour les non-admins, d'afficher SessionCard ou
+// AvailabilitySessionCard selon isCompositionPublished).
+function PublishCompositionBar({ sessionMatches }) {
+  const [busy, setBusy] = useState(false);
+  const published = isCompositionPublished(sessionMatches);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setCompositionPublished(sessionMatches, !published);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-2 mb-3 p-2.5 rounded-xl border",
+        published
+          ? "border-emerald-300 bg-emerald-50"
+          : "border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
+      )}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className={cn(
+            "w-2 h-2 rounded-full shrink-0",
+            published ? "bg-emerald-500" : "bg-amber-500"
+          )}
+        />
+        <p className="text-[11px] font-semibold text-[var(--color-text-dim)] truncate">
+          {published
+            ? "Composition publiée — visible par les joueurs"
+            : "Composition non publiée — visible par vous uniquement"}
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={toggle}
+        className={cn(
+          "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all disabled:opacity-50 active:scale-[0.98]",
+          published
+            ? "bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+            : "bg-sky-200 text-sky-900 hover:bg-sky-300"
+        )}
+      >
+        {published ? "Dépublier" : "Publier la composition"}
+      </button>
+    </div>
+  );
+}
 
 export function SessionCard({ sessionMatches, now }) {
   const { isAdmin } = useAppData();
@@ -33,6 +93,8 @@ export function SessionCard({ sessionMatches, now }) {
           {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
         </Badge>
       </div>
+
+      {isAdmin && <PublishCompositionBar sessionMatches={sessionMatches} />}
 
       {isAdmin && (
         <div className="flex items-center justify-end mb-1">
