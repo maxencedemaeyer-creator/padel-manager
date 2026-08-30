@@ -2,7 +2,7 @@
 // Authentification — sélection joueur + clavier PIN tactile + création du
 // premier compte admin + le Provider racine (AuthGate).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, SESSION_KEY, ADMIN_MASTER_CODE } from "../../firebase";
 import { cn, isPlayerAdmin } from "../../lib/utils";
@@ -269,20 +269,40 @@ export function AuthGate({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players]);
 
-  const login = (player) => {
+  // useCallback : évite de recréer ces fonctions à chaque rendu d'AuthGate
+  // (ex. quand "players" est mis à jour en temps réel), ce qui casserait
+  // inutilement la mémoïsation de la valeur de contexte ci-dessous et
+  // forcerait toute l'app à se re-rendre pour rien.
+  const login = useCallback((player) => {
     setConnectedPlayer(player);
     try {
       localStorage.setItem(SESSION_KEY, player.id);
     } catch (e) {}
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setConnectedPlayer(null);
     setSelectedForPin(null);
     try {
       localStorage.removeItem(SESSION_KEY);
     } catch (e) {}
-  };
+  }, []);
+
+  // Mémoïsation de la valeur de contexte : sans ça, un nouvel objet est créé
+  // à CHAQUE rendu d'AuthGate, ce qui force toute l'app (tous les
+  // composants qui lisent useAppData()) à se re-rendre — même quand rien
+  // de pertinent n'a changé. C'était une cause probable de petits délais
+  // ressentis un peu partout dans l'app.
+  const contextValue = useMemo(
+    () => ({
+      connectedPlayer,
+      isAdmin: isPlayerAdmin(connectedPlayer),
+      logout,
+      players,
+      archivedPlayers,
+    }),
+    [connectedPlayer, logout, players, archivedPlayers]
+  );
 
   if (loading || restoring) {
     return (
@@ -294,15 +314,7 @@ export function AuthGate({ children }) {
 
   if (connectedPlayer) {
     return (
-      <AppDataContext.Provider
-        value={{
-          connectedPlayer,
-          isAdmin: isPlayerAdmin(connectedPlayer),
-          logout,
-          players,
-          archivedPlayers,
-        }}
-      >
+      <AppDataContext.Provider value={contextValue}>
         {children}
       </AppDataContext.Provider>
     );
