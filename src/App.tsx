@@ -4,7 +4,7 @@
 // N'oubliez pas d'importer "./index.css" une seule fois, dans main.jsx
 // (anciennement injecté via <GlobalStyles/>, maintenant un fichier CSS normal).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { useMatches } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
@@ -13,37 +13,63 @@ import { authReady } from "./firebase";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
-import { MatchesView } from "./views/MatchesView";
-import { PlayersView } from "./views/PlayersView";
-import { StatsView } from "./views/StatsView";
-import { AccountingView } from "./views/AccountingView";
-import { AdminView } from "./views/AdminView";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
+
+// Chargement à la demande (code-splitting) : chaque onglet n'est téléchargé
+// que la première fois qu'on l'ouvre, au lieu de tout charger d'un bloc dès
+// l'arrivée sur le site. Réduit nettement le temps avant que l'app devienne
+// utilisable, surtout sur mobile / réseau lent.
+const MatchesView = lazy(() =>
+  import("./views/MatchesView").then((m) => ({ default: m.MatchesView }))
+);
+const PlayersView = lazy(() =>
+  import("./views/PlayersView").then((m) => ({ default: m.PlayersView }))
+);
+const StatsView = lazy(() =>
+  import("./views/StatsView").then((m) => ({ default: m.StatsView }))
+);
+const AccountingView = lazy(() =>
+  import("./views/AccountingView").then((m) => ({ default: m.AccountingView }))
+);
+const AdminView = lazy(() =>
+  import("./views/AdminView").then((m) => ({ default: m.AdminView }))
+);
 
 function MainApp() {
   const matchesHook = useMatches();
   const [view, setView] = useState("matches");
   useWithdrawalWatcher();
+  const appData = useAppData();
+
+  // Mémoïsation : sans elle, un nouvel objet de contexte était recréé à
+  // chaque rendu de MainApp — y compris à chaque simple clic sur un onglet
+  // de la navigation basse (changement de "view") — ce qui forçait TOUTE
+  // l'app à se re-rendre inutilement à chaque clic. C'était la cause
+  // principale des petits délais ressentis un peu partout dans l'app.
+  const contextValue = useMemo(
+    () => ({ ...appData, matches: matchesHook.matches }),
+    [appData, matchesHook.matches]
+  );
 
   return (
-    <AppDataContext.Provider
-      value={{ ...useAppData(), matches: matchesHook.matches }}
-    >
+    <AppDataContext.Provider value={contextValue}>
       <div className="pm-root">
         <Header setView={setView} />
-        {matchesHook.loading ? (
-          <Spinner />
-        ) : view === "matches" ? (
-          <MatchesView />
-        ) : view === "players" ? (
-          <PlayersView />
-        ) : view === "stats" ? (
-          <StatsView />
-        ) : view === "accounting" ? (
-          <AccountingView />
-        ) : (
-          <AdminView />
-        )}
+        <Suspense fallback={<Spinner />}>
+          {matchesHook.loading ? (
+            <Spinner />
+          ) : view === "matches" ? (
+            <MatchesView />
+          ) : view === "players" ? (
+            <PlayersView />
+          ) : view === "stats" ? (
+            <StatsView />
+          ) : view === "accounting" ? (
+            <AccountingView />
+          ) : (
+            <AdminView />
+          )}
+        </Suspense>
         <BottomNav view={view} setView={setView} />
         {!matchesHook.loading && <PostMatchPrompt />}
       </div>
