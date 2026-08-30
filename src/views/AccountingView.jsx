@@ -41,15 +41,27 @@ export function AccountingView() {
   const creditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
 
-  // Bloc 3 — auto-remboursement : mes propres matchs, joués + à venir.
-  const selfUpcomingValue = seasonMatches
-    .filter(
-      (m) =>
-        getMatchTiming(m) !== "finished" &&
-        (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
-    )
-    .reduce((sum, m) => sum + (m.matchFeePerPlayer || 0), 0);
+  // Bloc 3 — auto-remboursement : mes propres matchs, joués + à venir. On
+  // garde aussi le nombre de matchs (pas seulement le montant) pour
+  // l'afficher en petit sous chaque montant, sans que le créancier ait à
+  // les recompter lui-même.
+  const selfPastMatchesCount = seasonMatches.filter(
+    (m) =>
+      getMatchTiming(m) === "finished" &&
+      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+  ).length;
+  const selfUpcomingMatches = seasonMatches.filter(
+    (m) =>
+      getMatchTiming(m) !== "finished" &&
+      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+  );
+  const selfUpcomingValue = selfUpcomingMatches.reduce(
+    (sum, m) => sum + (m.matchFeePerPlayer || 0),
+    0
+  );
+  const selfUpcomingCount = selfUpcomingMatches.length;
   const selfSeasonTotal = selfReimbursed + selfUpcomingValue;
+  const selfSeasonCount = selfPastMatchesCount + selfUpcomingCount;
 
   // Bloc 4 — ce que les autres joueurs (hors créanciers) doivent/ont payé.
   const engagedUpcoming = seasonMatches
@@ -168,6 +180,9 @@ export function AccountingView() {
               {selfSeasonTotal.toLocaleString("fr-FR")} €
             </p>
             <p className="text-xs text-white/70 mt-0.5">Coût total estimé de ma saison</p>
+            <p className="text-[10px] text-white/40 mt-1">
+              {selfSeasonCount} match{selfSeasonCount > 1 ? "s" : ""}
+            </p>
           </div>
           <div className="p-4">
             <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
@@ -175,6 +190,9 @@ export function AccountingView() {
               {selfReimbursed.toLocaleString("fr-FR")} €
             </p>
             <p className="text-xs text-slate-500 mt-0.5">Mes matchs déjà joués</p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {selfPastMatchesCount} match{selfPastMatchesCount > 1 ? "s" : ""}
+            </p>
           </div>
           <div className="p-4">
             <Icon.Calendar className="w-4 h-4 text-sky-600 mb-2" />
@@ -182,28 +200,34 @@ export function AccountingView() {
               {selfUpcomingValue.toLocaleString("fr-FR")} €
             </p>
             <p className="text-xs text-slate-500 mt-0.5">Mes matchs à venir</p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {selfUpcomingCount} match{selfUpcomingCount > 1 ? "s" : ""}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* 4. Remboursements par les tiers */}
+      {/* 4. Remboursements par les tiers — regroupés dans un seul bloc,
+          comme la consommation personnelle ci-dessus. */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Remboursements par les autres joueurs
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
-          <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-            {totalPaidPastMatches.toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <Icon.ArrowDownRight className="w-4 h-4 text-sky-600 mb-2" />
-          <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-            {engagedUpcoming.toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-xs text-slate-500 mt-0.5">À percevoir (engagé, matchs à venir)</p>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+          <div className="p-4">
+            <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
+            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
+              {totalPaidPastMatches.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
+          </div>
+          <div className="p-4">
+            <Icon.ArrowDownRight className="w-4 h-4 text-sky-600 mb-2" />
+            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
+              {engagedUpcoming.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">À percevoir (engagé, matchs à venir)</p>
+          </div>
         </div>
       </div>
 
