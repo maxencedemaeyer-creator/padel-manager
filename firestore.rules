@@ -39,6 +39,15 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
+    // 4. Player credentials collection (codes PIN) — verrouillée : ni lisible
+    // ni modifiable depuis un navigateur, quel que soit l'utilisateur. Seul
+    // le SDK Admin Firebase (utilisé par les fonctions serveur api/verify-pin
+    // et api/manage-pin, jamais exécuté dans un navigateur) peut y accéder,
+    // car il contourne complètement ces règles.
+    match /player_credentials/{playerId} {
+      allow read, write: if false;
+    }
+
     // Remarque : "isSignedIn()" est vrai dès qu'un visiteur charge le site,
     // même sans code PIN valide, car l'app se connecte automatiquement à
     // Firebase de façon anonyme (voir src/firebase.js). Cela bloque l'accès
