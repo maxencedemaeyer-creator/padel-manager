@@ -1,26 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Une ligne de la liste Équipe : avatar, nom + badges, niveau/main/côté en
-// colonnes fixes, stats de forme, solde (créancier), bouton modifier.
+// colonnes fixes, stats de forme, bouton modifier.
+// Le solde d'un créancier ne s'affiche plus ici — il vit uniquement dans
+// l'onglet "Ma comptabilité" / "Administration".
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { isPlayerAdmin, handAbbrev, sideAbbrev, normalizeSide } from "../../lib/utils";
 import { LEVELS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
-import { getCreditorAccounting, computePlayerStats } from "../../lib/stats";
+import { computePlayerStats } from "../../lib/stats";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge } from "../ui";
 import { EditPlayerModal } from "./EditPlayerModal";
 
 export function PlayerRow({ player }) {
-  const { isAdmin, connectedPlayer, matches } = useAppData();
+  const { isAdmin, matches } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
   // Seul l'admin peut ouvrir la fiche complète depuis "Équipe" — un joueur
   // modifie désormais son propre code PIN depuis "Mon profil".
   const canEdit = isAdmin;
-  const adjustedBalance = player.isCreditor
-    ? getCreditorAccounting(player.id, matches).totalPaidAllTime
-    : 0;
   const playerStats = computePlayerStats(player.id, matches);
 
   return (
@@ -85,11 +84,6 @@ export function PlayerRow({ player }) {
           </span>
 
           <div className="flex items-center gap-1.5 justify-end">
-            {player.isCreditor && (isAdmin || player.id === connectedPlayer.id) && (
-              <span className="pm-mono font-bold text-[var(--color-lime)] text-xs whitespace-nowrap">
-                {adjustedBalance.toLocaleString("fr-FR")} €
-              </span>
-            )}
             {canEdit && (
               <button
                 onClick={() => setShowEdit(true)}
