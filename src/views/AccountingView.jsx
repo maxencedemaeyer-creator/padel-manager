@@ -370,7 +370,12 @@ export function AccountingView() {
         </div>
       )}
 
-      {/* 5. Synthèse — reste net à récupérer */}
+      {/* 5. Synthèse — reste net à récupérer. Le détail du calcul est affiché
+          sous le montant (créance − ma saison − déjà perçu ± ajustement) pour
+          que ce soit vérifiable d'un coup d'œil : si ce montant paraît faux,
+          c'est presque toujours que la "Créance de départ" ci-dessus n'a pas
+          encore été renseignée (elle vaut 0 par défaut tant qu'elle n'est
+          pas éditée via la roulette de réglages). */}
       <div
         className="rounded-2xl shadow-md p-5 mb-6 text-white"
         style={{ background: "linear-gradient(135deg, #0284C7, #4338CA)" }}
@@ -378,7 +383,7 @@ export function AccountingView() {
         <div className="flex items-center gap-2 mb-2">
           <Icon.Wallet className="w-5 h-5" />
           <span className="text-xs font-semibold uppercase tracking-wide text-white/70">
-            Reste net à récupérer en cash
+            Reste net à récupérer
           </span>
         </div>
         <p className="pm-display text-3xl font-extrabold">
@@ -388,6 +393,15 @@ export function AccountingView() {
           Ce montant représente la somme brute que vous devez encore recevoir en
           liquide/virement pour clôturer votre créance tout en couvrant votre propre
           saison.
+        </p>
+        <p className="text-[11px] text-white/70 mt-3 pt-3 border-t border-white/20 leading-relaxed">
+          Créance {advanced.toLocaleString("fr-FR")} € − Ma saison{" "}
+          {selfSeasonTotal.toLocaleString("fr-FR")} € − Déjà perçu{" "}
+          {totalPaidPastMatches.toLocaleString("fr-FR")} €
+          {manualAdjustment !== 0 &&
+            ` ${manualAdjustment > 0 ? "−" : "+"} Ajustement ${Math.abs(
+              manualAdjustment
+            ).toLocaleString("fr-FR")} €`}
         </p>
       </div>
 
