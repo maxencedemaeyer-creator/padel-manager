@@ -42,6 +42,10 @@ export const MATCH_DURATION_MINUTES = 60;
 export const SELF_REGISTRATION_WINDOW_DAYS = 14;
 export const WITHDRAWAL_RESOLVE_DELAY_MINUTES = 3;
 export const WITHDRAWAL_ALERT_WINDOW_HOURS = 72;
+// Durée pendant laquelle, après la fin d'un match sans score, les joueurs du
+// match + les créanciers (pas seulement l'admin) peuvent corriger la
+// composition et encoder le score eux-mêmes — voir PostMatchPrompt.jsx.
+export const POST_MATCH_ENCODE_WINDOW_HOURS = 24;
 
 // Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
 // joueur assigné — voir getCourtSlots() dans lib/matchLogic.js.
