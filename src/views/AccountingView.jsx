@@ -4,15 +4,18 @@
 // Volontairement sur fond clair (au lieu du bleu du reste de l'app) pour
 // un meilleur contraste sur ces montants financiers.
 // ─────────────────────────────────────────────────────────────────────────
-import { cn, formatDateFR } from "../lib/utils";
+import { useState } from "react";
+import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
-import { getCreditorAccounting } from "../lib/stats";
+import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, EmptyState } from "../components/ui";
+import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 
 export function AccountingView() {
   const { connectedPlayer, players, matches } = useAppData();
+  const [showClaimSettings, setShowClaimSettings] = useState(false);
   const { totalPaidPastMatches, selfReimbursed, paymentsReceived } = getCreditorAccounting(
     connectedPlayer.id,
     matches
@@ -23,6 +26,17 @@ export function AccountingView() {
   // visible que côté admin : le créancier voyait un "reste à récupérer" qui
   // ne correspondait pas à ce que l'admin avait corrigé de son côté.
   const manualAdjustment = connectedPlayer.manualAdjustment || 0;
+
+  // Informations indicatives de la créance de départ : période couverte,
+  // nombre de terrains, et nombre de matchs couverts calculé automatiquement
+  // à partir des séances réellement enregistrées sur cette période.
+  const claimPeriodLabel = formatClaimPeriodLabel(
+    connectedPlayer.advancedAmountPeriodStart,
+    connectedPlayer.advancedAmountPeriodEnd
+  );
+  const claimCourts = connectedPlayer.advancedAmountCourts;
+  const coveredMatches = getCoveredMatchesEstimate(connectedPlayer, matches);
+  const hasClaimDetails = Boolean(claimPeriodLabel) || claimCourts != null;
 
   const creditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
@@ -92,13 +106,24 @@ export function AccountingView() {
         </p>
       </div>
 
-      {/* 2. Créance de départ */}
+      {/* 2. Créance de départ — modifiable par le créancier lui-même ou par
+          un administrateur, via la roulette de réglages. */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-5">
-        <div className="flex items-center gap-2 mb-2">
-          <Icon.Wallet className="w-5 h-5 text-sky-600" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Créance de départ
-          </span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Icon.Wallet className="w-5 h-5 text-sky-600" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Créance de départ
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowClaimSettings(true)}
+            className="p-1.5 -m-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+            title="Modifier la créance de départ"
+          >
+            <Icon.Settings className="w-4 h-4" />
+          </button>
         </div>
         <p className="pm-display text-3xl font-extrabold" style={{ color: "#1F2937" }}>
           {advanced.toLocaleString("fr-FR")} €
@@ -106,7 +131,28 @@ export function AccountingView() {
         <p className="text-xs text-slate-500 mt-1">
           Votre investissement initial pour la réservation du terrain annuel.
         </p>
+
+        {hasClaimDetails && (
+          <p className="text-[10px] text-slate-400 mt-2.5 pt-2.5 border-t border-slate-100">
+            {[
+              claimPeriodLabel,
+              claimCourts != null &&
+                `${claimCourts} terrain${claimCourts > 1 ? "s" : ""} couvert${claimCourts > 1 ? "s" : ""}`,
+              coveredMatches != null &&
+                `≈ ${coveredMatches} match${coveredMatches > 1 ? "s" : ""} couvert${coveredMatches > 1 ? "s" : ""}`,
+            ]
+              .filter(Boolean)
+              .join("  ·  ")}
+          </p>
+        )}
       </div>
+
+      {showClaimSettings && (
+        <ClaimSettingsModal
+          creditor={connectedPlayer}
+          onClose={() => setShowClaimSettings(false)}
+        />
+      )}
 
       {/* 3. Consommation personnelle (auto-remboursement) */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
