@@ -27,9 +27,7 @@ export function PlayersView() {
   // Tri purement local à l'affichage — ne modifie jamais l'ordre dans Firestore.
   const sorted = useMemo(() => {
     const balanceOf = (p) =>
-      p.isCreditor
-        ? getCreditorAccounting(p.id, matches).totalPaidAllTime + (p.manualAdjustment || 0)
-        : 0;
+      p.isCreditor ? getCreditorAccounting(p.id, matches).totalPaidAllTime : 0;
     const arr = [...players].filter((p) => isAdmin || !p.isTest);
     switch (sortBy) {
       case "name-desc":
