@@ -118,14 +118,19 @@ function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
 // auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
 // conservée).
 export function AvailabilityButtons({ sessionMatches }) {
-  const { players, connectedPlayer } = useAppData();
+  const { players, connectedPlayer, isAdmin } = useAppData();
   const [saving, setSaving] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
   const [showChangeModal, setShowChangeModal] = useState(false);
 
+  // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
+  // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
+  // connexion (AuthGate) et l'onglet Joueurs (PlayersView).
+  const visiblePlayers = isAdmin ? players : players.filter((p) => !p.isTest);
+
   const { availability, present, absent, pending } = getAvailabilityGroups(
     sessionMatches,
-    players
+    visiblePlayers
   );
   const myStatus = availability[connectedPlayer.id];
   const hasAnswered = Boolean(myStatus);
