@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Formulaire "Ajouter un joueur" (admin uniquement).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, findDuplicateOwner, generateUniqueCode } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -29,11 +29,39 @@ export function AddPlayerModal({ onClose }) {
   });
   const [saving, setSaving] = useState(false);
   const [reactivating, setReactivating] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [duplicateOwner, setDuplicateOwner] = useState(null);
 
-  const duplicateOwner = useMemo(
-    () => findDuplicateOwner(players, form.accessCode),
-    [players, form.accessCode]
-  );
+  // Les codes PIN ne sont plus lisibles depuis le navigateur (voir
+  // firestore.rules) : la vérification de doublon se fait désormais via le
+  // serveur (api/manage-pin.js), qui seul a accès à la collection
+  // player_credentials.
+  useEffect(() => {
+    if (form.accessCode.length !== 4) {
+      setDuplicateOwner(null);
+      return undefined;
+    }
+    let cancelled = false;
+    fetch("/api/manage-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check", code: form.accessCode }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const owner = data.ok && data.duplicatePlayerId
+          ? players.find((p) => p.id === data.duplicatePlayerId) || null
+          : null;
+        setDuplicateOwner(owner);
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicateOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.accessCode, players]);
 
   // Si un joueur supprimé (archivé) porte EXACTEMENT le même nom que celui en
   // train d'être saisi, on le propose en réactivation plutôt que de forcer
@@ -51,7 +79,22 @@ export function AddPlayerModal({ onClose }) {
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const generateCode = () => setF("accessCode", generateUniqueCode(players));
+  const generateCode = async () => {
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate" }),
+      });
+      const data = await response.json();
+      if (data.ok) setF("accessCode", data.code);
+    } catch (e) {
+      alert("Erreur lors de la génération du code.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const canSubmit =
     form.name.trim().length > 0 && form.accessCode.length === 4 && !duplicateOwner;
@@ -77,10 +120,13 @@ export function AddPlayerModal({ onClose }) {
     setSaving(true);
     try {
       const levelInfo = LEVELS.find((l) => l.label === form.level);
-      await addDoc(collection(db, "players"), {
+      // Le code PIN n'est jamais écrit sur la fiche joueur (lisible par
+      // tous) : la fiche est créée sans lui, puis le code est enregistré à
+      // part via le serveur, dans la collection verrouillée
+      // player_credentials (voir api/manage-pin.js).
+      const playerRef = await addDoc(collection(db, "players"), {
         name: form.name.trim(),
         email: form.email.trim(),
-        accessCode: form.accessCode,
         isAdmin: form.isAdmin,
         isCreditor: form.isCreditor,
         isTest: form.isTest,
@@ -94,9 +140,22 @@ export function AddPlayerModal({ onClose }) {
         federation: form.federation,
         createdAt: serverTimestamp(),
       });
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set",
+          playerId: playerRef.id,
+          accessCode: form.accessCode,
+        }),
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+      }
       onClose();
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur : " + error.message);
     } finally {
       setSaving(false);
     }
@@ -175,9 +234,10 @@ export function AddPlayerModal({ onClose }) {
           />
           <button
             onClick={generateCode}
-            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+            disabled={generating}
+            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0 disabled:opacity-50"
           >
-            <Icon.Dice className="w-4 h-4" /> Générer
+            <Icon.Dice className="w-4 h-4" /> {generating ? "..." : "Générer"}
           </button>
         </div>
         {duplicateOwner && (
