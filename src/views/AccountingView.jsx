@@ -7,13 +7,76 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
+import { cn, formatDateFR, formatClaimPeriodLabel, parseFeeInput } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
 import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, EmptyState } from "../components/ui";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
+
+// ─────────────────────────────────────────────────────────────────────────
+// Champ d'édition directe de l'ajustement manuel, depuis "Ma comptabilité"
+// (plus besoin de passer par l'onglet Administration pour cette correction).
+// Écrit la valeur BRUTE de `manualAdjustment` telle quelle — contrairement à
+// l'ancien champ "Solde (perçu + ajustement)" de l'Administration, qui
+// affichait un total combiné (perçu + ajustement) et recalculait la
+// différence : c'est cette indirection qui avait causé la confusion du
+// 30/08/2026 (1300 € saisis ici par erreur pour représenter la créance).
+// ─────────────────────────────────────────────────────────────────────────
+function ManualAdjustmentEditor({ playerId, value }) {
+  const [text, setText] = useState(String(value || 0));
+  const [saving, setSaving] = useState(false);
+
+  const save = async (newValue) => {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "players", playerId), { manualAdjustment: newValue });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBlur = () => {
+    const parsed = parseFeeInput(text);
+    if (parsed == null) {
+      setText(String(value || 0));
+      return;
+    }
+    setText(String(parsed));
+    if (parsed !== (value || 0)) save(parsed);
+  };
+
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={handleBlur}
+        disabled={saving}
+        className="pm-mono w-20 text-right text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-sky-400 disabled:opacity-50"
+      />
+      <span className="text-sm font-bold text-slate-400">€</span>
+      {value !== 0 && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => {
+            setText("0");
+            save(0);
+          }}
+          className="text-[11px] font-semibold text-sky-600 hover:text-sky-700 underline disabled:opacity-50"
+        >
+          Réinitialiser
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function AccountingView() {
   const { connectedPlayer, players, matches } = useAppData();
@@ -337,38 +400,35 @@ export function AccountingView() {
         <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
       </div>
 
-      {/* 4bis. Correction manuelle de l'admin — visible seulement si non nulle,
-          pour que "Ma comptabilité" et l'onglet Administration racontent
-          toujours exactement la même histoire. */}
-      {manualAdjustment !== 0 && (
-        <div
-          className={cn(
-            "rounded-2xl border p-4 mb-5",
-            manualAdjustment > 0
-              ? "bg-emerald-50 border-emerald-200"
-              : "bg-orange-50 border-orange-200"
-          )}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Ajustement manuel (administration)
-            </span>
-            <span
-              className={cn(
-                "pm-mono text-base font-extrabold",
-                manualAdjustment > 0 ? "text-emerald-700" : "text-orange-700"
-              )}
-            >
-              {manualAdjustment > 0 ? "+" : ""}
-              {manualAdjustment.toLocaleString("fr-FR")} €
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Correction appliquée par l'administrateur (ex. paiement reçu hors
-            application) — déjà pris en compte dans le total ci-dessous.
-          </p>
+      {/* 4bis. Ajustement manuel — toujours visible et éditable directement
+          ici (c'est votre propre fiche), plus besoin d'aller dans
+          l'Administration pour cette correction. ATTENTION : ce n'est PAS
+          la créance de départ (le montant avancé pour la saison) — pour ça,
+          utiliser le bloc "Créance de départ" plus haut. */}
+      <div
+        className={cn(
+          "rounded-2xl border p-4 mb-5",
+          manualAdjustment === 0
+            ? "bg-white border-slate-200"
+            : manualAdjustment > 0
+            ? "bg-emerald-50 border-emerald-200"
+            : "bg-orange-50 border-orange-200"
+        )}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Ajustement manuel
+          </span>
+          <ManualAdjustmentEditor playerId={connectedPlayer.id} value={manualAdjustment} />
         </div>
-      )}
+        <p className="text-xs text-slate-500 mt-1">
+          À utiliser uniquement pour corriger un écart avec un paiement reçu
+          hors application (liquide, virement direct…) — ce n'est pas la
+          créance de départ, qui se règle dans le bloc "Créance de départ"
+          ci-dessus. Déjà pris en compte dans le "Reste net à récupérer"
+          plus bas.
+        </p>
+      </div>
 
       {/* 5. Synthèse — reste net à récupérer. Le détail du calcul est affiché
           sous le montant (créance − ma saison − déjà perçu ± ajustement) pour
