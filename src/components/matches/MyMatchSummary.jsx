@@ -33,15 +33,6 @@ export function MyMatchSummary({ now }) {
     if (me && me.paidStatus !== "paid") owesMoney = myLastFinished;
   }
 
-  let partnerNames = "";
-  if (myUpcoming) {
-    const me = myUpcoming.participants.find((p) => p.playerId === connectedPlayer.id);
-    const partners = (myUpcoming.participants || []).filter(
-      (p) => me?.team && p.team === me.team && p.playerId !== connectedPlayer.id
-    );
-    partnerNames = partners.map((p) => getFirstName(p.name)).join(" & ");
-  }
-
   // Accroche motivante — reprend les stats déjà calculées ailleurs (série,
   // classement), juste mise en avant ici pour donner envie de se connecter.
   const myStats = computePlayerStats(connectedPlayer.id, matches);
@@ -78,16 +69,7 @@ export function MyMatchSummary({ now }) {
         <p className="text-sm">
           📅 Vous jouez <span className="font-semibold">{formatDateFR(myUpcoming.date)}</span> à{" "}
           {formatTimeFR(myUpcoming.time)}
-          {myUpcoming.location ? ` (${myUpcoming.location})` : ""}
-          {partnerNames ? (
-            <>
-              {" "}
-              avec <span className="font-semibold">{partnerNames}</span>
-            </>
-          ) : (
-            ""
-          )}
-          .
+          {myUpcoming.location ? ` (${myUpcoming.location})` : ""}.
         </p>
       ) : (
         <p className="text-sm text-white/90">
