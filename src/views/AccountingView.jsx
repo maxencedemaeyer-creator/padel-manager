@@ -5,6 +5,8 @@
 // un meilleur contraste sur ces montants financiers.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
 import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
@@ -16,6 +18,10 @@ import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal"
 export function AccountingView() {
   const { connectedPlayer, players, matches } = useAppData();
   const [showClaimSettings, setShowClaimSettings] = useState(false);
+  // Détail des impayés : clé de la ligne en attente de confirmation (clic 1)
+  // puis clé de la ligne en cours d'écriture Firestore (clic 2 confirmé).
+  const [confirmingKey, setConfirmingKey] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
   const { totalPaidPastMatches, selfReimbursed, paymentsReceived } = getCreditorAccounting(
     connectedPlayer.id,
     matches
@@ -73,14 +79,27 @@ export function AccountingView() {
       return sum + owing.length * (m.matchFeePerPlayer || 0);
     }, 0);
 
-  // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers, exemptés).
+  // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers,
+  // exemptés). On garde ici le détail complet (match + joueur) et pas
+  // seulement le total, pour pouvoir afficher la liste nominative ci-dessous
+  // et marquer un paiement directement depuis "Ma comptabilité", sans devoir
+  // rouvrir chaque match dans l'onglet Matchs.
   const unpaidPast = seasonMatches
     .filter((m) => getMatchTiming(m) === "finished")
     .flatMap((m) =>
       (m.participants || [])
         .filter((p) => !creditorIds.has(p.playerId) && p.paidStatus !== "paid")
-        .map((p) => ({ name: p.name, fee: m.matchFeePerPlayer || 0 }))
-    );
+        .map((p) => ({
+          key: `${m.id}-${p.playerId}`,
+          matchId: m.id,
+          playerId: p.playerId,
+          name: p.name,
+          fee: m.matchFeePerPlayer || 0,
+          date: m.date,
+          location: m.location || "Terrain",
+        }))
+    )
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
   const unpaidAmount = unpaidPast.reduce((s, p) => s + p.fee, 0);
   const unpaidCount = unpaidPast.length;
   const allSettled = unpaidCount === 0;
@@ -88,6 +107,31 @@ export function AccountingView() {
   // Bloc 5 — synthèse : créance − (ma saison) − (déjà perçu des autres) −
   // (correction manuelle de l'admin, positive ou négative).
   const remainingNet = advanced - selfSeasonTotal - totalPaidPastMatches - manualAdjustment;
+
+  // Marque le joueur concerné comme ayant payé sa part de ce match, avec
+  // "moi" (le créancier connecté) comme créancier destinataire — pas besoin
+  // de demander "à quel créancier ?" ici puisque cette vue est déjà celle
+  // d'un seul créancier sur sa propre créance.
+  const markAsPaid = async (item) => {
+    setSavingKey(item.key);
+    try {
+      const match = matches.find((m) => m.id === item.matchId);
+      if (!match) return;
+      const updatedParticipants = (match.participants || []).map((p) =>
+        p.playerId === item.playerId
+          ? { ...p, paidStatus: "paid", creditorId: connectedPlayer.id }
+          : p
+      );
+      await updateDoc(doc(db, "matches", item.matchId), {
+        participants: updatedParticipants,
+      });
+      setConfirmingKey(null);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingKey(null);
+    }
+  };
 
   return (
     <div className="min-h-screen px-4 pt-4 pb-28" style={{ backgroundColor: "#F8FAFC" }}>
@@ -102,8 +146,8 @@ export function AccountingView() {
       {/* 1. Bannière d'alerte / suivi des paiements */}
       <div
         className={cn(
-          "flex items-start gap-3 p-4 rounded-2xl border mb-5",
-          allSettled ? "bg-emerald-50 border-emerald-200" : "bg-orange-50 border-orange-200"
+          "flex items-start gap-3 p-4 rounded-2xl border",
+          allSettled ? "bg-emerald-50 border-emerald-200 mb-5" : "bg-orange-50 border-orange-200 mb-3"
         )}
       >
         {allSettled ? (
@@ -117,6 +161,65 @@ export function AccountingView() {
             : `Attention : ${unpaidAmount.toLocaleString("fr-FR")} € sont actuellement en attente de paiement pour des matchs déjà joués (${unpaidCount} joueur${unpaidCount > 1 ? "s" : ""} n'${unpaidCount > 1 ? "ont" : "a"} pas encore réglé).`}
         </p>
       </div>
+
+      {/* 1bis. Détail nominatif des impayés — qui doit quoi, pour quel match,
+          avec confirmation de paiement en 2 clics directement depuis cette
+          liste (pas besoin de rouvrir le match dans l'onglet Matchs). */}
+      {!allSettled && (
+        <div className="flex flex-col gap-2 mb-5">
+          {unpaidPast.map((item) => {
+            const isConfirming = confirmingKey === item.key;
+            const isSaving = savingKey === item.key;
+            return (
+              <div
+                key={item.key}
+                className="bg-white border border-orange-200/70 rounded-2xl p-3.5 flex items-center gap-3"
+              >
+                <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                  <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold truncate">{item.name}</span>
+                  <span className="block text-xs text-slate-400 truncate">
+                    {formatDateFR(item.date)} · {item.location}
+                  </span>
+                </span>
+                <span className="pm-mono font-bold text-orange-600 text-sm shrink-0">
+                  {item.fee.toLocaleString("fr-FR")} €
+                </span>
+                {isConfirming ? (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => markAsPaid(item)}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                    >
+                      {isSaving ? "…" : "Confirmer"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => setConfirmingKey(null)}
+                      className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
+                    >
+                      Annuler
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingKey(item.key)}
+                    className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  >
+                    Marquer payé
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* 2. Créance de départ — modifiable par le créancier lui-même ou par
           un administrateur, via la roulette de réglages. */}
