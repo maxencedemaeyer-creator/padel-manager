@@ -2,7 +2,7 @@
 // Onglet "Mon profil" — en-tête, statistiques (anneau de progression),
 // forme récente, personnes marquantes, préférences (éditables), face-à-face.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -10,8 +10,6 @@ import {
   formatDateFR,
   getInitials,
   normalizeSide,
-  findDuplicateOwner,
-  generateUniqueCode,
 } from "../lib/utils";
 import {
   LEVELS,
@@ -192,24 +190,75 @@ function EditPreferenceModal({ player, field, title, options, onClose }) {
 // le bouton réglages sur l'en-tête de "Mon profil". Écrit directement sur
 // Firebase (collection players) et referme la fenêtre.
 function EditPinModal({ player, players, onClose }) {
-  const [accessCode, setAccessCode] = useState(player.accessCode || "");
+  const [accessCode, setAccessCode] = useState("");
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [duplicateOwner, setDuplicateOwner] = useState(null);
 
-  const duplicateOwner = useMemo(
-    () => findDuplicateOwner(players, accessCode, player.id),
-    [players, accessCode, player.id]
-  );
-  const generateCode = () => setAccessCode(generateUniqueCode(players, player.id));
+  // Le code actuel n'est plus jamais lisible depuis le navigateur (voir
+  // firestore.rules) : ce champ part vide, et la vérification de doublon se
+  // fait via le serveur (api/manage-pin.js), seul à avoir accès à la
+  // collection verrouillée player_credentials.
+  useEffect(() => {
+    if (accessCode.length !== 4) {
+      setDuplicateOwner(null);
+      return undefined;
+    }
+    let cancelled = false;
+    fetch("/api/manage-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check", code: accessCode, excludePlayerId: player.id }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const owner = data.ok && data.duplicatePlayerId
+          ? players.find((p) => p.id === data.duplicatePlayerId) || null
+          : null;
+        setDuplicateOwner(owner);
+      })
+      .catch(() => {
+        if (!cancelled) setDuplicateOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessCode, players, player.id]);
+
+  const generateCode = async () => {
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", excludePlayerId: player.id }),
+      });
+      const data = await response.json();
+      if (data.ok) setAccessCode(data.code);
+    } catch (e) {
+      alert("Erreur lors de la génération du code.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const canSubmit = accessCode.length === 4 && !duplicateOwner;
 
   const submit = async () => {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, "players", player.id), { accessCode });
+      const response = await fetch("/api/manage-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", playerId: player.id, accessCode }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
       onClose();
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
+      alert("Erreur : " + error.message);
     } finally {
       setSaving(false);
     }
@@ -245,9 +294,10 @@ function EditPinModal({ player, players, onClose }) {
           />
           <button
             onClick={generateCode}
-            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0"
+            disabled={generating}
+            className="px-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-lime)] flex items-center gap-1.5 text-xs font-semibold shrink-0 disabled:opacity-50"
           >
-            <Icon.Dice className="w-4 h-4" /> Générer
+            <Icon.Dice className="w-4 h-4" /> {generating ? "..." : "Générer"}
           </button>
         </div>
         {duplicateOwner && (
