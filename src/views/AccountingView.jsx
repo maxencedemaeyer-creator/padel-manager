@@ -69,16 +69,6 @@ export function AccountingView() {
   const selfSeasonTotal = selfReimbursed + selfUpcomingValue;
   const selfSeasonCount = selfPastMatchesCount + selfUpcomingCount;
 
-  // Bloc 4 — ce que les autres joueurs (hors créanciers) doivent/ont payé.
-  const engagedUpcoming = seasonMatches
-    .filter((m) => getMatchTiming(m) !== "finished")
-    .reduce((sum, m) => {
-      const owing = (m.participants || []).filter(
-        (p) => p.playerId !== connectedPlayer.id && !creditorIds.has(p.playerId)
-      );
-      return sum + owing.length * (m.matchFeePerPlayer || 0);
-    }, 0);
-
   // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers,
   // exemptés). On garde ici le détail complet (match + joueur) et pas
   // seulement le total, pour pouvoir afficher la liste nominative ci-dessous
@@ -310,28 +300,26 @@ export function AccountingView() {
         </div>
       </div>
 
-      {/* 4. Remboursements par les tiers — regroupés dans un seul bloc,
-          comme la consommation personnelle ci-dessus. */}
+      {/* 4. Remboursements par les tiers — un seul chiffre, factuel : ce qui
+          a déjà été réellement encaissé. L'ancienne case "À percevoir
+          (engagé, matchs à venir)" a été retirée (30/08/2026) : elle
+          comptait tous les non-créanciers de tous les matchs à venir, sans
+          savoir lequel d'entre eux paiera réellement CE créancier-ci (le
+          creditorId n'existe qu'une fois le paiement confirmé) — un chiffre
+          structurellement faux dès qu'il y a plusieurs créanciers, et
+          trompeur même à un seul. La vraie réponse à "combien vais-je
+          encore toucher au total" est le bloc "Reste net à récupérer en
+          cash" plus bas, qui se déduit de la créance et non d'un comptage
+          de joueurs. */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Remboursements par les autres joueurs
       </p>
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
-          <div className="p-4">
-            <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
-            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-              {totalPaidPastMatches.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
-          </div>
-          <div className="p-4">
-            <Icon.ArrowDownRight className="w-4 h-4 text-sky-600 mb-2" />
-            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-              {engagedUpcoming.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">À percevoir (engagé, matchs à venir)</p>
-          </div>
-        </div>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-5">
+        <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
+        <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
+          {totalPaidPastMatches.toLocaleString("fr-FR")} €
+        </p>
+        <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
       </div>
 
       {/* 4bis. Correction manuelle de l'admin — visible seulement si non nulle,
