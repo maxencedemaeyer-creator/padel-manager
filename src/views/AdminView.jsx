@@ -2,9 +2,7 @@
 // Onglet "Administration" — KPIs du club, soldes des créanciers (éditables).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
-import { parseFeeInput, formatClaimPeriodLabel } from "../lib/utils";
+import { formatClaimPeriodLabel } from "../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../lib/constants";
 import { getMatchTiming } from "../lib/matchLogic";
 import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
@@ -14,31 +12,6 @@ import { Card, Button, EmptyState } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 
-function CreditorBalanceEditor({ creditor, rawTotal }) {
-  const [value, setValue] = useState(String(rawTotal + (creditor.manualAdjustment || 0)));
-  const save = async () => {
-    const target = parseFeeInput(value);
-    if (target == null) return;
-    try {
-      await updateDoc(doc(db, "players", creditor.id), {
-        manualAdjustment: target - rawTotal,
-      });
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    }
-  };
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      className="pm-mono font-bold text-[var(--color-lime)] bg-transparent text-right w-24 focus:outline-none border-b border-transparent focus:border-sky-300"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={save}
-    />
-  );
-}
-
 export function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
@@ -47,16 +20,15 @@ export function AdminView() {
   // comptabilité", pour que les deux parcours restent parfaitement cohérents.
   const [editingCreditor, setEditingCreditor] = useState(null);
   const creditors = players.filter((p) => p.isCreditor);
+  // Solde = uniquement le total réellement perçu via les matchs, calculé
+  // automatiquement. Le concept d'"ajustement manuel" a été retiré de toute
+  // l'app le 30/08/2026 (jugé pas instinctif, source de confusion) — toute
+  // correction passe désormais uniquement par "Marquer payé" sur le match
+  // concerné, depuis "Ma comptabilité" ou l'onglet Matchs.
   const creditorRawTotals = new Map(
     creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches).totalPaidAllTime])
   );
-  const creditorAdjustedTotals = new Map(
-    creditors.map((c) => [
-      c.id,
-      (creditorRawTotals.get(c.id) || 0) + (c.manualAdjustment || 0),
-    ])
-  );
-  const totalBalance = [...creditorAdjustedTotals.values()].reduce((s, v) => s + v, 0);
+  const totalBalance = [...creditorRawTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
   const unpaidCount = matches
     .filter((m) => m.type === "Saison")
@@ -108,8 +80,8 @@ export function AdminView() {
       </div>
       <p className="text-[11px] text-[var(--color-text-faint)] mb-3">
         « Créance de départ » = investissement initial (visible dans l'onglet
-        Compta du créancier). « Solde » = total perçu via les matchs, que
-        vous pouvez corriger manuellement.
+        Compta du créancier). « Solde » = total perçu via les matchs,
+        calculé automatiquement.
       </p>
 
       {creditors.length === 0 ? (
@@ -121,7 +93,7 @@ export function AdminView() {
       ) : (
         <div className="flex flex-col gap-2">
           {[...creditors]
-            .sort((a, b) => (creditorAdjustedTotals.get(b.id) || 0) - (creditorAdjustedTotals.get(a.id) || 0))
+            .sort((a, b) => (creditorRawTotals.get(b.id) || 0) - (creditorRawTotals.get(a.id) || 0))
             .map((c) => {
               const claimPeriodLabel = formatClaimPeriodLabel(
                 c.advancedAmountPeriodStart,
@@ -178,12 +150,11 @@ export function AdminView() {
 
                   <div className="flex items-center justify-between pl-[52px]">
                     <span className="text-xs text-[var(--color-text-dim)]">
-                      Solde (perçu + ajustement)
+                      Solde (perçu via les matchs)
                     </span>
-                    <div className="flex items-center gap-1">
-                      <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
-                      <span className="pm-mono text-xs font-bold text-[var(--color-lime)]">€</span>
-                    </div>
+                    <span className="pm-mono text-sm font-bold text-[var(--color-lime)]">
+                      {(creditorRawTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
+                    </span>
                   </div>
                 </Card>
               );
