@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Petites fonctions utilitaires partagées par plusieurs vues/composants.
 // ─────────────────────────────────────────────────────────────────────────
-import { ADMIN_MASTER_CODE } from "../firebase";
 
 export function cn(...parts) {
   return parts.filter(Boolean).join(" ");
@@ -78,27 +77,13 @@ export function todayISO() {
   return toLocalISODate(new Date());
 }
 
-export function generateUniqueCode(players, excludeId = null) {
-  const taken = new Set(
-    players.filter((p) => p.id !== excludeId).map((p) => p.accessCode)
-  );
-  let code;
-  do {
-    code = String(Math.floor(1000 + Math.random() * 9000));
-  } while (taken.has(code));
-  return code;
-}
-
-export function findDuplicateOwner(players, code, excludeId = null) {
-  if (!code || code.length !== 4) return null;
-  return (
-    players.find((p) => p.accessCode === code && p.id !== excludeId) || null
-  );
-}
+// Note : la génération/vérification de doublon des codes PIN se fait
+// désormais via le serveur (api/manage-pin.js — voir AddPlayerModal.jsx,
+// EditPlayerModal.jsx, StatsView.jsx), car les codes réels ne sont plus
+// jamais présents dans "players" côté navigateur (voir firestore.rules).
 
 export function isPlayerAdmin(player) {
-  if (!player) return false;
-  return player.isAdmin === true || player.accessCode === ADMIN_MASTER_CODE;
+  return player?.isAdmin === true;
 }
 
 export function getRecurringDates(startDateStr, intervalDays, count) {
