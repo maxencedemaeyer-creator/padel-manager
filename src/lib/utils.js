@@ -31,6 +31,28 @@ export function formatTimeFR(timeStr) {
   return `${h}h${m.padStart(2, "0")}`;
 }
 
+// Format court d'une date ("2026-09-03" → "03 sept. 2026"), sans le jour de
+// la semaine — utilisé pour les petites informations indicatives (ex. la
+// période couverte par une créance de départ) où l'espace est limité.
+export function formatDateShortFR(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// Libellé compact "Du ... au ..." pour une période couverte, en gérant les
+// cas où une seule des deux bornes est renseignée. Retourne null si aucune
+// des deux dates n'est définie, pour permettre de masquer la ligne entière.
+export function formatClaimPeriodLabel(startDateStr, endDateStr) {
+  if (!startDateStr && !endDateStr) return null;
+  if (startDateStr && endDateStr) {
+    return `Du ${formatDateShortFR(startDateStr)} au ${formatDateShortFR(endDateStr)}`;
+  }
+  if (startDateStr) return `À partir du ${formatDateShortFR(startDateStr)}`;
+  return `Jusqu'au ${formatDateShortFR(endDateStr)}`;
+}
+
 // Isole le nom du club depuis un lieu de match ("Club VG — Terrain 6" →
 // "Club VG") en retirant le suffixe "Terrain N". Si le lieu ne contient pas
 // de nom de club (ex. "Terrain 3" sur un match ponctuel), on retombe sur le
