@@ -4,11 +4,12 @@
 // N'oubliez pas d'importer "./index.css" une seule fois, dans main.jsx
 // (anciennement injecté via <GlobalStyles/>, maintenant un fichier CSS normal).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMatches } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
 import { Spinner } from "./components/ui";
+import { authReady } from "./firebase";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
@@ -51,6 +52,23 @@ function MainApp() {
 }
 
 export default function PadelManagerApp() {
+  // Attend la connexion Firebase anonyme (voir src/firebase.js) avant
+  // d'afficher quoi que ce soit : tant qu'elle n'est pas terminée, toute
+  // lecture Firestore serait refusée par les règles de sécurité.
+  const [authIsReady, setAuthIsReady] = useState(false);
+
+  useEffect(() => {
+    authReady.then(() => setAuthIsReady(true));
+  }, []);
+
+  if (!authIsReady) {
+    return (
+      <div className="pm-root flex items-center justify-center min-h-screen">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
     <AuthGate>
       <MainApp />
