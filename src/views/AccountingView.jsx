@@ -154,31 +154,35 @@ export function AccountingView() {
         />
       )}
 
-      {/* 3. Consommation personnelle (auto-remboursement) */}
+      {/* 3. Consommation personnelle (auto-remboursement) — un seul bloc,
+          divisé en trois colonnes : le coût total de la saison mis en
+          évidence à gauche, puis le détail matchs déjà joués / à venir. */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Ma consommation personnelle
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
-          <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-            {selfReimbursed.toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-xs text-slate-500 mt-0.5">Mes matchs déjà joués</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <Icon.Calendar className="w-4 h-4 text-sky-600 mb-2" />
-          <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-            {selfUpcomingValue.toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-xs text-slate-500 mt-0.5">Mes matchs à venir</p>
-        </div>
-        <div className="rounded-2xl shadow-sm p-4" style={{ backgroundColor: "#1F2937" }}>
-          <Icon.Wallet className="w-4 h-4 text-white/70 mb-2" />
-          <p className="pm-display text-xl font-extrabold text-white">
-            {selfSeasonTotal.toLocaleString("fr-FR")} €
-          </p>
-          <p className="text-xs text-white/70 mt-0.5">Coût total estimé de ma saison</p>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+          <div className="p-4" style={{ backgroundColor: "#1F2937" }}>
+            <Icon.Wallet className="w-4 h-4 text-white/70 mb-2" />
+            <p className="pm-display text-2xl font-extrabold text-white">
+              {selfSeasonTotal.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-white/70 mt-0.5">Coût total estimé de ma saison</p>
+          </div>
+          <div className="p-4">
+            <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
+            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
+              {selfReimbursed.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">Mes matchs déjà joués</p>
+          </div>
+          <div className="p-4">
+            <Icon.Calendar className="w-4 h-4 text-sky-600 mb-2" />
+            <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
+              {selfUpcomingValue.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">Mes matchs à venir</p>
+          </div>
         </div>
       </div>
 
