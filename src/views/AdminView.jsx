@@ -4,14 +4,15 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { parseFeeInput } from "../lib/utils";
+import { parseFeeInput, formatClaimPeriodLabel } from "../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../lib/constants";
 import { getMatchTiming } from "../lib/matchLogic";
-import { getCreditorAccounting } from "../lib/stats";
+import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
+import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 
 function CreditorBalanceEditor({ creditor, rawTotal }) {
   const [value, setValue] = useState(String(rawTotal + (creditor.manualAdjustment || 0)));
@@ -38,41 +39,13 @@ function CreditorBalanceEditor({ creditor, rawTotal }) {
   );
 }
 
-// Créance de départ — c'est le MÊME champ Firestore (`advancedAmount`) que
-// celui affiché en lecture/écriture dans la fiche joueur (onglet Équipe) et
-// lu tel quel dans l'onglet Compta ("Créance de départ"). En le modifiant
-// ici, la valeur est donc automatiquement identique partout — aucune
-// duplication, aucun champ séparé à resynchroniser.
-function AdvancedAmountEditor({ creditor }) {
-  const [value, setValue] = useState(
-    creditor.advancedAmount != null ? String(creditor.advancedAmount) : ""
-  );
-  const save = async () => {
-    const target = parseFeeInput(value);
-    try {
-      await updateDoc(doc(db, "players", creditor.id), {
-        advancedAmount: target,
-      });
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    }
-  };
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      placeholder="0"
-      className="pm-mono font-bold text-sky-600 bg-transparent text-right w-24 focus:outline-none border-b border-transparent focus:border-sky-300"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={save}
-    />
-  );
-}
-
 export function AdminView() {
   const { players, matches } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
+  // Créance de départ en cours d'édition (dates, montant, terrains) — même
+  // modale que celle utilisée par le créancier lui-même depuis "Ma
+  // comptabilité", pour que les deux parcours restent parfaitement cohérents.
+  const [editingCreditor, setEditingCreditor] = useState(null);
   const creditors = players.filter((p) => p.isCreditor);
   const creditorRawTotals = new Map(
     creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches).totalPaidAllTime])
@@ -149,41 +122,82 @@ export function AdminView() {
         <div className="flex flex-col gap-2">
           {[...creditors]
             .sort((a, b) => (creditorAdjustedTotals.get(b.id) || 0) - (creditorAdjustedTotals.get(a.id) || 0))
-            .map((c) => (
-              <Card key={c.id} className="p-4 flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <span
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                    style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-                  >
-                    {c.emoji || "🎾"}
-                  </span>
-                  <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                </div>
-                <div className="flex items-center justify-between pl-[52px]">
-                  <span className="text-xs text-[var(--color-text-dim)]">
-                    Créance de départ
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <AdvancedAmountEditor creditor={c} />
-                    <span className="pm-mono text-xs font-bold text-sky-600">€</span>
+            .map((c) => {
+              const claimPeriodLabel = formatClaimPeriodLabel(
+                c.advancedAmountPeriodStart,
+                c.advancedAmountPeriodEnd
+              );
+              const claimCourts = c.advancedAmountCourts;
+              const coveredMatches = getCoveredMatchesEstimate(c, matches);
+              const hasClaimDetails = Boolean(claimPeriodLabel) || claimCourts != null;
+
+              return (
+                <Card key={c.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                      style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
+                    >
+                      {c.emoji || "🎾"}
+                    </span>
+                    <span className="flex-1 font-semibold text-sm">{c.name}</span>
                   </div>
-                </div>
-                <div className="flex items-center justify-between pl-[52px]">
-                  <span className="text-xs text-[var(--color-text-dim)]">
-                    Solde (perçu + ajustement)
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
-                    <span className="pm-mono text-xs font-bold text-[var(--color-lime)]">€</span>
+
+                  <div className="pl-[52px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--color-text-dim)]">
+                        Créance de départ
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="pm-mono text-sm font-bold text-sky-600">
+                          {(c.advancedAmount || 0).toLocaleString("fr-FR")} €
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCreditor(c)}
+                          className="p-1 -m-1 rounded-lg text-[var(--color-text-faint)] hover:text-[var(--color-lime)] transition-colors"
+                          title="Modifier la créance de départ"
+                        >
+                          <Icon.Settings className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    {hasClaimDetails && (
+                      <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5">
+                        {[
+                          claimPeriodLabel,
+                          claimCourts != null &&
+                            `${claimCourts} terrain${claimCourts > 1 ? "s" : ""}`,
+                          coveredMatches != null && `≈ ${coveredMatches} match${coveredMatches > 1 ? "s" : ""}`,
+                        ]
+                          .filter(Boolean)
+                          .join("  ·  ")}
+                      </p>
+                    )}
                   </div>
-                </div>
-              </Card>
-            ))}
+
+                  <div className="flex items-center justify-between pl-[52px]">
+                    <span className="text-xs text-[var(--color-text-dim)]">
+                      Solde (perçu + ajustement)
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <CreditorBalanceEditor creditor={c} rawTotal={creditorRawTotals.get(c.id) || 0} />
+                      <span className="pm-mono text-xs font-bold text-[var(--color-lime)]">€</span>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
         </div>
       )}
       {showCreateSeason && (
         <CreateSeasonModal onClose={() => setShowCreateSeason(false)} />
+      )}
+      {editingCreditor && (
+        <ClaimSettingsModal
+          creditor={editingCreditor}
+          onClose={() => setEditingCreditor(null)}
+        />
       )}
     </div>
   );
