@@ -53,8 +53,7 @@ export function PaymentModal({ match, participant, onClose }) {
       ) : (
         <div className="flex flex-col gap-2">
           {creditors.map((c) => {
-            const adjustedBalance =
-              getCreditorAccounting(c.id, matches).totalPaidAllTime + (c.manualAdjustment || 0);
+            const adjustedBalance = getCreditorAccounting(c.id, matches).totalPaidAllTime;
             return (
               <button
                 key={c.id}
