@@ -19,7 +19,7 @@ export function PlayerRow({ player }) {
   // modifie désormais son propre code PIN depuis "Mon profil".
   const canEdit = isAdmin;
   const adjustedBalance = player.isCreditor
-    ? getCreditorAccounting(player.id, matches).totalPaidAllTime + (player.manualAdjustment || 0)
+    ? getCreditorAccounting(player.id, matches).totalPaidAllTime
     : 0;
   const playerStats = computePlayerStats(player.id, matches);
 
