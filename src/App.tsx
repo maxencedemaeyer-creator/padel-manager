@@ -17,6 +17,7 @@ import { PlayersView } from "./views/PlayersView";
 import { StatsView } from "./views/StatsView";
 import { AccountingView } from "./views/AccountingView";
 import { AdminView } from "./views/AdminView";
+import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
 
 function MainApp() {
   const matchesHook = useMatches();
@@ -43,6 +44,7 @@ function MainApp() {
           <AdminView />
         )}
         <BottomNav view={view} setView={setView} />
+        {!matchesHook.loading && <PostMatchPrompt />}
       </div>
     </AppDataContext.Provider>
   );
