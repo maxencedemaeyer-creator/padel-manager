@@ -13,7 +13,6 @@ import {
 } from "../lib/utils";
 import {
   LEVELS,
-  AVATAR_COLOR_CHOICES,
   HAND_OPTIONS,
   SIDE_OPTIONS,
   FEDERATION_OPTIONS,
@@ -22,6 +21,7 @@ import { computePlayerStats, getRecentForm, computeHeadToHead } from "../lib/sta
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
+import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 
 function ProgressRing({ value, size = 110, stroke = 10, label }) {
   const radius = (size - stroke) / 2;
@@ -73,11 +73,10 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
   }[accentTone];
   return (
     <div className="w-40 shrink-0 rounded-2xl overflow-hidden border border-[var(--color-border)] bg-white shadow-sm">
-      <div
-        className={cn("h-24 flex items-center justify-center", accent)}
-        style={{ backgroundColor: player.avatarColor ? undefined : undefined }}
-      >
-        {player.emoji ? (
+      <div className={cn("h-24 flex items-center justify-center", accent)}>
+        {player.avatarPhotoUrl ? (
+          <img src={player.avatarPhotoUrl} alt="" className="w-full h-full object-cover" />
+        ) : player.emoji ? (
           <span className="text-4xl">{player.emoji}</span>
         ) : (
           <span className="text-white pm-display font-extrabold text-3xl">
@@ -418,12 +417,7 @@ export function StatsView() {
       <div className="px-4 pt-2 pb-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-4xl shrink-0 border-2 border-white/40"
-              style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-            >
-              {connectedPlayer.emoji || "🎾"}
-            </div>
+            <AvatarSelfEditor player={connectedPlayer} size={80} />
             <div className="min-w-0">
               <p className="pm-display font-extrabold text-2xl text-white leading-tight truncate">
                 {connectedPlayer.name}
