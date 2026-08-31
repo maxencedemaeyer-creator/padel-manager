@@ -46,8 +46,8 @@ export function PlayerSlotCard({
         className={cn(
           "flex flex-col p-3 rounded-2xl border-2 border-dashed min-h-[86px]",
           clickable
-            ? "border-white/70 bg-white/25 text-[var(--color-text-faint)] cursor-pointer hover:border-[var(--color-blue)]/40 hover:text-[var(--color-blue)]"
-            : "border-white/40 bg-white/10 text-[var(--color-text-faint)]/70"
+            ? "border-[var(--color-border)] bg-white/25 text-[var(--color-text-faint)] cursor-pointer hover:border-[var(--color-blue)]/50 hover:text-[var(--color-blue)]"
+            : "border-[var(--color-border)] bg-white/10 text-[var(--color-text-faint)]/70"
         )}
       >
         {slotTag}
@@ -77,8 +77,8 @@ export function PlayerSlotCard({
         "flex flex-col p-3 rounded-2xl border min-h-[86px]",
         isWinningTeam
           ? "bg-amber-100/80 border-amber-300/50"
-          : "bg-white/85 border-white/70",
-        clickable && "cursor-pointer hover:border-[var(--color-blue)]/40"
+          : "bg-white/85 border-[var(--color-border)]",
+        clickable && "cursor-pointer hover:border-[var(--color-blue)]/50"
       )}
     >
       {slotTag}
