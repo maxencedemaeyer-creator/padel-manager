@@ -12,6 +12,7 @@
         "email": { "type": "string" },
         "phone": { "type": "string" },
         "avatarColor": { "type": "string" },
+        "avatarPhotoUrl": { "type": "string" },
         "authUid": { "type": "string" },
         "authEmail": { "type": "string" },
         "createdAt": { "type": "number" }
