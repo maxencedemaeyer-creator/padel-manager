@@ -2,7 +2,7 @@
 // Une case de terrain : vide (cliquable pour assigner/s'inscrire) ou
 // occupée par un participant (nom, statut de paiement, position fixe).
 // ─────────────────────────────────────────────────────────────────────────
-import { cn, getFirstName, normalizeSide } from "../../lib/utils";
+import { cn, getInitials, getFirstName, normalizeSide } from "../../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import Icon from "../icons/Icon";
 import { Badge } from "../ui";
@@ -31,7 +31,7 @@ export function PlayerSlotCard({
   // ne jamais chevaucher le nom du joueur, même sur un écran mobile étroit.
   const slotTag = (
     <div className="flex justify-end mb-1">
-      <span className="px-1.5 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
+      <span className="px-1.5 py-0.5 rounded-full bg-white/60 backdrop-blur-md border border-white/70 text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
         Team {slotTeam} · {slotSide}
       </span>
     </div>
@@ -44,10 +44,10 @@ export function PlayerSlotCard({
         tabIndex={clickable ? 0 : undefined}
         onClick={handleClick}
         className={cn(
-          "flex flex-col p-3 rounded-xl border-2 border-dashed min-h-[86px]",
+          "flex flex-col p-3 rounded-2xl border-2 border-dashed min-h-[86px]",
           clickable
-            ? "border-[var(--color-border)] text-[var(--color-text-faint)] cursor-pointer hover:border-sky-300 hover:text-sky-600"
-            : "border-[var(--color-border)]/60 text-[var(--color-text-faint)]/70"
+            ? "border-white/70 bg-white/25 text-[var(--color-text-faint)] cursor-pointer hover:border-[var(--color-blue)]/40 hover:text-[var(--color-blue)]"
+            : "border-white/40 bg-white/10 text-[var(--color-text-faint)]/70"
         )}
       >
         {slotTag}
@@ -74,18 +74,20 @@ export function PlayerSlotCard({
       tabIndex={clickable ? 0 : undefined}
       onClick={handleClick}
       className={cn(
-        "flex flex-col p-3 rounded-xl border min-h-[86px]",
-        isWinningTeam ? "bg-amber-50 border-amber-300" : "bg-white border-[var(--color-border)]",
-        clickable && "cursor-pointer hover:border-sky-300"
+        "flex flex-col p-3 rounded-2xl border min-h-[86px]",
+        isWinningTeam
+          ? "bg-amber-100/50 backdrop-blur-md border-amber-300/50"
+          : "bg-white/50 backdrop-blur-md border-white/70",
+        clickable && "cursor-pointer hover:border-[var(--color-blue)]/40"
       )}
     >
       {slotTag}
       <div className="flex items-start gap-2">
         <span
-          className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-[var(--color-text)] shrink-0"
           style={{ backgroundColor: playerRecord?.avatarColor || AVATAR_COLOR_CHOICES[0] }}
         >
-          {playerRecord?.emoji || "🎾"}
+          {getInitials(participant.name)}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block sm:hidden text-sm font-semibold truncate">
