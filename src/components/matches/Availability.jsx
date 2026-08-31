@@ -29,6 +29,20 @@ const STATUS_META = {
   unknown: { label: "Je ne sais pas encore", dot: "bg-amber-500" },
 };
 
+// Pastilles teintées (fond + bordure + texte + icône) utilisées dans le
+// panneau "Réponses des joueurs" — plus lisibles d'un coup d'œil qu'un
+// simple point de couleur, tout en restant très compactes.
+const STATUS_PILL_CLASS = {
+  present: "bg-emerald-50 border-emerald-300 text-emerald-800",
+  absent: "bg-rose-50 border-rose-300 text-rose-600",
+  unknown: "bg-amber-50 border-amber-300 text-amber-800",
+};
+const STATUS_PILL_ICON = {
+  present: Icon.Check,
+  absent: Icon.X,
+  unknown: Icon.Question,
+};
+
 // Couleurs pleines (non pastel) utilisées pour le rectangle "ma réponse" —
 // mêmes teintes -500 que les états actifs de ManagePresenceModal, pour
 // rester cohérent avec le reste de l'app.
@@ -286,9 +300,12 @@ export function AvailabilityButtons({ sessionMatches }) {
 }
 
 // Panneau admin "qui a répondu" — simple aperçu (non cliquable) trié
-// présents / en attente / absents. Le placement sur le terrain se fait
-// uniquement en touchant une place (voir CourtPanel → PickPlayerModal, qui
-// affiche lui aussi le statut de présence de chaque joueur).
+// présents / en attente / absents, une petite icône de statut (✓ / ? / ✕)
+// sur fond teinté remplaçant l'ancien point de couleur pour rester lisible
+// d'un coup d'œil tout en restant très compact. Le nom d'un joueur déjà
+// placé sur une place de terrain (voir CourtPanel → PickPlayerModal) est mis
+// en gras, pour repérer immédiatement qui, parmi les présents, reste encore
+// à placer. Le placement lui-même se fait uniquement en touchant une place.
 export function RespondedPlayersPanel({ sessionMatches }) {
   const { players } = useAppData();
   const { responded } = getAvailabilityGroups(sessionMatches, players);
@@ -301,6 +318,13 @@ export function RespondedPlayersPanel({ sessionMatches }) {
     );
   }
 
+  // Joueurs déjà assignés à une place sur l'un des terrains de la session
+  // (peu importe le terrain ou l'équipe) — pour les distinguer en gras.
+  const placedPlayerIds = new Set();
+  (sessionMatches || []).forEach((m) => {
+    (m.participants || []).forEach((p) => placedPlayerIds.add(p.playerId));
+  });
+
   const order = { present: 0, unknown: 1, absent: 2 };
   const sorted = [...responded].sort(
     (a, b) => order[a.status] - order[b.status] || a.player.name.localeCompare(b.player.name)
@@ -312,25 +336,34 @@ export function RespondedPlayersPanel({ sessionMatches }) {
         Réponses des joueurs
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {sorted.map(({ player, status }) => (
-          <span
-            key={player.id}
-            className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium bg-[var(--color-surface-2)] border-[var(--color-border)]"
-          >
-            <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_META[status]?.dot)} />
-            {getFirstName(player.name)}
-          </span>
-        ))}
+        {sorted.map(({ player, status }) => {
+          const StatusIcon = STATUS_PILL_ICON[status];
+          const isPlaced = placedPlayerIds.has(player.id);
+          return (
+            <span
+              key={player.id}
+              title={isPlaced ? `${STATUS_META[status]?.label} · déjà placé sur le terrain` : STATUS_META[status]?.label}
+              className={cn(
+                "flex items-center gap-1 pl-1.5 pr-2.5 py-1 rounded-full border text-xs",
+                isPlaced ? "font-bold" : "font-medium",
+                STATUS_PILL_CLASS[status]
+              )}
+            >
+              <StatusIcon className="w-3 h-3 shrink-0" />
+              {getFirstName(player.name)}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 // Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
-// session (qu'ils aient déjà répondu ou non), triés par ordre alphabétique,
-// chacun avec ses 3 boutons Présent / Absent / Je ne sais pas encore, plus
-// un 4e bouton pour réinitialiser sa réponse. Permet à l'administrateur de
-// modifier sa propre présence ou celle de n'importe quel autre joueur.
+// session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
+// Présent / Absent / Je ne sais pas encore, plus un 4e bouton pour
+// réinitialiser sa réponse. Permet à l'administrateur de modifier sa propre
+// présence ou celle de n'importe quel autre joueur.
 export function ManagePresenceModal({ sessionMatches, onClose }) {
   const { players } = useAppData();
   const [savingId, setSavingId] = useState(null);
