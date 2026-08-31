@@ -3,7 +3,7 @@
 // tous, en tête de l'onglet Équipe.
 // ─────────────────────────────────────────────────────────────────────────
 import { computePlayerStats } from "../../lib/stats";
-import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
+import { PlayerAvatar } from "./PlayerAvatar";
 
 export function ClubRankingBanner({ players, matches }) {
   const ranked = players
@@ -28,12 +28,7 @@ export function ClubRankingBanner({ players, matches }) {
             <span className="w-4 text-center text-sm font-bold text-white/70 shrink-0">
               {i + 1}
             </span>
-            <span
-              className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
-              style={{ backgroundColor: r.player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-            >
-              {r.player.emoji || "🎾"}
-            </span>
+            <PlayerAvatar player={r.player} size={32} />
             <span className="flex-1 min-w-0 text-sm font-semibold truncate">
               {r.player.name}
             </span>
