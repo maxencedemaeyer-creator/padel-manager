@@ -6,10 +6,10 @@ import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { getCreditorAccounting } from "../../lib/stats";
-import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, EmptyState } from "../ui";
+import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PaymentModal({ match, participant, onClose }) {
   const { players, matches, isAdmin, connectedPlayer } = useAppData();
@@ -61,12 +61,7 @@ export function PaymentModal({ match, participant, onClose }) {
                 onClick={() => confirmPayment(c)}
                 className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all disabled:opacity-50"
               >
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                  style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-                >
-                  {c.emoji || "🎾"}
-                </span>
+                <PlayerAvatar player={c} size={40} />
                 <span className="flex-1 text-left">
                   <span className="block text-sm font-semibold">{c.name}</span>
                   <span className="block text-xs text-[var(--color-text-dim)]">
