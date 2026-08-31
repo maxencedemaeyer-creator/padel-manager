@@ -31,7 +31,7 @@ export function PlayerSlotCard({
   // ne jamais chevaucher le nom du joueur, même sur un écran mobile étroit.
   const slotTag = (
     <div className="flex justify-end mb-1">
-      <span className="px-1.5 py-0.5 rounded-full bg-white/60 backdrop-blur-md border border-white/70 text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
+      <span className="px-1.5 py-0.5 rounded-full bg-white/85 border border-white/70 text-[8px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] whitespace-nowrap">
         Team {slotTeam} · {slotSide}
       </span>
     </div>
@@ -76,8 +76,8 @@ export function PlayerSlotCard({
       className={cn(
         "flex flex-col p-3 rounded-2xl border min-h-[86px]",
         isWinningTeam
-          ? "bg-amber-100/50 backdrop-blur-md border-amber-300/50"
-          : "bg-white/50 backdrop-blur-md border-white/70",
+          ? "bg-amber-100/80 border-amber-300/50"
+          : "bg-white/85 border-white/70",
         clickable && "cursor-pointer hover:border-[var(--color-blue)]/40"
       )}
     >
