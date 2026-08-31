@@ -10,12 +10,24 @@ import { COURT_SLOT_DEFS, SELF_REGISTRATION_WINDOW_DAYS, WITHDRAWAL_RESOLVE_DELA
 import { getMatchTiming, hasMatchScore, getSetDisplay, getCourtSlots, daysUntilMatch } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Card, Button } from "../ui";
+import { Card, Badge, Button } from "../ui";
 import { PlayerSlotCard } from "./PlayerSlotCard";
 import { EndMatchModal } from "./EndMatchModal";
 import { PickPlayerModal } from "./PickPlayerModal";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { PaymentModal } from "./PaymentModal";
+
+function StatusBadge({ match, now }) {
+  const timing = getMatchTiming(match, now);
+  if (timing === "ongoing")
+    return (
+      <Badge tone="lime" className="pm-pulse">
+        ● En cours
+      </Badge>
+    );
+  if (timing === "finished") return <Badge tone="neutral">Terminé</Badge>;
+  return <Badge tone="blue">À venir</Badge>;
+}
 
 export function CourtPanel({ match, now }) {
   const { isAdmin, connectedPlayer, players, matches } = useAppData();
@@ -28,6 +40,7 @@ export function CourtPanel({ match, now }) {
   const [selfBusy, setSelfBusy] = useState(false);
 
   const participants = match.participants || [];
+  const filledCount = participants.length;
   const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
@@ -52,18 +65,8 @@ export function CourtPanel({ match, now }) {
       (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
   );
   const withinSelfRegWindow = daysUntilMatch(match, now) <= SELF_REGISTRATION_WINDOW_DAYS;
-  // Un joueur ne peut s'auto-inscrire sur une place que s'il a explicitement
-  // répondu "présent" à la session — un joueur "absent" ou qui n'a "pas
-  // encore répondu"/"je ne sais pas encore" ne doit pas pouvoir cliquer sur
-  // une place, même s'il voit la disposition du terrain.
-  const myAvailabilityStatus = match.availability ? match.availability[connectedPlayer.id] : undefined;
-  const hasConfirmedPresence = myAvailabilityStatus === "present";
   const canSelfJoin =
-    !isAdmin &&
-    timing === "upcoming" &&
-    !isParticipant &&
-    !alreadyElsewhereToday &&
-    hasConfirmedPresence;
+    !isAdmin && timing === "upcoming" && !isParticipant && !alreadyElsewhereToday;
   const canSelfLeave = !isAdmin && timing === "upcoming" && isParticipant;
 
   const selfJoin = async (def) => {
@@ -82,12 +85,6 @@ export function CourtPanel({ match, now }) {
         creditorId: null,
         team: def.team,
         courtSide: def.side,
-        // Marque cette place comme une auto-inscription (par opposition à un
-        // placement admin) — voir lib/availability.js : si ce joueur répond
-        // ensuite "absent"/"je ne sais pas encore" à cette session, il est
-        // automatiquement retiré de cette place. Un placement admin, lui,
-        // n'a jamais ce marqueur et n'est donc jamais retiré automatiquement.
-        selfJoined: true,
       };
       await updateDoc(doc(db, "matches", match.id), {
         participants: [...participants, newParticipant],
@@ -132,6 +129,13 @@ export function CourtPanel({ match, now }) {
   );
   const playerById = (id) => players.find((p) => p.id === id);
   const slots = getCourtSlots(match);
+
+  const fillBadge =
+    filledCount === 4
+      ? "4/4 joueurs • Complet"
+      : filledCount === 0
+      ? "Créneau libre"
+      : `${filledCount}/4 joueurs`;
 
   const renderSlot = (def) => {
     const participant = slots[def.key];
@@ -178,16 +182,24 @@ export function CourtPanel({ match, now }) {
               : "Match ponctuel — hors comptabilité"}
           </p>
         </div>
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setShowSettingsMenu(true)}
-            aria-label="Paramètres du terrain"
-            className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
-          >
-            <Icon.Settings className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <div className="flex items-start gap-1.5 shrink-0">
+          <div className="flex flex-col items-end gap-1.5">
+            <StatusBadge match={match} now={now} />
+            <Badge tone={filledCount === 4 ? "paid" : "neutral"} className="!text-[10px]">
+              {fillBadge}
+            </Badge>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowSettingsMenu(true)}
+              aria-label="Paramètres du terrain"
+              className="p-1.5 rounded-full bg-white/60 backdrop-blur-md border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-blue)] hover:border-[var(--color-blue)]/40"
+            >
+              <Icon.Settings className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -196,7 +208,7 @@ export function CourtPanel({ match, now }) {
       </div>
 
       {scoreEntered ? (
-        <div className="my-2.5 py-2.5 px-2 rounded-xl bg-[var(--color-surface-2)]">
+        <div className="my-2.5 py-2.5 px-2 rounded-2xl bg-white/40 backdrop-blur-md border border-white/50">
           {(() => {
             const setPairs = ["set1", "set2", "set3"]
               .map((k) => getSetDisplay(match.scores[k]))
@@ -228,10 +240,10 @@ export function CourtPanel({ match, now }) {
                           className={cn(
                             "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold pm-mono border",
                             wonSet
-                              ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                              ? "bg-emerald-100/80 text-emerald-700 border-emerald-300/60"
                               : lostSet
-                              ? "bg-rose-100 text-rose-700 border-rose-300"
-                              : "bg-white text-[var(--color-text-dim)] border-[var(--color-border)]"
+                              ? "bg-rose-100/80 text-rose-700 border-rose-300/60"
+                              : "bg-white/60 text-[var(--color-text-dim)] border-white/70"
                           )}
                         >
                           {teamKey === "A" ? pair.a : pair.b}
@@ -252,7 +264,7 @@ export function CourtPanel({ match, now }) {
       ) : (
         <div className="relative flex items-center my-2.5">
           <div className="flex-1 h-px bg-[var(--color-border)]" />
-          <span className="mx-2 px-2.5 py-1 rounded-full bg-slate-800 text-white text-[10px] font-bold tracking-wide shrink-0">
+          <span className="mx-2 px-2.5 py-1 rounded-full bg-[var(--color-text)] text-white text-[10px] font-bold tracking-wide shrink-0">
             FILET • NET
           </span>
           <div className="flex-1 h-px bg-[var(--color-border)]" />
