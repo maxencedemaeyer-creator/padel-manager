@@ -12,7 +12,7 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function AddPlayerModal({ onClose }) {
-  const { players, archivedPlayers } = useAppData();
+  const { players, archivedPlayers, sessionToken } = useAppData();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -45,7 +45,7 @@ export function AddPlayerModal({ onClose }) {
     fetch("/api/manage-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "check", code: form.accessCode }),
+      body: JSON.stringify({ action: "check", code: form.accessCode, actingToken: sessionToken }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -85,7 +85,7 @@ export function AddPlayerModal({ onClose }) {
       const response = await fetch("/api/manage-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate" }),
+        body: JSON.stringify({ action: "generate", actingToken: sessionToken }),
       });
       const data = await response.json();
       if (data.ok) setF("accessCode", data.code);
@@ -147,6 +147,7 @@ export function AddPlayerModal({ onClose }) {
           action: "set",
           playerId: playerRef.id,
           accessCode: form.accessCode,
+          actingToken: sessionToken,
         }),
       });
       const data = await response.json();
