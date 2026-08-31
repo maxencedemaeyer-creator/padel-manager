@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Modale admin "assigner / remplacer un joueur" sur une place de terrain,
-// avec recherche et détection des conflits (déjà engagé ce jour-là ailleurs).
+// avec recherche et détection des conflits (déjà engagé ce jour-là ailleurs,
+// ou ayant répondu absent à cette session).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
@@ -11,8 +12,8 @@ import { Modal, Button, Badge, inputClass } from "../ui";
 
 // Visuel de présence par joueur — mêmes couleurs que le panneau "Réponses
 // des joueurs" (Availability.jsx), pour repérer d'un coup d'œil qui a
-// répondu "présent" à cette session, sans pour autant empêcher d'assigner
-// n'importe quel autre joueur du club.
+// répondu "présent" à cette session. Un joueur ayant répondu "absent" ne
+// peut pas être assigné (voir isAbsent plus bas).
 const PRESENCE_META = {
   present: { dot: "bg-emerald-500", text: "text-emerald-700", label: "Présent" },
   unknown: { dot: "bg-amber-500", text: "text-amber-700", label: "Incertain" },
@@ -20,7 +21,7 @@ const PRESENCE_META = {
 };
 const NO_RESPONSE_META = { dot: "bg-stone-300", text: "text-[var(--color-text-faint)]", label: "Pas répondu" };
 // Ordre d'affichage : présents d'abord, puis incertains, puis ceux qui n'ont
-// pas répondu, puis absents en dernier (les moins probables à assigner).
+// pas répondu, puis absents en dernier (non assignables).
 const PRESENCE_RANK = { present: 0, unknown: 1, absent: 3 };
 
 export function PickPlayerModal({ match, team, courtSide, currentParticipant, onClose }) {
@@ -160,7 +161,8 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
             const isCurrent = p.id === currentParticipant?.playerId;
             const dayConflict = !isCurrent ? conflictByPlayerId.get(p.id) : null;
             const inThisMatch = !isCurrent && takenElsewhereIds.has(p.id);
-            const disabled = saving || Boolean(dayConflict) || inThisMatch;
+            const isAbsent = !isCurrent && availability[p.id] === "absent";
+            const disabled = saving || Boolean(dayConflict) || inThisMatch || isAbsent;
             const presenceMeta = PRESENCE_META[availability[p.id]] || NO_RESPONSE_META;
             return (
               <button
