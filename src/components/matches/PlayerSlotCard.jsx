@@ -116,11 +116,6 @@ export function PlayerSlotCard({
                   {badgeLabel}
                 </Badge>
               </button>
-              {isCreditorParticipant && isAdmin && (
-                <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[10px]">
-                  Créancier
-                </Badge>
-              )}
             </span>
           )}
         </span>
