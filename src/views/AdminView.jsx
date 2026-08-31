@@ -3,7 +3,6 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { formatClaimPeriodLabel } from "../lib/utils";
-import { AVATAR_COLOR_CHOICES } from "../lib/constants";
 import { getMatchTiming } from "../lib/matchLogic";
 import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
@@ -11,6 +10,7 @@ import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
+import { PlayerAvatar } from "../components/players/PlayerAvatar";
 
 export function AdminView() {
   const { players, matches } = useAppData();
@@ -106,12 +106,7 @@ export function AdminView() {
               return (
                 <Card key={c.id} className="p-4 flex flex-col gap-3">
                   <div className="flex items-center gap-3">
-                    <span
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                      style={{ backgroundColor: c.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-                    >
-                      {c.emoji || "🎾"}
-                    </span>
+                    <PlayerAvatar player={c} size={40} />
                     <span className="flex-1 font-semibold text-sm">{c.name}</span>
                   </div>
 
