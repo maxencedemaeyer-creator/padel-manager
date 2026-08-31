@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db, SESSION_KEY, ADMIN_MASTER_CODE } from "../../firebase";
+import { db, SESSION_KEY, SESSION_TOKEN_KEY } from "../../firebase";
 import { cn, isPlayerAdmin } from "../../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { usePlayers } from "../../hooks/useFirestoreData";
@@ -58,7 +58,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
             const target = players.find((p) => p.id === data.loginAsPlayerId);
             if (target) {
               setChecking(false);
-              onSuccess(target);
+              onSuccess(target, data.sessionToken);
               return;
             }
           }
@@ -152,7 +152,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
 
 export function BootstrapAdmin() {
   const [name, setName] = useState("Maxence");
-  const [code, setCode] = useState(ADMIN_MASTER_CODE);
+  const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
 
   const create = async () => {
@@ -257,6 +257,7 @@ export function AuthGate({ children }) {
   const players = useMemo(() => allPlayers.filter((p) => !p.archived), [allPlayers]);
   const archivedPlayers = useMemo(() => allPlayers.filter((p) => p.archived), [allPlayers]);
   const [connectedPlayer, setConnectedPlayer] = useState(null);
+  const [sessionToken, setSessionToken] = useState(null);
   const [selectedForPin, setSelectedForPin] = useState(null);
   const [restoring, setRestoring] = useState(true);
 
@@ -267,7 +268,16 @@ export function AuthGate({ children }) {
       const savedId = localStorage.getItem(SESSION_KEY);
       if (savedId) {
         const found = players.find((p) => p.id === savedId);
-        if (found) setConnectedPlayer(found);
+        if (found) {
+          setConnectedPlayer(found);
+          // Le jeton de session (voir api/_firebaseAdmin.js) n'existe pas
+          // pour les sessions ouvertes avant ce correctif (31/08/2026) : la
+          // personne reste connectée normalement, mais devra se
+          // déconnecter/reconnecter une fois pour retrouver l'accès aux
+          // actions protégées (changer son code PIN, ajouter/modifier un
+          // joueur) — voir manage-pin.js.
+          setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) || null);
+        }
       }
     } catch (e) {
       // localStorage indisponible : on ignore silencieusement
@@ -296,18 +306,26 @@ export function AuthGate({ children }) {
   // (ex. quand "players" est mis à jour en temps réel), ce qui casserait
   // inutilement la mémoïsation de la valeur de contexte ci-dessous et
   // forcerait toute l'app à se re-rendre pour rien.
-  const login = useCallback((player) => {
+  const login = useCallback((player, token) => {
     setConnectedPlayer(player);
+    setSessionToken(token || null);
     try {
       localStorage.setItem(SESSION_KEY, player.id);
+      if (token) {
+        localStorage.setItem(SESSION_TOKEN_KEY, token);
+      } else {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+      }
     } catch (e) {}
   }, []);
 
   const logout = useCallback(() => {
     setConnectedPlayer(null);
+    setSessionToken(null);
     setSelectedForPin(null);
     try {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_TOKEN_KEY);
     } catch (e) {}
   }, []);
 
@@ -319,12 +337,13 @@ export function AuthGate({ children }) {
   const contextValue = useMemo(
     () => ({
       connectedPlayer,
+      sessionToken,
       isAdmin: isPlayerAdmin(connectedPlayer),
       logout,
       players,
       archivedPlayers,
     }),
-    [connectedPlayer, logout, players, archivedPlayers]
+    [connectedPlayer, sessionToken, logout, players, archivedPlayers]
   );
 
   if (loading || restoring) {
