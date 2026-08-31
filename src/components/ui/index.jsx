@@ -18,7 +18,7 @@ export function Badge({ children, tone = "neutral", className = "" }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap backdrop-blur-md",
+        "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap",
         tones[tone],
         className
       )}
@@ -33,7 +33,7 @@ export function Button({ children, variant = "primary", className = "", ...rest 
     primary:
       "bg-[var(--color-lime)] text-white hover:brightness-105 active:scale-[0.98] shadow-[0_8px_20px_-6px_rgba(63,164,124,0.5)]",
     secondary:
-      "bg-white/60 backdrop-blur-md text-[var(--color-text)] border border-white/70 hover:bg-white/80 active:scale-[0.98] shadow-sm",
+      "bg-white/90 text-[var(--color-text)] border border-white/70 hover:bg-white active:scale-[0.98] shadow-sm",
     ghost: "text-[var(--color-text-dim)] hover:text-[var(--color-text)]",
     danger: "bg-rose-100/70 text-rose-700 border border-rose-200/60",
   };
@@ -55,7 +55,7 @@ export function Card({ children, className = "" }) {
   return (
     <div
       className={cn(
-        "bg-white/55 backdrop-blur-xl backdrop-saturate-150 border border-white/70 rounded-[26px] shadow-[0_12px_32px_-8px_rgba(20,33,61,0.12)]",
+        "bg-white/90 border border-white/70 rounded-[26px] shadow-[0_12px_32px_-8px_rgba(20,33,61,0.12)]",
         className
       )}
     >
@@ -73,7 +73,7 @@ export function Modal({ title, onClose, children, footer, wide = false }) {
           wide ? "max-w-lg" : "max-w-sm"
         )}
       >
-        <div className="p-4 border-b border-white/50 flex justify-between items-center bg-white/40 backdrop-blur-md shrink-0">
+        <div className="p-4 border-b border-white/50 flex justify-between items-center bg-white/70 shrink-0">
           <h3 className="pm-display font-bold text-lg text-[var(--color-text)]">{title}</h3>
           <button
             onClick={onClose}
@@ -84,7 +84,7 @@ export function Modal({ title, onClose, children, footer, wide = false }) {
         </div>
         <div className="p-4 overflow-y-auto space-y-3 flex-1 pm-scroll-visible">{children}</div>
         {footer && (
-          <div className="p-4 border-t border-white/50 bg-white/40 backdrop-blur-md flex justify-end gap-2 shrink-0">
+          <div className="p-4 border-t border-white/50 bg-white/70 flex justify-end gap-2 shrink-0">
             {footer}
           </div>
         )}
@@ -109,7 +109,7 @@ export function Field({ label, children }) {
 }
 
 export const inputClass =
-  "w-full px-4 py-3 rounded-2xl bg-white/50 backdrop-blur-md border border-white/70 text-[var(--color-text)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-blue)]/40 focus:ring-4 focus:ring-[var(--color-blue)]/10 transition-shadow text-sm";
+  "w-full px-4 py-3 rounded-2xl bg-white/85 border border-white/70 text-[var(--color-text)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-blue)]/40 focus:ring-4 focus:ring-[var(--color-blue)]/10 transition-shadow text-sm";
 
 export function Spinner() {
   return (
@@ -121,7 +121,7 @@ export function Spinner() {
 
 export function EmptyState({ icon, title, subtitle }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-14 px-6 bg-white/50 backdrop-blur-md border border-white/60 rounded-[26px] shadow-sm">
+    <div className="flex flex-col items-center justify-center text-center py-14 px-6 bg-white/85 border border-white/60 rounded-[26px] shadow-sm">
       <div className="w-14 h-14 rounded-2xl bg-white/60 border border-white/70 flex items-center justify-center mb-4 text-[var(--color-text-faint)]">
         {icon}
       </div>
