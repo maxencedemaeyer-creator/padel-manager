@@ -26,7 +26,8 @@ function StatusBadge({ match, now }) {
       </Badge>
     );
   if (timing === "finished") return <Badge tone="neutral">Terminé</Badge>;
-  return <Badge tone="blue">À venir</Badge>;
+  // Matchs à venir : plus de pastille "À venir" (retiré à la demande de Max).
+  return null;
 }
 
 export function CourtPanel({ match, now }) {
