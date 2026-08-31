@@ -169,6 +169,12 @@ const Icon = {
       <path d="M5.5 9a7 7 0 0112.3-2.5L20 9M18.5 15a7 7 0 01-12.3 2.5L4 15" />
     </svg>
   ),
+  Camera: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M4 8a2 2 0 012-2h1.5l1-1.6A2 2 0 0110.2 3.4h3.6a2 2 0 011.7 1l1 1.6H18a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V8z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  ),
 };
 
 
