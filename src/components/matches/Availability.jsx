@@ -327,20 +327,17 @@ export function RespondedPlayersPanel({ sessionMatches }) {
 }
 
 // Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
-// session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
-// Présent / Absent / Je ne sais pas encore, plus un 4e bouton pour
-// réinitialiser sa réponse. Permet à l'administrateur de modifier sa propre
-// présence ou celle de n'importe quel autre joueur.
+// session (qu'ils aient déjà répondu ou non), triés par ordre alphabétique,
+// chacun avec ses 3 boutons Présent / Absent / Je ne sais pas encore, plus
+// un 4e bouton pour réinitialiser sa réponse. Permet à l'administrateur de
+// modifier sa propre présence ou celle de n'importe quel autre joueur.
 export function ManagePresenceModal({ sessionMatches, onClose }) {
   const { players } = useAppData();
-  const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState(null);
 
   const { availability } = getAvailabilityGroups(sessionMatches, players);
 
-  const filteredPlayers = [...players]
-    .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
   const setStatus = async (playerId, status) => {
     setSavingId(playerId);
@@ -383,21 +380,13 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
         Modifiez la présence de n'importe quel joueur pour cette date — y compris la vôtre.
       </p>
 
-      <input
-        className="w-full mb-3 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-sm outline-none focus:border-sky-300"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Rechercher un joueur..."
-        autoFocus
-      />
-
       <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
-        {filteredPlayers.length === 0 ? (
+        {sortedPlayers.length === 0 ? (
           <p className="text-xs text-[var(--color-text-faint)] italic py-2">
-            Aucun joueur ne correspond à cette recherche.
+            Aucun joueur.
           </p>
         ) : (
-          filteredPlayers.map((p) => {
+          sortedPlayers.map((p) => {
             const status = availability[p.id];
             const busy = savingId === p.id;
             return (
