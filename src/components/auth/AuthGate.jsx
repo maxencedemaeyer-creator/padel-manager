@@ -6,11 +6,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, SESSION_KEY, SESSION_TOKEN_KEY } from "../../firebase";
 import { cn, isPlayerAdmin } from "../../lib/utils";
-import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { usePlayers } from "../../hooks/useFirestoreData";
 import { AppDataContext } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Field, Button, Spinner, inputClass } from "../ui";
+import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PlayerTile({ player, onClick }) {
   return (
@@ -18,12 +18,7 @@ export function PlayerTile({ player, onClick }) {
       onClick={onClick}
       className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all"
     >
-      <div
-        className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
-        style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-      >
-        {player.emoji || "🎾"}
-      </div>
+      <PlayerAvatar player={player} size={56} />
       <span className="text-xs font-semibold text-center leading-tight">
         {player.name}
       </span>
@@ -85,12 +80,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
         <Icon.Chevron className="w-4 h-4 rotate-180" /> Retour
       </button>
 
-      <div
-        className="w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-3"
-        style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-      >
-        {player.emoji || "🎾"}
-      </div>
+      <PlayerAvatar player={player} size={64} className="mb-3" />
       <p className="pm-display font-bold text-lg mb-1">{player.name}</p>
       <p className="text-xs text-white mb-6">
         Entrez votre code à 4 chiffres
