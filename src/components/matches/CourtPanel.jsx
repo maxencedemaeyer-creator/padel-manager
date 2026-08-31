@@ -194,7 +194,7 @@ export function CourtPanel({ match, now }) {
               type="button"
               onClick={() => setShowSettingsMenu(true)}
               aria-label="Paramètres du terrain"
-              className="p-1.5 rounded-full bg-white/60 backdrop-blur-md border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-blue)] hover:border-[var(--color-blue)]/40"
+              className="p-1.5 rounded-full bg-white/90 border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-blue)] hover:border-[var(--color-blue)]/40"
             >
               <Icon.Settings className="w-3.5 h-3.5" />
             </button>
@@ -208,7 +208,7 @@ export function CourtPanel({ match, now }) {
       </div>
 
       {scoreEntered ? (
-        <div className="my-2.5 py-2.5 px-2 rounded-2xl bg-white/40 backdrop-blur-md border border-white/50">
+        <div className="my-2.5 py-2.5 px-2 rounded-2xl bg-white/85 border border-white/50">
           {(() => {
             const setPairs = ["set1", "set2", "set3"]
               .map((k) => getSetDisplay(match.scores[k]))
