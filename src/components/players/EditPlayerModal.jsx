@@ -29,6 +29,7 @@ export function EditPlayerModal({ player, onClose }) {
   const [email, setEmail] = useState(player.email || "");
   const [emoji, setEmoji] = useState(player.emoji || "🎾");
   const [avatarColor, setAvatarColor] = useState(player.avatarColor || AVATAR_COLOR_CHOICES[0]);
+  const [avatarPhotoUrl, setAvatarPhotoUrl] = useState(player.avatarPhotoUrl || null);
   // Les codes PIN ne sont plus jamais lisibles depuis le navigateur (voir
   // firestore.rules) : ces champs partent donc TOUJOURS vides, même si un
   // code existe déjà. Laisser vide = ne change rien au code actuel ;
@@ -126,6 +127,7 @@ export function EditPlayerModal({ player, onClose }) {
         email: email.trim(),
         emoji,
         avatarColor,
+        avatarPhotoUrl,
         isAdmin: playerIsAdmin,
         isCreditor,
         isTest,
@@ -211,6 +213,9 @@ export function EditPlayerModal({ player, onClose }) {
         color={avatarColor}
         onEmojiChange={setEmoji}
         onColorChange={setAvatarColor}
+        photoUrl={avatarPhotoUrl}
+        onPhotoChange={setAvatarPhotoUrl}
+        playerId={player.id}
       />
 
       <Field label="Nom complet">
