@@ -1,65 +1,50 @@
 /* 1. TOUJOURS les imports d'URL externes (ex: Google Fonts) tout en haut */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
 /* 2. L'import de Tailwind CSS juste après */
 @import "tailwindcss";
 
 /* 3. Vos variables et votre CSS personnalisés en dessous */
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — palette "crème pastel élégante" (blanc chaud / bleu doux /
-   sauge). Anciennement injecté via un composant <GlobalStyles/> ; c'est
-   maintenant un fichier CSS normal, importé une seule fois dans main.jsx
-   (import "./index.css") — plus rapide (pas de <style> réinjecté à chaque
-   rendu) et plus conventionnel.
+   Design tokens — palette "iOS Liquid Glass" (verre dépoli, blanc/bleu doux,
+   accents lime). Anciennement injecté via un composant <GlobalStyles/> ;
+   c'est maintenant un fichier CSS normal, importé une seule fois dans
+   main.jsx (import "./index.css").
    ───────────────────────────────────────────────────────────────────────── */
 
 :root{
-  --color-bg: #4361EE;
-  --color-nav: #FAF8F5;
+  --color-bg: #EEF2FB;
+  --color-wash-lime: rgba(111,169,138,0.16);
+  --color-wash-blue: rgba(67,97,238,0.14);
+  --color-glass: rgba(255,255,255,0.55);
+  --color-glass-strong: rgba(255,255,255,0.75);
+  --color-glass-border: rgba(255,255,255,0.85);
+  --color-nav: #FFFFFF;
   --color-surface: #FFFFFF;
-  --color-surface-2: #F4EFE7;
-  --color-border: #E8E2D8;
-  --color-text: #1E293B;
-  --color-text-dim: #64748B;
-  --color-text-faint: #94A3B8;
-  --color-lime: #6FA98A;
-  --color-lime-dim: #5B8F73;
-  --color-blue: #7DB8DB;
-  --color-paid: #34D399;
-  --color-unpaid: #FB923C;
+  --color-surface-2: #F2F5FB;
+  --color-border: #E3E8F5;
+  --color-text: #14213D;
+  --color-text-dim: #5C6B8A;
+  --color-text-faint: #93A0BC;
+  --color-lime: #3FA47C;
+  --color-lime-dim: #2F8A66;
+  --color-blue: #4361EE;
+  --color-paid: #22B378;
+  --color-unpaid: #F5934A;
   --color-danger: #F87171;
-  --font-display: 'Space Grotesk', sans-serif;
+  --font-display: 'Manrope', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
-   Anti-scroll-horizontal (fix mobile) — empêche la page entière de pouvoir
-   glisser latéralement pendant qu'on scrolle verticalement. Un élément trop
-   large (tableau, ligne de badges, etc.) sera simplement "coupé" au lieu
-   d'élargir toute la page. Les zones de scroll horizontal volontaires
-   (ex: tableau en overflow-x-auto) continuent de fonctionner normalement,
-   car elles créent leur propre contexte de défilement interne.
-   ───────────────────────────────────────────────────────────────────────── */
-html, body{
-  overflow-x: hidden;
-  max-width: 100vw;
-}
-#root{
-  overflow-x: hidden;
-  max-width: 100vw;
 }
 
 .pm-root{
   font-family: var(--font-body);
   background:
-    radial-gradient(circle at 15% 0%, rgba(111,169,138,0.07), transparent 40%),
-    radial-gradient(circle at 100% 20%, rgba(125,184,219,0.09), transparent 45%),
+    radial-gradient(circle at 12% 0%, var(--color-wash-lime), transparent 42%),
+    radial-gradient(circle at 100% 18%, var(--color-wash-blue), transparent 48%),
     var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
-  overflow-x: hidden;
-  max-width: 100vw;
 }
 .pm-root *{ font-family: inherit; }
 .pm-display{ font-family: var(--font-display); letter-spacing: -0.02em; }
