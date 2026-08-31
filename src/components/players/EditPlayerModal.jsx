@@ -14,7 +14,7 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function EditPlayerModal({ player, onClose }) {
-  const { isAdmin, players, connectedPlayer } = useAppData();
+  const { isAdmin, players, connectedPlayer, sessionToken } = useAppData();
 
   // Champs de jeu — modifiables par le joueur lui-même ou par l'admin
   const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
@@ -61,7 +61,12 @@ export function EditPlayerModal({ player, onClose }) {
     fetch("/api/manage-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "check", code: accessCode, excludePlayerId: player.id }),
+      body: JSON.stringify({
+        action: "check",
+        code: accessCode,
+        excludePlayerId: player.id,
+        actingToken: sessionToken,
+      }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -85,7 +90,11 @@ export function EditPlayerModal({ player, onClose }) {
       const response = await fetch("/api/manage-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", excludePlayerId: player.id }),
+        body: JSON.stringify({
+          action: "generate",
+          excludePlayerId: player.id,
+          actingToken: sessionToken,
+        }),
       });
       const data = await response.json();
       if (data.ok) setAccessCode(data.code);
@@ -140,7 +149,12 @@ export function EditPlayerModal({ player, onClose }) {
         const response = await fetch("/api/manage-pin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "set", playerId: player.id, ...pinUpdate }),
+          body: JSON.stringify({
+            action: "set",
+            playerId: player.id,
+            ...pinUpdate,
+            actingToken: sessionToken,
+          }),
         });
         const data = await response.json();
         if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
