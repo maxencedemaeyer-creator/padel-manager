@@ -2,7 +2,7 @@
 // Une case de terrain : vide (cliquable pour assigner/s'inscrire) ou
 // occupée par un participant (nom, statut de paiement, position fixe).
 // ─────────────────────────────────────────────────────────────────────────
-import { cn, getInitials, getFirstName, normalizeSide } from "../../lib/utils";
+import { cn, getFirstName, normalizeSide } from "../../lib/utils";
 import Icon from "../icons/Icon";
 import { Badge } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
@@ -83,12 +83,7 @@ export function PlayerSlotCard({
     >
       {slotTag}
       <div className="flex items-start gap-2">
-        <PlayerAvatar
-          player={playerRecord}
-          size={36}
-          contentClassName="text-xs font-bold text-[var(--color-text)]"
-          fallback={getInitials(participant.name)}
-        />
+        <PlayerAvatar player={playerRecord} size={36} />
         <span className="min-w-0 flex-1">
           <span className="block sm:hidden text-sm font-semibold truncate">
             {isWinningTeam && "🏆 "}
