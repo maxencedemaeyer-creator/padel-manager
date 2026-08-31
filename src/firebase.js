@@ -8,6 +8,7 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCGKon9mVdOn0FIBY3BvtVX9DPiudF6LJA",
@@ -22,6 +23,13 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 export const db = getFirestore(firebaseApp);
 export const auth = getAuth(firebaseApp);
+// Stockage des photos de profil (avatars) — voir src/lib/avatarUpload.js.
+// ⚠️ Nécessite que "Cloud Storage" soit activé dans la Console Firebase
+// (Storage > Get started) et que le projet soit sur le forfait Blaze
+// (paiement à l'usage) — obligatoire depuis septembre 2024 pour provisionner
+// le bucket, même si l'usage réel reste dans le palier gratuit vu la taille
+// des fichiers ici (photos compressées à quelques centaines de Ko).
+export const storage = getStorage(firebaseApp);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Connexion Firebase anonyme automatique.
