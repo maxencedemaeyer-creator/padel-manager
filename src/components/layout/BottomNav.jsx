@@ -19,7 +19,7 @@ export function BottomNav({ view, setView }) {
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
   const content = (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--color-nav)]/95 backdrop-blur-md border-t border-[var(--color-border)] flex px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+    <nav className="fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md bg-white/60 backdrop-blur-2xl backdrop-saturate-150 border border-white/70 rounded-full shadow-[0_12px_32px_-8px_rgba(20,33,61,0.18)] flex px-2 py-1.5">
       {tabs.map((t) => {
         const active = view === t.id;
         const IconEl = t.icon;
@@ -29,16 +29,23 @@ export function BottomNav({ view, setView }) {
             onClick={() => setView(t.id)}
             className="flex-1 flex flex-col items-center gap-1 py-1.5"
           >
-            <IconEl
-              className={cn(
-                "w-5 h-5",
-                active ? "text-sky-600" : "text-[var(--color-text-faint)]"
-              )}
-            />
             <span
               className={cn(
-                "text-[11px] font-semibold",
-                active ? "text-sky-600" : "text-[var(--color-text-faint)]"
+                "w-9 h-9 rounded-full flex items-center justify-center transition-colors",
+                active && "bg-[var(--color-lime)]/15"
+              )}
+            >
+              <IconEl
+                className={cn(
+                  "w-5 h-5",
+                  active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
+                )}
+              />
+            </span>
+            <span
+              className={cn(
+                "text-[10px] font-semibold",
+                active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
               )}
             >
               {t.label}
