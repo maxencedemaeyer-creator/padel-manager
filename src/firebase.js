@@ -61,4 +61,7 @@ if (typeof window !== "undefined") {
 }
 
 export const SESSION_KEY = "padelManagerSession";
-export const ADMIN_MASTER_CODE = "4812"; // Code admin de secours (Maxence)
+// Jeton de session signé (voir api/_firebaseAdmin.js) associé au joueur
+// connecté — exigé par api/manage-pin.js pour prouver son identité avant de
+// changer un code PIN (le sien, ou celui d'un autre joueur si admin).
+export const SESSION_TOKEN_KEY = "padelManagerSessionToken";
