@@ -6,12 +6,13 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { isPlayerAdmin, handAbbrev, sideAbbrev, normalizeSide } from "../../lib/utils";
-import { LEVELS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
+import { LEVELS } from "../../lib/constants";
 import { computePlayerStats } from "../../lib/stats";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge } from "../ui";
 import { EditPlayerModal } from "./EditPlayerModal";
+import { PlayerAvatar } from "./PlayerAvatar";
 
 export function PlayerRow({ player }) {
   const { isAdmin, matches } = useAppData();
@@ -26,12 +27,7 @@ export function PlayerRow({ player }) {
     <>
       <Card className="p-3">
         <div className="grid grid-cols-[36px_1fr_44px_24px_24px_auto] items-center gap-2.5">
-          <div
-            className="w-9 h-9 rounded-full flex items-center justify-center text-base"
-            style={{ backgroundColor: player.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-          >
-            {player.emoji || "🎾"}
-          </div>
+          <PlayerAvatar player={player} size={36} />
 
           <div className="min-w-0">
             <div className="flex items-center gap-1 flex-wrap">
