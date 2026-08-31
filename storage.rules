@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Photos de profil des joueurs — un seul fichier par joueur, toujours au
+    // même chemin (avatars/{playerId}.jpg), écrasé à chaque nouvel envoi (pas
+    // d'accumulation de fichiers orphelins). Lisible par tout visiteur
+    // connecté — même anonyme, voir src/firebase.js — comme pour les fiches
+    // joueur (firestore.rules). L'écriture est limitée aux images de moins
+    // de 5 Mo (la photo est déjà redimensionnée et compressée côté
+    // navigateur avant l'envoi — voir src/lib/avatarUpload.js — donc cette
+    // limite n'est qu'un garde-fou).
+    match /avatars/{playerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null;
+    }
+
+    // Défaut : tout le reste est bloqué.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
