@@ -189,7 +189,7 @@ function EditPreferenceModal({ player, field, title, options, onClose }) {
 // Petite fenêtre dédiée au changement du code PIN de connexion — ouverte via
 // le bouton réglages sur l'en-tête de "Mon profil". Écrit directement sur
 // Firebase (collection players) et referme la fenêtre.
-function EditPinModal({ player, players, onClose }) {
+function EditPinModal({ player, players, sessionToken, onClose }) {
   const [accessCode, setAccessCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -208,7 +208,12 @@ function EditPinModal({ player, players, onClose }) {
     fetch("/api/manage-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "check", code: accessCode, excludePlayerId: player.id }),
+      body: JSON.stringify({
+        action: "check",
+        code: accessCode,
+        excludePlayerId: player.id,
+        actingToken: sessionToken,
+      }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -232,7 +237,11 @@ function EditPinModal({ player, players, onClose }) {
       const response = await fetch("/api/manage-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", excludePlayerId: player.id }),
+        body: JSON.stringify({
+          action: "generate",
+          excludePlayerId: player.id,
+          actingToken: sessionToken,
+        }),
       });
       const data = await response.json();
       if (data.ok) setAccessCode(data.code);
@@ -252,7 +261,12 @@ function EditPinModal({ player, players, onClose }) {
       const response = await fetch("/api/manage-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", playerId: player.id, accessCode }),
+        body: JSON.stringify({
+          action: "set",
+          playerId: player.id,
+          accessCode,
+          actingToken: sessionToken,
+        }),
       });
       const data = await response.json();
       if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
@@ -312,7 +326,7 @@ function EditPinModal({ player, players, onClose }) {
 }
 
 export function StatsView() {
-  const { connectedPlayer, players, matches } = useAppData();
+  const { connectedPlayer, players, matches, sessionToken } = useAppData();
   const myStats = computePlayerStats(connectedPlayer.id, matches);
   const recentForm = getRecentForm(connectedPlayer.id, matches);
   const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
@@ -439,6 +453,7 @@ export function StatsView() {
         <EditPinModal
           player={connectedPlayer}
           players={players}
+          sessionToken={sessionToken}
           onClose={() => setShowPinEdit(false)}
         />
       )}
