@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, formatDateFR } from "../../lib/utils";
+import { cn, formatDateFR, getFirstName } from "../../lib/utils";
 import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useWithdrawalAlerts } from "../../lib/withdrawalWatcher";
 import { useAppData } from "../../context/AppContext";
@@ -134,7 +134,7 @@ export function Header({ setView }) {
             {connectedPlayer.emoji || "🎾"}
           </span>
           <span className="text-xs font-semibold max-w-[80px] truncate">
-            {connectedPlayer.name}
+            {getFirstName(connectedPlayer.name)}
           </span>
           {isAdmin && (
             <Badge tone="lime" className="!px-1.5 !py-0.5">
