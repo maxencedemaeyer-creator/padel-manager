@@ -68,7 +68,7 @@ export function PlayerRow({ player }) {
             className="text-[11px] font-semibold text-[var(--color-text-dim)] text-center truncate"
             title="Niveau"
           >
-            {levelInfo?.label || "—"}
+            {levelInfo && levelInfo.value > 0 ? levelInfo.label : "/"}
           </span>
           <span
             className="w-6 h-6 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-dim)] flex items-center justify-center"
