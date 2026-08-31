@@ -13,8 +13,12 @@
 // première connexion réussie (ou tentative) après ce correctif, on déplace
 // le code vers player_credentials et on l'efface de players — sans aucune
 // action manuelle nécessaire, ni pour Max ni pour les joueurs.
+//
+// Depuis le 31/08/2026 : une connexion réussie émet aussi un jeton de
+// session signé (voir _firebaseAdmin.js) que le navigateur renvoie ensuite
+// à manage-pin.js pour prouver son identité avant de changer un code PIN.
 // ─────────────────────────────────────────────────────────────────────────
-import { getAdminDb, FieldValue } from "./_firebaseAdmin.js";
+import { getAdminDb, FieldValue, signSessionToken } from "./_firebaseAdmin.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -79,7 +83,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    res.status(200).json({ ok: true, loginAsPlayerId });
+    res.status(200).json({
+      ok: true,
+      loginAsPlayerId,
+      sessionToken: signSessionToken(loginAsPlayerId),
+    });
   } catch (error) {
     console.error("verify-pin error:", error);
     res.status(500).json({ ok: false, error: "Erreur serveur." });
