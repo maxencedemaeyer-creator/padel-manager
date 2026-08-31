@@ -6,11 +6,11 @@ import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, formatDateFR, getFirstName } from "../../lib/utils";
-import { AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useWithdrawalAlerts } from "../../lib/withdrawalWatcher";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Button, Card, Badge, EmptyState } from "../ui";
+import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function WithdrawalAlertsModal({ alerts, onClose }) {
   const [busyId, setBusyId] = useState(null);
@@ -127,12 +127,7 @@ export function Header({ setView }) {
           aria-label="Mon profil"
           className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-sky-300"
         >
-          <span
-            className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
-            style={{ backgroundColor: connectedPlayer.avatarColor || AVATAR_COLOR_CHOICES[0] }}
-          >
-            {connectedPlayer.emoji || "🎾"}
-          </span>
+          <PlayerAvatar player={connectedPlayer} size={28} />
           <span className="text-xs font-semibold max-w-[80px] truncate">
             {getFirstName(connectedPlayer.name)}
           </span>
