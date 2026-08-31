@@ -29,13 +29,13 @@ const STATUS_META = {
   unknown: { label: "Je ne sais pas encore", dot: "bg-amber-500" },
 };
 
-// Pastilles teintées (fond + bordure + texte + icône) utilisées dans le
-// panneau "Réponses des joueurs" — plus lisibles d'un coup d'œil qu'un
-// simple point de couleur, tout en restant très compactes.
-const STATUS_PILL_CLASS = {
-  present: "bg-emerald-50 border-emerald-300 text-emerald-800",
-  absent: "bg-rose-50 border-rose-300 text-rose-600",
-  unknown: "bg-amber-50 border-amber-300 text-amber-800",
+// En-têtes de colonne teintés (fond + texte + icône) utilisés dans le
+// mini-tableau "Réponses des joueurs" — une colonne par statut, très
+// compacte, plus lisible qu'un simple point de couleur.
+const STATUS_COLUMN_CLASS = {
+  present: "bg-emerald-50 text-emerald-800",
+  absent: "bg-rose-50 text-rose-700",
+  unknown: "bg-amber-50 text-amber-800",
 };
 const STATUS_PILL_ICON = {
   present: Icon.Check,
@@ -299,13 +299,19 @@ export function AvailabilityButtons({ sessionMatches }) {
   );
 }
 
-// Panneau admin "qui a répondu" — simple aperçu (non cliquable) trié
-// présents / en attente / absents, une petite icône de statut (✓ / ? / ✕)
-// sur fond teinté remplaçant l'ancien point de couleur pour rester lisible
-// d'un coup d'œil tout en restant très compact. Le nom d'un joueur déjà
-// placé sur une place de terrain (voir CourtPanel → PickPlayerModal) est mis
-// en gras, pour repérer immédiatement qui, parmi les présents, reste encore
-// à placer. Le placement lui-même se fait uniquement en touchant une place.
+// Panneau admin "qui a répondu" — mini-tableau (non cliquable) à 3 colonnes
+// Présents / Incertains / Absents, chaque en-tête teinté avec sa petite
+// icône de statut (✓ / ? / ✕), pour rester lisible d'un coup d'œil tout en
+// restant très compact. Le nom d'un joueur déjà placé sur une place de
+// terrain (voir CourtPanel → PickPlayerModal) est mis en gras, pour repérer
+// immédiatement qui, parmi les présents, reste encore à placer. Le
+// placement lui-même se fait uniquement en touchant une place.
+const RESPONSE_COLUMNS = [
+  { key: "present", label: "Présents" },
+  { key: "unknown", label: "Incertains" },
+  { key: "absent", label: "Absents" },
+];
+
 export function RespondedPlayersPanel({ sessionMatches }) {
   const { players } = useAppData();
   const { responded } = getAvailabilityGroups(sessionMatches, players);
@@ -325,35 +331,83 @@ export function RespondedPlayersPanel({ sessionMatches }) {
     (m.participants || []).forEach((p) => placedPlayerIds.add(p.playerId));
   });
 
-  const order = { present: 0, unknown: 1, absent: 2 };
-  const sorted = [...responded].sort(
-    (a, b) => order[a.status] - order[b.status] || a.player.name.localeCompare(b.player.name)
-  );
+  // Un tableau par colonne de statut, joueurs triés alphabétiquement dans
+  // chacune.
+  const byStatus = { present: [], unknown: [], absent: [] };
+  responded
+    .slice()
+    .sort((a, b) => a.player.name.localeCompare(b.player.name))
+    .forEach(({ player, status }) => {
+      (byStatus[status] || byStatus.unknown).push(player);
+    });
 
   return (
     <div className="mb-3">
       <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
         Réponses des joueurs
       </p>
-      <div className="flex flex-wrap gap-1.5">
-        {sorted.map(({ player, status }) => {
-          const StatusIcon = STATUS_PILL_ICON[status];
-          const isPlaced = placedPlayerIds.has(player.id);
-          return (
-            <span
-              key={player.id}
-              title={isPlaced ? `${STATUS_META[status]?.label} · déjà placé sur le terrain` : STATUS_META[status]?.label}
-              className={cn(
-                "flex items-center gap-1 pl-1.5 pr-2.5 py-1 rounded-full border text-xs",
-                isPlaced ? "font-bold" : "font-medium",
-                STATUS_PILL_CLASS[status]
-              )}
-            >
-              <StatusIcon className="w-3 h-3 shrink-0" />
-              {getFirstName(player.name)}
-            </span>
-          );
-        })}
+      <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
+        <table className="w-full table-fixed border-collapse">
+          <thead>
+            <tr>
+              {RESPONSE_COLUMNS.map(({ key, label }) => {
+                const StatusIcon = STATUS_PILL_ICON[key];
+                return (
+                  <th
+                    key={key}
+                    className={cn(
+                      "w-1/3 px-1.5 py-1 text-left border-b border-[var(--color-border)]",
+                      STATUS_COLUMN_CLASS[key]
+                    )}
+                  >
+                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide">
+                      <StatusIcon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{label}</span>
+                      <span className="font-normal normal-case opacity-70 shrink-0">
+                        {byStatus[key].length}
+                      </span>
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {RESPONSE_COLUMNS.map(({ key }, i) => (
+                <td
+                  key={key}
+                  className={cn(
+                    "w-1/3 align-top px-1.5 py-1.5",
+                    i < RESPONSE_COLUMNS.length - 1 && "border-r border-[var(--color-border)]"
+                  )}
+                >
+                  {byStatus[key].length === 0 ? (
+                    <span className="text-[10px] text-[var(--color-text-faint)] italic">—</span>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {byStatus[key].map((player) => {
+                        const isPlaced = placedPlayerIds.has(player.id);
+                        return (
+                          <span
+                            key={player.id}
+                            title={isPlaced ? "Déjà placé sur le terrain" : undefined}
+                            className={cn(
+                              "text-xs truncate",
+                              isPlaced ? "font-bold" : "font-normal"
+                            )}
+                          >
+                            {getFirstName(player.name)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
