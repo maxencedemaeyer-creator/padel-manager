@@ -37,6 +37,23 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Anti-scroll-horizontal (fix mobile) — empêche la page entière de pouvoir
+   glisser latéralement pendant qu'on scrolle verticalement. Un élément trop
+   large (tableau, ligne de badges, etc.) sera simplement "coupé" au lieu
+   d'élargir toute la page. Les zones de scroll horizontal volontaires
+   (ex: tableau en overflow-x-auto) continuent de fonctionner normalement,
+   car elles créent leur propre contexte de défilement interne.
+   ───────────────────────────────────────────────────────────────────────── */
+html, body{
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+#root{
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 .pm-root{
   font-family: var(--font-body);
   background:
@@ -45,6 +62,8 @@
     var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 .pm-root *{ font-family: inherit; }
 .pm-display{ font-family: var(--font-display); letter-spacing: -0.02em; }
