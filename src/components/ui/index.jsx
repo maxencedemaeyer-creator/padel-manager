@@ -119,6 +119,31 @@ export function Spinner() {
   );
 }
 
+// Interrupteur type "réglages iPhone" — utilisé pour les options on/off de
+// l'app (ex. activer le Fun Center pour tous, dans l'onglet Administration).
+export function Switch({ checked = false, onChange, disabled = false }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange && onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 disabled:opacity-50",
+        checked ? "bg-[var(--color-lime)]" : "bg-black/15"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200",
+          checked ? "translate-x-6" : "translate-x-1"
+        )}
+      />
+    </button>
+  );
+}
+
 export function EmptyState({ icon, title, subtitle }) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-14 px-6 bg-white/85 border border-white/60 rounded-[26px] shadow-sm">
