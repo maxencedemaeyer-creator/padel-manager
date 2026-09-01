@@ -1,18 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Fun Center — Jeu "Killer" : fenêtre du jeu. Un joueur engagé dans un
+// Game Center — Jeu "Killer" : fenêtre du jeu. Un joueur engagé dans un
 // match reçoit une mission personnelle tirée au sort (bouton "Mission du
-// jour"), puis valide son résultat 30 minutes après le début du match pour
-// marquer des points. Logique et Firestore dans src/lib/killer.js.
+// jour"), peut la changer une seule fois si elle est trop dure ("Deuxième
+// chance"), puis valide son résultat 30 minutes après le début du match
+// pour marquer des points. Un petit lien indépendant permet de "revoir sa
+// mission du jour" jusqu'à minuit. Logique et Firestore dans
+// src/lib/killer.js.
 // ─────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from "react";
 import { useAppData } from "../../context/AppContext";
 import { useNow } from "../../lib/matchLogic";
-import { cn } from "../../lib/utils";
+import { cn, toLocalISODate } from "../../lib/utils";
 import { KILLER_ACTIVATION_HOURS_BEFORE } from "../../lib/constants";
 import {
   getKillerStatus,
   fetchTodaysMission,
+  fetchMissionForToday,
   getOrCreateTodaysMission,
+  rerollKillerMission,
   resolveKillerMission,
 } from "../../lib/killer";
 import { Modal, Button, Spinner } from "../ui";
@@ -50,6 +55,19 @@ function resultLabel(value) {
   return opt ? opt.label : value;
 }
 
+// Petit lien texte discret (deuxième chance, revoir sa mission...).
+function LinkButton({ children, ...rest }) {
+  return (
+    <button
+      type="button"
+      className="text-xs font-semibold text-[var(--color-text-faint)] underline underline-offset-2 disabled:opacity-40 disabled:pointer-events-none"
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function KillerModal({ onClose }) {
   const { matches, connectedPlayer, players } = useAppData();
   const now = useNow(30000);
@@ -60,7 +78,13 @@ export function KillerModal({ onClose }) {
   const [mission, setMission] = useState(undefined);
   const [loadingMission, setLoadingMission] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [rerolling, setRerolling] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+  // Petit raccourci "Revoir ma mission du jour", indépendant de la fenêtre
+  // de jeu ci-dessus (voir fetchMissionForToday) — dispo jusqu'à minuit.
+  const [todaysRecap, setTodaysRecap] = useState(undefined);
+  const [showTodaysRecap, setShowTodaysRecap] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +105,17 @@ export function KillerModal({ onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.status, windowStartKey, connectedPlayer.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchMissionForToday(connectedPlayer.id).then((m) => {
+      if (!cancelled) setTodaysRecap(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedPlayer.id]);
+
   const pickMission = async () => {
     setLoadingMission(true);
     try {
@@ -95,16 +130,41 @@ export function KillerModal({ onClose }) {
     }
   };
 
+  const reroll = async () => {
+    if (!mission || mission.rerollUsed || mission.result || rerolling) return;
+    setRerolling(true);
+    try {
+      const updated = await rerollKillerMission(mission.id);
+      setMission(updated);
+    } catch (error) {
+      alert(error.message || "Impossible de changer de mission.");
+    } finally {
+      setRerolling(false);
+    }
+  };
+
   const chooseResult = async (value) => {
     if (!mission || resolving) return;
     setResolving(true);
     try {
       const points = await resolveKillerMission(mission.id, value);
-      setMission((prev) => ({ ...prev, result: value, points }));
+      const updated = { ...mission, result: value, points };
+      setMission(updated);
+      if (updated.dayKey === toLocalISODate(new Date())) setTodaysRecap(updated);
     } finally {
       setResolving(false);
     }
   };
+
+  // On évite d'afficher le petit rappel "Revoir ma mission du jour" quand
+  // l'écran principal montre déjà exactement la même chose (phase "playing"
+  // avec résultat déjà validé pour cette même mission du jour).
+  const mainFlowAlreadyShowsRecap =
+    status.status === "playing" && mission && mission.result && todaysRecap
+      ? mission.id === todaysRecap.id
+      : false;
+  const canShowRecapShortcut =
+    todaysRecap && todaysRecap.result && !mainFlowAlreadyShowsRecap;
 
   return (
     <Modal title="Killer 🔪" onClose={onClose}>
@@ -144,10 +204,15 @@ export function KillerModal({ onClose }) {
             <p className="pm-display font-bold text-lg text-[var(--color-text)] mb-4">
               {mission.mission}
             </p>
-            <p className="text-xs text-[var(--color-text-faint)] max-w-xs">
+            <p className="text-xs text-[var(--color-text-faint)] max-w-xs mb-4">
               Reviens ici 30 minutes après le début du match pour valider ton
               résultat.
             </p>
+            {!mission.rerollUsed && (
+              <LinkButton onClick={reroll} disabled={rerolling}>
+                {rerolling ? "Nouvelle mission..." : "Trop dure ? Deuxième chance (1x)"}
+              </LinkButton>
+            )}
           </>
         )}
 
@@ -166,7 +231,7 @@ export function KillerModal({ onClose }) {
             <p className="pm-display font-bold text-lg text-[var(--color-text)] mb-6">
               {mission.mission}
             </p>
-            <div className="flex flex-col gap-2 w-full">
+            <div className="flex flex-col gap-2 w-full mb-4">
               {RESULT_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -182,6 +247,11 @@ export function KillerModal({ onClose }) {
                 </button>
               ))}
             </div>
+            {!mission.rerollUsed && (
+              <LinkButton onClick={reroll} disabled={rerolling}>
+                {rerolling ? "Nouvelle mission..." : "Trop dure ? Deuxième chance (1x)"}
+              </LinkButton>
+            )}
           </>
         )}
 
@@ -215,6 +285,27 @@ export function KillerModal({ onClose }) {
           >
             🏆 Classement
           </Button>
+        )}
+
+        {canShowRecapShortcut && (
+          <div className={status.status === "playing" ? "w-full mt-3" : "w-full mt-8"}>
+            {!showTodaysRecap ? (
+              <LinkButton onClick={() => setShowTodaysRecap(true)}>
+                🔁 Revoir ma mission du jour
+              </LinkButton>
+            ) : (
+              <div className="p-3 rounded-2xl bg-white/70 border border-white/60 text-left">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] mb-1">
+                  Ta mission du jour
+                </p>
+                <p className="text-sm text-[var(--color-text)] mb-2">{todaysRecap.mission}</p>
+                <p className={cn("text-sm font-bold", RESULT_TEXT_CLASSES[todaysRecap.result])}>
+                  {resultLabel(todaysRecap.result)} · +{todaysRecap.points} pt
+                  {todaysRecap.points > 1 ? "s" : ""}
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
