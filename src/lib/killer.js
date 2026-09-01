@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Fun Center — Jeu "Killer" : avant chaque match, un joueur réellement
+// Game Center — Jeu "Killer" : avant chaque match, un joueur réellement
 // engagé dans ce match reçoit une mission personnelle tirée au sort, qu'il
 // valide (Réussi / Raté / Pas essayé) 30 minutes après le début du match
 // pour marquer des points.
@@ -17,6 +17,15 @@
 //   KILLER_SCOREBOARD_WINDOW_HOURS heures après ce même instant — d'où le
 //   besoin de regarder aussi les matchs des jours précédents, et pas
 //   seulement ceux du jour, pour retrouver la bonne fenêtre après minuit.
+// - Un joueur peut demander UNE SEULE fois une "deuxième chance" (nouvelle
+//   mission) s'il trouve la sienne trop dure/impossible, tant qu'il n'a pas
+//   encore validé de résultat — voir rerollKillerMission. La mission
+//   abandonnée est remise dans le pool commun pour pouvoir ressortir plus
+//   tard, chez lui ou chez un autre joueur.
+// - En plus de la fenêtre de jeu ci-dessus, un petit raccourci indépendant
+//   (fetchMissionForToday) permet à un joueur de "revoir sa mission du
+//   jour" (avec son résultat) n'importe quand avant minuit, même si le
+//   statut ci-dessus est déjà repassé sur un autre match.
 // - Chaque mission est strictement personnelle : stockée dans la collection
 //   Firestore "killerMissions" (un document par joueur et par jour), elle
 //   n'est jamais demandée ni affichée pour un autre joueur dans
@@ -24,6 +33,11 @@
 //   firestore.rules), la base de données elle-même ne distingue pas les
 //   joueurs entre eux au niveau des permissions : c'est l'application qui
 //   ne va jamais chercher/afficher la mission de quelqu'un d'autre.
+// - Le tirage des missions ne se répète jamais tant que tout le reste de
+//   KILLER_MISSIONS n'a pas été distribué (à qui que ce soit, n'importe
+//   quel jour) : un historique partagé et invisible ("games/killerMissionPool")
+//   retient les missions déjà sorties et se réinitialise automatiquement
+//   une fois la liste épuisée — voir drawFreshMission.
 // - Le classement cumule, pour CHAQUE joueur de l'effectif (tous, pas
 //   seulement ceux du jour), les points de toutes les missions validées
 //   depuis le début. En cas d'égalité : total de points, puis nombre de
@@ -55,6 +69,12 @@ function missionDocId(dayKey, playerId) {
 }
 function missionDocRef(dayKey, playerId) {
   return doc(db, "killerMissions", missionDocId(dayKey, playerId));
+}
+// Historique partagé (invisible) des missions déjà tirées, tous joueurs et
+// tous jours confondus — dans la collection "games", au même niveau que
+// "games/tourneeGenerale" (même règles Firestore, déjà en place).
+function missionPoolRef() {
+  return doc(db, "games", "killerMissionPool");
 }
 
 // Tous les matchs où ce joueur est engagé, peu importe la date.
@@ -114,17 +134,57 @@ export async function fetchTodaysMission(window, playerId) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-// Récupère la mission du joueur pour ce match — la tire au sort si elle
-// n'existe pas encore. Transaction Firestore : un double-clic rapide sur
-// "Mission du jour" ne peut jamais tirer deux missions différentes pour le
-// même joueur le même jour.
+// Petit raccourci indépendant de la fenêtre de jeu : la mission (avec son
+// résultat éventuel) du joueur pour la date calendaire d'aujourd'hui. Comme
+// la clé du document est basée sur la date du jour, ça s'arrête tout seul à
+// minuit (le lendemain, ce n'est plus "aujourd'hui") — sert au petit lien
+// "Revoir ma mission du jour" dans KillerModal.
+export async function fetchMissionForToday(playerId, now = new Date()) {
+  const dayKey = toLocalISODate(now);
+  const snap = await getDoc(missionDocRef(dayKey, playerId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+// Tire une mission au sort dans le pool commun, en évitant toute mission
+// déjà utilisée (par qui que ce soit) tant que la liste complète n'a pas été
+// distribuée. "excluding" permet en plus d'exclure une mission précise (cas
+// du reroll : on ne veut pas retomber immédiatement sur celle qu'on vient de
+// refuser). Doit être appelé à l'intérieur d'une transaction Firestore, tx
+// et poolRef déjà lus (tx.get(poolRef) doit avoir été fait avant, comme
+// l'exigent les transactions Firestore — toutes les lectures avant les
+// écritures).
+function pickFreshMission(poolData, excluding) {
+  let used = poolData && Array.isArray(poolData.usedMissions) ? poolData.usedMissions : [];
+  let available = KILLER_MISSIONS.filter((m) => !used.includes(m) && m !== excluding);
+  if (available.length === 0) {
+    // Tout le reste de la liste a déjà été distribué : nouveau cycle complet
+    // (sauf la mission qu'on exclut explicitement, pour ne pas la
+    // redistribuer dans le même geste).
+    used = [];
+    available = KILLER_MISSIONS.filter((m) => m !== excluding);
+  }
+  const mission = available[Math.floor(Math.random() * available.length)];
+  const nextUsed = [...used, mission];
+  return { mission, nextUsed };
+}
+
+// Récupère la mission du joueur pour ce match — la tire au sort (sans
+// répétition, voir pickFreshMission) si elle n'existe pas encore.
+// Transaction Firestore : un double-clic rapide sur "Mission du jour" ne
+// peut jamais tirer deux missions différentes pour le même joueur le même
+// jour.
 export async function getOrCreateTodaysMission(window, playerId, matchId) {
   const dayKey = toLocalISODate(window.start);
   const ref = missionDocRef(dayKey, playerId);
+  const poolRef = missionPoolRef();
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (snap.exists()) return { id: ref.id, ...snap.data() };
-    const mission = KILLER_MISSIONS[Math.floor(Math.random() * KILLER_MISSIONS.length)];
+    const poolSnap = await tx.get(poolRef);
+    const { mission, nextUsed } = pickFreshMission(
+      poolSnap.exists() ? poolSnap.data() : null
+    );
+    tx.set(poolRef, { usedMissions: nextUsed, updatedAt: serverTimestamp() });
     const data = {
       dayKey,
       playerId,
@@ -132,11 +192,45 @@ export async function getOrCreateTodaysMission(window, playerId, matchId) {
       mission,
       result: null,
       points: 0,
+      rerollUsed: false,
       assignedAt: serverTimestamp(),
       resolvedAt: null,
     };
     tx.set(ref, data);
     return { id: ref.id, ...data };
+  });
+}
+
+// "Deuxième chance" : remplace la mission en cours par une nouvelle
+// (jamais utilisée ailleurs), une seule fois par joueur et par jour, et
+// uniquement tant qu'aucun résultat n'a été validé. La mission abandonnée
+// est retirée de l'historique "utilisées" pour pouvoir resservir plus tard.
+export async function rerollKillerMission(missionId) {
+  const ref = doc(db, "killerMissions", missionId);
+  const poolRef = missionPoolRef();
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Mission introuvable.");
+    const current = snap.data();
+    if (current.rerollUsed) {
+      throw new Error("Tu as déjà utilisé ta deuxième chance pour aujourd'hui.");
+    }
+    if (current.result) {
+      throw new Error("Mission déjà validée, impossible d'en changer.");
+    }
+    const poolSnap = await tx.get(poolRef);
+    const poolData = poolSnap.exists() ? poolSnap.data() : null;
+    const usedWithoutCurrent = (
+      poolData && Array.isArray(poolData.usedMissions) ? poolData.usedMissions : []
+    ).filter((m) => m !== current.mission);
+    const { mission, nextUsed } = pickFreshMission(
+      { usedMissions: usedWithoutCurrent },
+      current.mission
+    );
+    tx.set(poolRef, { usedMissions: nextUsed, updatedAt: serverTimestamp() });
+    const update = { mission, rerollUsed: true };
+    tx.update(ref, update);
+    return { id: ref.id, ...current, ...update };
   });
 }
 
