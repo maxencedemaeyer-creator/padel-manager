@@ -46,6 +46,10 @@ export const WITHDRAWAL_ALERT_WINDOW_HOURS = 72;
 // match + les créanciers (pas seulement l'admin) peuvent corriger la
 // composition et encoder le score eux-mêmes — voir PostMatchPrompt.jsx.
 export const POST_MATCH_ENCODE_WINDOW_HOURS = 24;
+// Fun Center — jeu "Tournée générale" : le tirage au sort n'est ouvert qu'à
+// partir de ce nombre d'heures avant le match du jour (voir
+// src/lib/tourneeGenerale.js).
+export const TOURNEE_GENERALE_ACTIVATION_HOURS_BEFORE = 2;
 
 // Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
 // joueur assigné — voir getCourtSlots() dans lib/matchLogic.js.
