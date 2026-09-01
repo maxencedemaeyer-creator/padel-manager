@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Onglet "Game Center" — mini-jeux et animations du club. Les jeux sont
-// ajoutés ici progressivement (voir la grille ci-dessous) ; ceux marqués
-// "Bientôt" restent des emplacements grisés en attendant. Visible en
+// ajoutés ici progressivement (voir la grille ci-dessous). Visible en
 // permanence par l'admin ; pour les autres joueurs, uniquement si l'admin
 // l'a activé depuis l'onglet Administration (voir src/views/AdminView.jsx
 // et src/hooks/useFirestoreData.js → useAppSettings).
@@ -11,8 +10,7 @@ import Icon from "../components/icons/Icon";
 import { Card } from "../components/ui";
 import { TourneeGeneraleModal } from "../components/games/TourneeGeneraleModal";
 import { KillerModal } from "../components/games/KillerModal";
-
-const UPCOMING_GAMES = [{ label: "Bientôt", icon: Icon.Dice }];
+import { BrickBreakerModal } from "../components/games/BrickBreakerModal";
 
 export function GameCenterView() {
   // Jeu actuellement ouvert en fenêtre modale, ou null si aucun.
@@ -48,23 +46,23 @@ export function GameCenterView() {
           </Card>
         </button>
 
-        {UPCOMING_GAMES.map((g, i) => (
-          <Card
-            key={i}
-            className="p-4 flex flex-col items-center gap-2 opacity-40 pointer-events-none select-none"
-          >
-            <g.icon className="w-6 h-6 text-[var(--color-text-faint)]" />
-            <span className="text-[10px] font-semibold text-[var(--color-text-faint)]">
-              {g.label}
+        <button type="button" onClick={() => setOpenGame("brick-breaker")} className="text-left">
+          <Card className="p-4 flex flex-col items-center gap-2 hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all">
+            <span className="text-2xl leading-none">🧱</span>
+            <span className="text-[10px] font-semibold text-[var(--color-text)] text-center leading-tight">
+              Brick Breaker
             </span>
           </Card>
-        ))}
+        </button>
       </div>
 
       {openGame === "tournee-generale" && (
         <TourneeGeneraleModal onClose={() => setOpenGame(null)} />
       )}
       {openGame === "killer" && <KillerModal onClose={() => setOpenGame(null)} />}
+      {openGame === "brick-breaker" && (
+        <BrickBreakerModal onClose={() => setOpenGame(null)} />
+      )}
     </div>
   );
 }
