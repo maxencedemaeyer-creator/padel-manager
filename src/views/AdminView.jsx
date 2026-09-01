@@ -14,7 +14,7 @@ import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 
-// Carte "Fun Center" — interrupteur pour rendre l'onglet accessible à tous
+// Carte "Game Center" — interrupteur pour rendre l'onglet accessible à tous
 // les joueurs (par défaut, réservé à l'admin). Écrit directement dans
 // settings/appConfig ; le changement est répercuté partout en temps réel
 // via useAppSettings (voir src/hooks/useFirestoreData.js).
@@ -38,7 +38,7 @@ function GameCenterSettingCard({ enabled }) {
         <Icon.Gamepad className="w-5 h-5" />
       </span>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm">Fun Center</p>
+        <p className="font-semibold text-sm">Game Center</p>
         <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
           {enabled
             ? "Visible par tous les joueurs."
