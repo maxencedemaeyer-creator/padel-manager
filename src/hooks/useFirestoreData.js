@@ -2,7 +2,7 @@
 // Hooks Firestore (lecture temps réel) — players & matches.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
 
 export function usePlayers() {
@@ -67,4 +67,37 @@ export function useMatches() {
   }, []);
 
   return { matches, loading };
+}
+
+// Réglages globaux de l'app (document unique "settings/appConfig") — pour
+// l'instant, uniquement l'activation du Fun Center pour tous les joueurs
+// (voir src/views/AdminView.jsx). Par défaut (document absent ou champ
+// absent), le Fun Center reste réservé à l'administrateur.
+export function useAppSettings() {
+  const [settings, setSettings] = useState({ gameCenterEnabled: false });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(
+        doc(db, "settings", "appConfig"),
+        (snap) => {
+          const data = snap.exists() ? snap.data() : {};
+          setSettings({ gameCenterEnabled: data.gameCenterEnabled === true });
+          setLoading(false);
+        },
+        (error) => {
+          console.error(error);
+          setLoading(false);
+        }
+      );
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+    return () => unsub();
+  }, []);
+
+  return { settings, loading };
 }
