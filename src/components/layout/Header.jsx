@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────
-// En-tête fixe : profil (→ Mon profil), clochette de désinscriptions
-// tardives (admin), déconnexion.
+// En-tête fixe : profil (→ Mon profil), actualisation, clochette de
+// désinscriptions tardives (admin), déconnexion.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
@@ -136,6 +136,14 @@ export function Header({ setView }) {
               Admin
             </Badge>
           )}
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          aria-label="Actualiser la page"
+          title="Actualiser la page"
+          className="p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
+        >
+          <Icon.Refresh className="w-4 h-4" />
         </button>
         {isAdmin && (
           <button
