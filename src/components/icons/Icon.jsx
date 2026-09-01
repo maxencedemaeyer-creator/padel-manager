@@ -175,6 +175,14 @@ const Icon = {
       <circle cx="12" cy="13" r="3.5" />
     </svg>
   ),
+  Gamepad: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M7.5 8h9A4.5 4.5 0 0121 12.5v2.3a2.7 2.7 0 01-4.9 1.6L15 15h-6l-1.1 1.4A2.7 2.7 0 013 14.8v-2.3A4.5 4.5 0 017.5 8z" />
+      <path d="M8 11v3M6.5 12.5h3" />
+      <circle cx="16" cy="11.3" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="13.3" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 };
 
 
