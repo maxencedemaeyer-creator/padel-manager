@@ -8,13 +8,18 @@ import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 
 export function BottomNav({ view, setView }) {
-  const { isAdmin, connectedPlayer } = useAppData();
+  const { isAdmin, connectedPlayer, gameCenterEnabled } = useAppData();
   const tabs = [
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
     { id: "players", label: "Équipe", icon: Icon.Users },
     { id: "stats", label: "Mon profil", icon: Icon.Chart },
     ...(connectedPlayer.isCreditor
       ? [{ id: "accounting", label: "Compta", icon: Icon.Coin }]
+      : []),
+    // Visible pour l'admin en permanence ; pour les autres joueurs
+    // uniquement si l'admin l'a activé depuis l'onglet Administration.
+    ...(isAdmin || gameCenterEnabled
+      ? [{ id: "game-center", label: "Fun Center", icon: Icon.Gamepad }]
       : []),
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
