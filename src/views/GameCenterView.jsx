@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Fun Center" — mini-jeux et animations du club. Les jeux sont
+// Onglet "Game Center" — mini-jeux et animations du club. Les jeux sont
 // ajoutés ici progressivement (voir la grille ci-dessous) ; ceux marqués
 // "Bientôt" restent des emplacements grisés en attendant. Visible en
 // permanence par l'admin ; pour les autres joueurs, uniquement si l'admin
@@ -22,7 +22,7 @@ export function GameCenterView() {
     <div className="px-4 pt-4 pb-28">
       <div className="flex items-center gap-2 mb-1">
         <Icon.Gamepad className="w-5 h-5 text-[var(--color-lime)]" />
-        <h2 className="pm-display font-bold text-xl text-white">Fun Center</h2>
+        <h2 className="pm-display font-bold text-xl text-white">Game Center</h2>
       </div>
       <p className="text-xs text-[var(--color-text-faint)] mb-6">
         Petits jeux et animations du club — de nouveaux jeux arriveront ici
