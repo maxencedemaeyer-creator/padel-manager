@@ -42,6 +42,13 @@ export const MATCH_DURATION_MINUTES = 60;
 export const SELF_REGISTRATION_WINDOW_DAYS = 14;
 export const WITHDRAWAL_RESOLVE_DELAY_MINUTES = 3;
 export const WITHDRAWAL_ALERT_WINDOW_HOURS = 72;
+// Sécurité "présent mais jamais composé" (voir lib/presenceWatcher.js) : ce
+// nombre de minutes après le DÉBUT du match, un joueur toujours déclaré
+// "présent" sur une session mais absent de toutes les compositions de cette
+// session (ex. plus de présents que de places) bascule automatiquement sur
+// "absent" — pour ne pas le laisser indéfiniment "présent" sur un match
+// auquel il n'a en réalité pas joué.
+export const PRESENCE_AUTO_ABSENT_DELAY_MINUTES = 60;
 // Durée pendant laquelle, après la fin d'un match sans score, les joueurs du
 // match + les créanciers (pas seulement l'admin) peuvent corriger la
 // composition et encoder le score eux-mêmes — voir PostMatchPrompt.jsx.
