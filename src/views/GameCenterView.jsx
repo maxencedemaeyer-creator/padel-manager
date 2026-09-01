@@ -10,11 +10,9 @@ import { useState } from "react";
 import Icon from "../components/icons/Icon";
 import { Card } from "../components/ui";
 import { TourneeGeneraleModal } from "../components/games/TourneeGeneraleModal";
+import { KillerModal } from "../components/games/KillerModal";
 
-const UPCOMING_GAMES = [
-  { label: "Bientôt", icon: Icon.Dice },
-  { label: "Bientôt", icon: Icon.Trophy },
-];
+const UPCOMING_GAMES = [{ label: "Bientôt", icon: Icon.Dice }];
 
 export function GameCenterView() {
   // Jeu actuellement ouvert en fenêtre modale, ou null si aucun.
@@ -41,6 +39,15 @@ export function GameCenterView() {
           </Card>
         </button>
 
+        <button type="button" onClick={() => setOpenGame("killer")} className="text-left">
+          <Card className="p-4 flex flex-col items-center gap-2 hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all">
+            <span className="text-2xl leading-none">🔪</span>
+            <span className="text-[10px] font-semibold text-[var(--color-text)] text-center leading-tight">
+              Killer
+            </span>
+          </Card>
+        </button>
+
         {UPCOMING_GAMES.map((g, i) => (
           <Card
             key={i}
@@ -57,6 +64,7 @@ export function GameCenterView() {
       {openGame === "tournee-generale" && (
         <TourneeGeneraleModal onClose={() => setOpenGame(null)} />
       )}
+      {openGame === "killer" && <KillerModal onClose={() => setOpenGame(null)} />}
     </div>
   );
 }
