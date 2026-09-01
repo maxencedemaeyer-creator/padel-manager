@@ -64,6 +64,13 @@ export const KILLER_SCOREBOARD_WINDOW_HOURS = 48;
 // - barème de points selon le résultat choisi par le joueur.
 export const KILLER_POINTS = { success: 3, fail: 1, skipped: 0 };
 
+// Game Center — jeu "Brick Breaker" (voir src/lib/brickBreaker.js) :
+// - nombre de meilleurs scores conservés (tableau des high scores) ;
+export const BRICK_BREAKER_HIGH_SCORES_COUNT = 5;
+// - nombre de joueurs affichés dans le classement "a tenté sa chance le
+//   plus de fois" (parties jouées, toute la saison).
+export const BRICK_BREAKER_TOP_ATTEMPTS_COUNT = 3;
+
 // Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
 // joueur assigné — voir getCourtSlots() dans lib/matchLogic.js.
 export const COURT_SLOT_DEFS = [
