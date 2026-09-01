@@ -19,7 +19,7 @@ export function BottomNav({ view, setView }) {
     // Visible pour l'admin en permanence ; pour les autres joueurs
     // uniquement si l'admin l'a activé depuis l'onglet Administration.
     ...(isAdmin || gameCenterEnabled
-      ? [{ id: "game-center", label: "Fun Center", icon: Icon.Gamepad }]
+      ? [{ id: "game-center", label: "Game Center", icon: Icon.Gamepad }]
       : []),
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
