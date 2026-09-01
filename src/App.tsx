@@ -5,7 +5,7 @@
 // (anciennement injecté via <GlobalStyles/>, maintenant un fichier CSS normal).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
-import { useMatches } from "./hooks/useFirestoreData";
+import { useMatches, useAppSettings } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
 import { Spinner } from "./components/ui";
@@ -34,9 +34,13 @@ const AccountingView = lazy(() =>
 const AdminView = lazy(() =>
   import("./views/AdminView").then((m) => ({ default: m.AdminView }))
 );
+const GameCenterView = lazy(() =>
+  import("./views/GameCenterView").then((m) => ({ default: m.GameCenterView }))
+);
 
 function MainApp() {
   const matchesHook = useMatches();
+  const settingsHook = useAppSettings();
   const [view, setView] = useState("matches");
   useWithdrawalWatcher();
   const appData = useAppData();
@@ -47,8 +51,12 @@ function MainApp() {
   // l'app à se re-rendre inutilement à chaque clic. C'était la cause
   // principale des petits délais ressentis un peu partout dans l'app.
   const contextValue = useMemo(
-    () => ({ ...appData, matches: matchesHook.matches }),
-    [appData, matchesHook.matches]
+    () => ({
+      ...appData,
+      matches: matchesHook.matches,
+      gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
+    }),
+    [appData, matchesHook.matches, settingsHook.settings.gameCenterEnabled]
   );
 
   return (
@@ -66,6 +74,8 @@ function MainApp() {
             <StatsView />
           ) : view === "accounting" ? (
             <AccountingView />
+          ) : view === "game-center" ? (
+            <GameCenterView />
           ) : (
             <AdminView />
           )}
