@@ -340,3 +340,55 @@ export function CompactMatchResult({ match, compact = false }) {
         />
       )}
       {showDateTime && (
+        <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
+      )}
+      {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
+      {showDeleteConfirm && (
+        <DeleteMatchConfirmModal match={match} onClose={() => setShowDeleteConfirm(false)} />
+      )}
+    </div>
+  );
+}
+
+// Bloc "score" réutilisable — accent doré, une ligne de titre + la date +
+// le(s) résultat(s) compact(s). Utilisé en taille normale pour la carte
+// "Dernier match joué", et en taille réduite (compact = true) pour les
+// matchs terminés de "Reste de la saison" (affichage direct ou dans la
+// petite fenêtre de résultat).
+export function MatchResultBlock({ sessionMatches, compact = false, label = "Résultat" }) {
+  const first = sessionMatches[0];
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white",
+        compact ? "p-3" : "shadow-sm p-4"
+      )}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <Icon.Trophy className={cn("text-amber-600 shrink-0", compact ? "w-3.5 h-3.5" : "w-4 h-4")} />
+        <p
+          className={cn(
+            "font-bold uppercase tracking-wide text-amber-700",
+            compact ? "text-[10px]" : "text-xs"
+          )}
+        >
+          {label}
+        </p>
+      </div>
+      <p className={cn("font-semibold text-amber-900 mb-1", compact ? "text-xs" : "text-sm")}>
+        {formatDateFR(first.date)}
+      </p>
+      <div className="flex flex-col">
+        {sessionMatches.map((m) => (
+          <CompactMatchResult key={m.id} match={m} compact={compact} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
+// et volontairement simplifiée : juste la date, les noms et le score.
+export function LastMatchCard({ sessionMatches }) {
+  return <MatchResultBlock sessionMatches={sessionMatches} label="Dernier résultat" />;
+}
