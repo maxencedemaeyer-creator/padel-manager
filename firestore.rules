@@ -48,6 +48,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 5. Settings collection — réglages globaux de l'app (ex. activation du
+    // Fun Center pour tous les joueurs, voir src/views/AdminView.jsx). Même
+    // niveau d'accès que le reste des collections ci-dessus.
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+    }
+
     // Remarque : "isSignedIn()" est vrai dès qu'un visiteur charge le site,
     // même sans code PIN valide, car l'app se connecte automatiquement à
     // Firebase de façon anonyme (voir src/firebase.js). Cela bloque l'accès
