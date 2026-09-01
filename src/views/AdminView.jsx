@@ -2,18 +2,56 @@
 // Onglet "Administration" — KPIs du club, soldes des créanciers (éditables).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
 import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
-import { Card, Button, EmptyState } from "../components/ui";
+import { Card, Button, EmptyState, Switch } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 
+// Carte "Fun Center" — interrupteur pour rendre l'onglet accessible à tous
+// les joueurs (par défaut, réservé à l'admin). Écrit directement dans
+// settings/appConfig ; le changement est répercuté partout en temps réel
+// via useAppSettings (voir src/hooks/useFirestoreData.js).
+function GameCenterSettingCard({ enabled }) {
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async (next) => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "settings", "appConfig"), { gameCenterEnabled: next }, { merge: true });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 flex items-center gap-3 mb-6">
+      <span className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--color-lime)]/15 text-[var(--color-lime)] shrink-0">
+        <Icon.Gamepad className="w-5 h-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm">Fun Center</p>
+        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+          {enabled
+            ? "Visible par tous les joueurs."
+            : "Réservé à l'administrateur pour le moment."}
+        </p>
+      </div>
+      <Switch checked={enabled} onChange={toggle} disabled={saving} />
+    </Card>
+  );
+}
+
 export function AdminView() {
-  const { players, matches } = useAppData();
+  const { players, matches, gameCenterEnabled } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   // Créance de départ en cours d'édition (dates, montant, terrains) — même
   // modale que celle utilisée par le créancier lui-même depuis "Ma
@@ -59,6 +97,8 @@ export function AdminView() {
           </span>
         </Button>
       </div>
+
+      <GameCenterSettingCard enabled={gameCenterEnabled} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {stats.map((s) => (
