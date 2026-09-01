@@ -1,31 +1,60 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Fun Center — Jeu "Killer" : réservoir des missions tirées au sort pour
-// chaque joueur (voir src/lib/killer.js).
-//
-// ⚠️ LISTE PROVISOIRE (exemples) — à remplacer par les vraies missions de
-// Max dès qu'il les communique. Il suffira alors de modifier UNIQUEMENT ce
-// tableau (une mission = une chaîne de caractères) : rien d'autre à changer
-// dans le code pour que les nouvelles missions soient prises en compte.
+// Game Center — Jeu "Killer" : réservoir des missions tirées au sort pour
+// chaque joueur (voir src/lib/killer.js). Une même mission n'est jamais
+// distribuée deux fois tant que tout le reste de la liste n'a pas été
+// proposé (voir le mécanisme de tirage sans répétition dans killer.js) —
+// rien à gérer ici, il suffit d'ajouter/retirer des lignes dans ce tableau.
 // ─────────────────────────────────────────────────────────────────────────
 export const KILLER_MISSIONS = [
-  "Ne fais aucun smash de tout le match.",
-  "Complimente ton adversaire après chacun de ses points gagnants.",
-  "Joue un point entier en revers uniquement, même sur les balles faciles.",
-  "Avant le premier point, fais un high-five à tous les joueurs du terrain.",
-  "Célèbre ton premier point gagné comme si tu venais de remporter Roland-Garros.",
-  "Ne dis pas un seul mot pendant les 3 premiers points du match.",
-  "Tente au moins une amortie kamikaze, même sans aucune chance de réussite.",
-  "Donne un surnom à ton partenaire et utilise-le à voix haute pendant tout le match.",
-  "Fais un service à la cuillère (sous-main) sur ton tout premier service.",
-  "Applaudis chaque échange de plus de 6 coups, même perdu.",
-  "Ne joue jamais deux points de suite au même endroit du terrain.",
-  "Chante discrètement entre deux points, au moins une fois.",
-  "Tente une volée entre les jambes si l'occasion se présente.",
-  "Propose une fausse stratégie très sérieuse à ton partenaire avant chaque set.",
-  "Commente au moins un échange comme un journaliste sportif, à voix haute.",
-  "Termine chaque set par un check de raquettes, peu importe le score.",
-  "Reste souriant·e, même après une double faute.",
-  "Fais au moins un lob complètement improvisé, sans prévenir ton partenaire.",
-  "Donne un nom d'équipe à toi et ton partenaire avant le début du match.",
-  "Salue le public imaginaire après ton tout premier point gagné.",
+  "Remporter un point en ayant fait au moins une amortie complètement ratée qui passe par miracle.",
+  "Dire \"C'est la tactique de Belasteguín\" à haute voix après un coup totalement dévissé qui sort terrain.",
+  "Lancer votre raquette vers le filet ou par terre après une grosse faute directe en criant : \"Elle est trouée cette raquette !\".",
+  "Faire au moins trois \"feintes de smasher\" sur un lob adverse en mimant le geste au dernier moment sans toucher la balle.",
+  "Faire un high-five à un adversaire après qu'il a commis une faute directe grossière en disant très sérieusement \"Bien essayé !\".",
+  "Gagner un point direct sur un service (\"ace\") et célébrer comme si vous veniez de remporter un titre majeur.",
+  "Arrêter le jeu au milieu d'un échange sur un ton très sérieux pour \"nettoyer vos lunettes\" ou \"attacher vos lacets\" totalement imaginaires.",
+  "Faire un passing gagnant entre les deux adversaires et crier \"Autoroute !\" juste après le coup.",
+  "Célébrer un point gagné sans aucune émotion en disant uniquement : \"C'était le strict minimum\".",
+  "Annoncer \"Faute !\" ou \"Out !\" avec une confiance absolue sur une balle adverse qui était pourtant 10 cm à l'intérieur du terrain (puis vous corriger immédiatement).",
+  "Réaliser une sortie de piste (même inutile) sur un smash d'un adverse qui n'allait pas sortir du tout du terrain.",
+  "Utiliser la phrase \"J'ai étudié votre jeu pendant 3 jours\" avant le premier service.",
+  "Faire une baisse de régime volontaire sur un jeu complet en expliquant que vous testez \"une nouvelle technique\".",
+  "Gagner un point en touchant la balle avec le cadre de la raquette de manière totalement visible, mais prétendre que c'était clairement voulu.",
+  "Faire une amortie amortie parfaite et lâcher un chuchotement audible : \"Doux comme un agneau\".",
+  "Gagner un point en ayant changé de côté avec ton partenaire en plein milieu d'un point.",
+  "Placer une attaque directement dans les balls d'un adversaire et gagner le point.",
+  "Changer de position avec votre coéquipier au milieu d'un point sans aucune explication tactique.",
+  "Dire à haute voix \"Je la laisse !\" sur une balle haute, puis la frapper quand même en smashant.",
+  "Terminer un point gagnant en effectuant une petite danse de 3 secondes avant d'aller au filet pour le point suivant.",
+  "Smasher en sautant et en s'appuyant sur ton coéquipier.",
+  "Demander un \"temps mort médical\" à 40-40 pour vous étirer le petit doigt de la main non dominante ou pour aller boire de l'eau.",
+  "Prétexter d'aller au toilette entre deux sets et revenir avec une tournée de bières.",
+  "Répéter la phrase \"C'est la vitre qui est molle\" après chaque faute directe envoyée dans la vitre de fond.",
+  "Lâcher une amortie rétro parfaite et ne pas célébrer, mais regarder le plafond comme si vous veniez d'entendre un oiseau.",
+  "Servir à la cuillère de la main non dominante sans avertir personne et réussir à mettre la balle dans la zone.",
+  "Faire croire que vous avez vu une mouche sur le filet et demander à interrompre le point 2 secondes avant le service adverse.",
+  "Commander une boisson ou un snack à la buvette en parlant exclusivement avec un accent espagnol exagéré.",
+  "Trinquer avec tout le monde en portant une toast très solennel à la mémoire d'une balle perdue durant le match.",
+  "Faire une analyse vidéo détaillée d'un coup totalement anodin du match en utilisant la boîte de frites ou des verres pour représenter le terrain.",
+  "Demander au serveur s'il possède un grip de rechange pour votre verre ou votre chope de bière.",
+  "Faire croire à tout le groupe que vous venez de vous inscrire à un tournoi professionnel en Espagne le mois prochain.",
+  "Convaincre un adversaire qu'il a joué avec un modèle de raquette \"interdit en compétition officielle\".",
+  "Citer au moins trois fois une fausse citation philosophique attribuée à un grand joueur de padel (ex: \"Comme disait Galán, le padel c'est 90% d'eau et 10% de vitre\").",
+  "Offrir une tournée entière mais prétendre au moment de payer que votre carte ne passe pas à cause du \"trop grand nombre de fautes directes\".",
+  "Faire signer votre raquette ou votre balle de match par vos trois partenaires comme s'ils étaient des légendes.",
+  "Expliquer très sérieusement que vous avez perdu/gagné uniquement à cause du coefficient d'humidité de l'air ambiant.",
+  "Raconter une anecdote complètement inventée sur votre passé de champion de squash ou de tennis de table.",
+  "Insister pour refaire le match point par point en utilisant des paquets de cacahuètes pour simuler les joueurs.",
+  "Trouver le moyen d'intégrer le mot \"chiquita\" dans une conversation qui n'a absolument rien à voir avec le padel.",
+  "Prendre la raquette de votre partenaire et la nettoyer minutieusement avec une serviette comme si c'était une œuvre d'art.",
+  "Demander à l'un des joueurs s'il pense que vous avez un avenir dans le padel professionnel avant vos 50 ans.",
+  "Prendre une photo de groupe après le match en imposant à tout le monde une pose de \"boy band\" des années 90.",
+  "Complimenter un adversaire sur la couleur de ses chaussettes en prétendant que c'est ce qui a déstabilisé votre vision du jeu.",
+  "Répliquer à chaque phrase d'un coéquipier par \"C'est exactement ce qu'un joueur de droite dirait\".",
+  "Lancer une ola en solo à la table et réussir à faire participer au moins deux autres personnes.",
+  "Prendre des notes très sérieuses sur un serviette en papier pendant que les autres parlent de leurs coups marquants.",
+  "Expliquer aux autres que vous comptez écrire un livre sur la psychologie du filet au padel.",
+  "Porter votre sac de padel sur le dos pendant toute la durée de la tournée à table sans jamais le poser.",
+  "Proposer un pari financier absurde (ex: 5 cents) sur le résultat du tout premier point de la prochaine session.",
+  "Dire \"Santé à la vitre du fond\" à chaque fois que quelqu'un prend une gorgée de sa boisson.",
 ];
