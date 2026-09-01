@@ -39,10 +39,15 @@ import { Modal, Button, Spinner } from "../ui";
 const WIDTH = 300;
 const HEIGHT = 400;
 const PADDLE_WIDTH = 64;
-const PADDLE_HEIGHT = 10;
-const PADDLE_Y = HEIGHT - 20;
+const PADDLE_HEIGHT = 14;
+const PADDLE_Y = HEIGHT - 22;
 const PADDLE_SPEED = 260; // px/s, au clavier uniquement (le doigt, lui, positionne directement)
+const PADDLE_FACE_COLOR = "#F5F5F0";
+const PADDLE_FRAME_COLOR = "#3FA47C";
+const PADDLE_HOLE_COLOR = "#D8D8D2";
 const BALL_RADIUS = 5;
+const BALL_COLOR = "#D9F04B"; // jaune-vert "balle de padel"
+const BALL_OUTLINE_COLOR = "#8A9A2A"; // contour fin, juste pour rester visible sur fond clair
 const BALL_SPEED_START = 200; // px/s
 const BALL_SPEED_MAX = 340;
 const SPEED_UP_EVERY_BRICKS = 6;
@@ -96,6 +101,42 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
   ctx.fill();
+}
+
+// Pagaie dessinée comme une mini-raquette de padel vue de dessus : une
+// forme "stade" (rectangle aux bouts totalement arrondis, comme un tamis
+// plat et allongé), un cadre coloré, et quelques petits trous — le tout en
+// une poignée de tracés élémentaires, donc toujours aussi léger à dessiner
+// à chaque frame.
+function drawPaddleRacket(ctx, x, y, w, h) {
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(x + r, y + h);
+  ctx.arc(x + r, y + r, r, Math.PI / 2, (3 * Math.PI) / 2);
+  ctx.closePath();
+  ctx.fillStyle = PADDLE_FACE_COLOR;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = PADDLE_FRAME_COLOR;
+  ctx.stroke();
+
+  // Petits trous, comme sur le tamis d'une vraie raquette de padel.
+  ctx.fillStyle = PADDLE_HOLE_COLOR;
+  const holeCols = 6;
+  const marginX = r + 4;
+  const usableW = w - marginX * 2;
+  for (let row = 0; row < 2; row++) {
+    const cy = y + h / 2 + (row === 0 ? -h / 5 : h / 5);
+    for (let col = 0; col < holeCols; col++) {
+      const cx = x + marginX + (usableW * col) / (holeCols - 1);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 export function BrickBreakerModal({ onClose }) {
@@ -271,13 +312,17 @@ export function BrickBreakerModal({ onClose }) {
         roundedRect(ctx, brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT, 4);
       }
 
-      ctx.fillStyle = "#3FA47C";
-      roundedRect(ctx, state.paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, 5);
+      drawPaddleRacket(ctx, state.paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-      ctx.fillStyle = "#1F2937";
+      // Balle "de padel" : jaune-vert, avec un contour fin pour rester
+      // bien visible même sur un fond clair.
+      ctx.fillStyle = BALL_COLOR;
       ctx.beginPath();
       ctx.arc(state.ball.x, state.ball.y, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = BALL_OUTLINE_COLOR;
+      ctx.stroke();
     }
 
     function loop(time) {
