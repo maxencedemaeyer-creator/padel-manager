@@ -69,3 +69,4 @@ service cloud.firestore {
     // à prévoir séparément si le besoin s'en fait sentir.
   }
 }
+
