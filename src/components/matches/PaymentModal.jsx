@@ -13,7 +13,20 @@ import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PaymentModal({ match, participant, onClose }) {
   const { players, matches, isAdmin, connectedPlayer } = useAppData();
-  const allCreditors = players.filter((p) => p.isCreditor === true);
+  // Depuis le chantier du 02/09/2026, les créanciers proposés sont ceux
+  // figés sur CE match à sa génération (`match.creditorIds`, voir
+  // CreateSeasonModal.jsx) — jamais recalculés à partir de sa date, pour
+  // rester corrects même après un report. Un match plus ancien, généré
+  // avant ce chantier et donc sans ce champ, retombe sur l'ancien
+  // comportement (tous les créanciers de l'app), pour ne rien casser sur
+  // les données existantes.
+  const eligibleIds =
+    Array.isArray(match.creditorIds) && match.creditorIds.length > 0
+      ? new Set(match.creditorIds)
+      : null;
+  const allCreditors = players.filter(
+    (p) => p.isCreditor === true && (!eligibleIds || eligibleIds.has(p.id))
+  );
   const creditors = isAdmin
     ? allCreditors
     : allCreditors.filter((c) => c.id === connectedPlayer.id);
