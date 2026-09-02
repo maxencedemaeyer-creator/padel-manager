@@ -75,6 +75,45 @@ export function getCreditorAccounting(creditorId, matches) {
   };
 }
 
+// Paiements effectués PAR un joueur (peu importe son rôle — joueur normal,
+// créancier ou admin, voir "Mes paiements" dans StatsView.jsx) — le miroir
+// de getCreditorAccounting côté payeur plutôt que côté créancier. Un
+// créancier peut lui aussi apparaître ici : rien n'empêche qu'il rembourse
+// un AUTRE créancier pour un match donné (ex. via PaymentModal.jsx), ce
+// n'est alors plus une consommation personnelle "gratuite" mais un vrai
+// paiement à tracer. Toujours filtré sur `p.paidStatus === "paid"` avec un
+// `creditorId` renseigné — la consommation personnelle silencieuse d'un
+// créancier sur son propre abonnement (voir `selfReimbursed` ci-dessus)
+// n'utilise jamais ces deux champs et n'apparaît donc jamais ici.
+export function getPlayerPayments(playerId, matches) {
+  const payments = [];
+  let total = 0;
+
+  matches
+    .filter((m) => m.type === "Saison")
+    .forEach((m) => {
+      const fee = m.matchFeePerPlayer || 0;
+      participantsOf(m).forEach((p) => {
+        if (p.playerId === playerId && p.paidStatus === "paid" && p.creditorId) {
+          total += fee;
+          payments.push({
+            key: `${m.id}-${p.playerId}`,
+            matchId: m.id,
+            creditorId: p.creditorId,
+            fee,
+            date: m.date,
+            time: m.time || "",
+            location: m.location || "Terrain",
+          });
+        }
+      });
+    });
+
+  // Le plus récent en premier — cohérent avec paymentsReceived côté créancier.
+  payments.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return { total, payments };
+}
+
 // Créances de départ d'un créancier — une par abonnement où il apparaît
 // dans `abonnement.creditors[]` (voir CreateSeasonModal.jsx : les
 // créanciers et leur montant avancé sont désormais définis À LA GÉNÉRATION
