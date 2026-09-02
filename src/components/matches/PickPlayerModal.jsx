@@ -67,6 +67,30 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
       onClose();
       return;
     }
+    // Corrigé le 02/09/2026 (audit paiements) : le statut de paiement
+    // ("Payé"/"Attente") ne vit que dans cette entrée `participants[]` — un
+    // simple déplacement de joueur (ex. corriger son équipe/côté) le
+    // remplaçait donc par une entrée toute neuve "Attente", effaçant
+    // silencieusement un paiement déjà confirmé. Si ce joueur occupait déjà
+    // une AUTRE place sur CE MÊME match, on récupère son statut existant au
+    // lieu de le réinitialiser.
+    const existingEntryForPlayer = (match.participants || []).find(
+      (p) => p.playerId === player.id
+    );
+    // Si la place remplace un AUTRE joueur qui avait déjà été marqué payé,
+    // son statut de paiement va être définitivement perdu (il ne joue plus
+    // ce match) — on prévient avant d'agir plutôt que de le faire
+    // disparaître silencieusement.
+    if (
+      currentParticipant &&
+      currentParticipant.playerId !== player.id &&
+      currentParticipant.paidStatus === "paid"
+    ) {
+      const sure = window.confirm(
+        `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le remplacer par ${player.name} effacera cette information de paiement. Continuer ?`
+      );
+      if (!sure) return;
+    }
     setSaving(true);
     try {
       const remaining = (match.participants || []).filter(
@@ -75,8 +99,8 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
       const newParticipant = {
         playerId: player.id,
         name: player.name,
-        paidStatus: "unpaid",
-        creditorId: null,
+        paidStatus: existingEntryForPlayer?.paidStatus || "unpaid",
+        creditorId: existingEntryForPlayer?.creditorId ?? null,
         team,
         courtSide,
       };
@@ -93,6 +117,16 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
 
   const remove = async () => {
     if (!currentParticipant) return;
+    // Corrigé le 02/09/2026 (audit paiements) : retirer un joueur déjà marqué
+    // payé efface définitivement cette information (le statut ne vit que
+    // dans cette entrée `participants[]`, pas ailleurs) — on prévient avant
+    // d'agir plutôt que de le faire disparaître silencieusement.
+    if (currentParticipant.paidStatus === "paid") {
+      const sure = window.confirm(
+        `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le retirer effacera cette information de paiement. Continuer ?`
+      );
+      if (!sure) return;
+    }
     setSaving(true);
     try {
       const remaining = (match.participants || []).filter(
