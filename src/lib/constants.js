@@ -78,6 +78,15 @@ export const BRICK_BREAKER_HIGH_SCORES_COUNT = 5;
 //   plus de fois" (parties jouées, toute la saison).
 export const BRICK_BREAKER_TOP_ATTEMPTS_COUNT = 3;
 
+// Game Center — jeu "Homme du match" (voir src/lib/mvp.js) :
+// - le vote s'ouvre ce nombre d'heures après le DÉBUT du match (le vote
+//   reste ensuite ouvert jusqu'à 23h59 le lendemain de la date du match,
+//   calculé directement dans getMvpWindow) ;
+export const MVP_VOTE_OPENS_HOURS_AFTER_START = 1;
+// - une fois le vote clôturé, le joueur élu voit un message de félicitations
+//   dans le bandeau "Bonjour" de l'onglet Matchs pendant ce nombre de jours.
+export const MVP_BADGE_WINDOW_DAYS = 6;
+
 // Les 4 places d'un terrain sont FIXES et ne bougent jamais, quel que soit le
 // joueur assigné — voir getCourtSlots() dans lib/matchLogic.js.
 export const COURT_SLOT_DEFS = [
