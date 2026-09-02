@@ -6,8 +6,13 @@ import { useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming } from "../lib/matchLogic";
-import { getCreditorAccounting, getCreditorClaims } from "../lib/stats";
+import { getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "../lib/matchLogic";
+import {
+  getCreditorAccounting,
+  getCreditorClaims,
+  getAllCreditorPlayerIds,
+  participantsOf,
+} from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState, Switch } from "../components/ui";
@@ -114,7 +119,12 @@ export function AdminView() {
   // Même modale que celle utilisée par le créancier lui-même depuis "Ma
   // comptabilité", pour que les deux parcours restent parfaitement cohérents.
   const [editingClaim, setEditingClaim] = useState(null);
-  const creditors = players.filter((p) => p.isCreditor);
+  // Corrigé le 02/09/2026 (audit paiements) : inclut aussi un joueur dont la
+  // case "Créancier" a depuis été décochée mais qui a réellement financé un
+  // abonnement (présent dans `abonnement.creditors[]`) — sinon il disparaît
+  // à tort de cette liste alors qu'il a encore un solde/une créance réels.
+  const creditorIds = getAllCreditorPlayerIds(players, abonnements);
+  const creditors = players.filter((p) => creditorIds.has(p.id));
   // Solde = uniquement le total réellement perçu via les matchs, calculé
   // automatiquement. Le concept d'"ajustement manuel" a été retiré de toute
   // l'app le 30/08/2026 (jugé pas instinctif, source de confusion) — toute
@@ -125,13 +135,30 @@ export function AdminView() {
   );
   const totalBalance = [...creditorRawTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
+  // Corrigé le 02/09/2026 (audit paiements) : ce chiffre comptait TOUS les
+  // participants non "paid" de TOUS les matchs "Saison", y compris les
+  // matchs pas encore joués (rien à payer avant qu'ils aient lieu) et les
+  // places couvertes par un créancier de la session (voir
+  // `getSessionCreditorIds`) — celles-ci ne passent jamais par "Marquer
+  // payé" (le bouton y est désactivé), donc `paidStatus` y reste "unpaid"
+  // pour toujours et gonflait ce compteur en continu, sans rapport avec de
+  // vrais impayés. Même filtre que le détail nominatif de "Ma comptabilité"
+  // (AccountingView.jsx → unpaidPast), pour rester cohérent avec ce que
+  // chaque créancier y voit.
+  const fallbackCreditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
+  const sessionGroups = groupMatchesBySession(matches);
   const unpaidCount = matches
-    .filter((m) => m.type === "Saison")
-    .reduce(
-      (sum, m) =>
-        sum + (m.participants || []).filter((p) => p.paidStatus !== "paid").length,
-      0
-    );
+    .filter((m) => m.type === "Saison" && getMatchTiming(m) === "finished")
+    .reduce((sum, m) => {
+      const sessionCreditorIds =
+        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
+      return (
+        sum +
+        participantsOf(m).filter(
+          (p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid"
+        ).length
+      );
+    }, 0);
 
   const stats = [
     { label: "Joueurs", value: players.length, icon: Icon.Users },
