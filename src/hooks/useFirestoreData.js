@@ -135,12 +135,16 @@ export function useClubs() {
   return { clubs, loading };
 }
 
-// Réglages globaux de l'app (document unique "settings/appConfig") — pour
-// l'instant, uniquement l'activation du Fun Center pour tous les joueurs
-// (voir src/views/AdminView.jsx). Par défaut (document absent ou champ
-// absent), le Fun Center reste réservé à l'administrateur.
+// Réglages globaux de l'app (document unique "settings/appConfig") — Fun
+// Center pour tous les joueurs, et mode maintenance (voir
+// src/views/AdminView.jsx). Par défaut (document absent ou champ absent),
+// le Fun Center reste réservé à l'administrateur et la maintenance est
+// désactivée.
 export function useAppSettings() {
-  const [settings, setSettings] = useState({ gameCenterEnabled: false });
+  const [settings, setSettings] = useState({
+    gameCenterEnabled: false,
+    maintenanceEnabled: false,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -150,7 +154,10 @@ export function useAppSettings() {
         doc(db, "settings", "appConfig"),
         (snap) => {
           const data = snap.exists() ? snap.data() : {};
-          setSettings({ gameCenterEnabled: data.gameCenterEnabled === true });
+          setSettings({
+            gameCenterEnabled: data.gameCenterEnabled === true,
+            maintenanceEnabled: data.maintenanceEnabled === true,
+          });
           setLoading(false);
         },
         (error) => {
