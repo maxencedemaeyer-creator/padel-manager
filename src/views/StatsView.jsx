@@ -17,12 +17,13 @@ import {
   SIDE_OPTIONS,
   FEDERATION_OPTIONS,
 } from "../lib/constants";
-import { computePlayerStats, getRecentForm, computeHeadToHead } from "../lib/stats";
+import { computePlayerStats, getRecentForm, computeHeadToHead, getPlayerPayments } from "../lib/stats";
 import { countMvpWins } from "../lib/mvp";
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
 import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
+import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
 
 function ProgressRing({ value, size = 110, stroke = 10, label }) {
   const radius = (size - stroke) / 2;
@@ -340,6 +341,15 @@ export function StatsView() {
   const [editingPref, setEditingPref] = useState(null);
   const [showPinEdit, setShowPinEdit] = useState(false);
 
+  // "Mes paiements" — visible pour TOUT joueur (normal, créancier ou admin) :
+  // même un créancier peut avoir remboursé un AUTRE créancier pour un match
+  // donné (ex. son propre créancier de session était absent ce jour-là), ce
+  // qui n'apparaît alors pas dans "Ma consommation personnelle" de sa propre
+  // comptabilité créancier — voir getPlayerPayments dans lib/stats.js.
+  const myPayments = getPlayerPayments(connectedPlayer.id, matches);
+  const myPaymentsMatchesCount = new Set(myPayments.payments.map((p) => p.matchId)).size;
+  const [showMyPayments, setShowMyPayments] = useState(false);
+
   // Jeu "Homme du match" (Game Center) — nombre de fois où CE joueur a été
   // élu, toute la saison confondue. Rien n'est affiché s'il n'a jamais été
   // élu (voir lib/mvp.js → countMvpWins).
@@ -644,6 +654,44 @@ export function StatsView() {
             </p>
           )}
         </Card>
+
+        {/* Mes paiements — tout ce que j'ai remboursé à un créancier, quel
+            que soit mon propre rôle dans l'app. Clic sur le bloc = liste
+            nominative complète (référence du match, montant, créancier). */}
+        <h3 className="pm-display font-bold text-lg text-white mb-3">Mes paiements</h3>
+        <Card className="mb-6 overflow-hidden p-0">
+          <button
+            type="button"
+            onClick={() => myPayments.payments.length > 0 && setShowMyPayments(true)}
+            disabled={myPayments.payments.length === 0}
+            className="w-full flex items-center gap-4 p-5 text-left disabled:cursor-default hover:bg-white/40 active:bg-white/50 transition-colors disabled:hover:bg-transparent"
+          >
+            <span className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center shrink-0">
+              <Icon.Coin className="w-5 h-5 text-sky-600" />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block pm-display font-extrabold text-2xl leading-none">
+                {myPayments.total.toLocaleString("fr-FR")} €
+              </span>
+              <span className="block text-xs text-[var(--color-text-dim)] mt-1.5">
+                {myPayments.payments.length > 0
+                  ? `${myPaymentsMatchesCount} match${myPaymentsMatchesCount > 1 ? "s" : ""} remboursé${myPaymentsMatchesCount > 1 ? "s" : ""}`
+                  : "Aucun paiement enregistré pour le moment"}
+              </span>
+            </span>
+            {myPayments.payments.length > 0 && (
+              <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)] shrink-0" />
+            )}
+          </button>
+        </Card>
+
+        {showMyPayments && (
+          <MyPaymentsModal
+            payments={myPayments.payments}
+            players={players}
+            onClose={() => setShowMyPayments(false)}
+          />
+        )}
       </div>
     </div>
   );
