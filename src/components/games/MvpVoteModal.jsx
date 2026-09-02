@@ -136,11 +136,12 @@ export function MvpVoteModal({ onClose }) {
   );
 }
 
-// Écran de résultat une fois le vote clôturé : vainqueur (ou égalité / aucun
-// vote), et rappel que le prochain vote aura lieu au prochain match.
+// Écran de résultat une fois le vote clôturé : vainqueur (un seul, ou
+// plusieurs ex æquo — tous sont élus, voir lib/mvp.js), ou aucun vote. Puis
+// rappel que le prochain vote aura lieu au prochain match.
 function MvpResult({ match, votes, playerOf }) {
-  const { winnerId, tie } = computeMvpWinner(votes);
-  const winner = winnerId ? playerOf(winnerId) : null;
+  const { winnerIds } = computeMvpWinner(votes);
+  const winners = winnerIds.map(playerOf).filter(Boolean);
 
   return (
     <>
@@ -148,18 +149,29 @@ function MvpResult({ match, votes, playerOf }) {
         Match du {formatDateFR(match.date)} à {formatTimeFR(match.time)}
       </p>
 
-      {winner ? (
+      {winners.length === 1 ? (
         <>
-          <PlayerAvatar player={winner} size={72} className="mb-3" />
+          <PlayerAvatar player={winners[0]} size={72} className="mb-3" />
           <p className="pm-display font-extrabold text-xl text-[var(--color-text)] mb-1">
-            🥇 {winner.name}
+            🥇 {winners[0].name}
           </p>
           <p className="text-sm text-[var(--color-text-dim)] mb-6">Homme du match</p>
         </>
-      ) : tie ? (
-        <p className="text-sm text-[var(--color-text-dim)] mb-6 max-w-xs">
-          🤝 Vote serré — pas de vainqueur désigné cette fois.
-        </p>
+      ) : winners.length > 1 ? (
+        <>
+          <div className="flex items-center justify-center gap-3 flex-wrap mb-3">
+            {winners.map((w) => (
+              <div key={w.id} className="flex flex-col items-center gap-1.5">
+                <PlayerAvatar player={w} size={64} />
+                <span className="text-sm font-bold text-[var(--color-text)]">{w.name}</span>
+              </div>
+            ))}
+          </div>
+          <p className="pm-display font-extrabold text-lg text-[var(--color-text)] mb-1">
+            🥇 Hommes du match
+          </p>
+          <p className="text-sm text-[var(--color-text-dim)] mb-6">Ex æquo — bravo à tous !</p>
+        </>
       ) : (
         <p className="text-sm text-[var(--color-text-dim)] mb-6 max-w-xs">
           Personne n'a voté pour ce match 🙃
