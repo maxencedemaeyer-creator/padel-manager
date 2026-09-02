@@ -105,14 +105,19 @@ export function getCourtSlots(match) {
 }
 
 
-// Extrait le numéro de terrain depuis le lieu ("Club VG — Terrain 6" → 6,
-// "Terrain 1" → 1) pour pouvoir toujours afficher les terrains d'une même
-// session dans le même ordre (le plus petit numéro en premier / à gauche),
-// même si Firestore les renvoie dans un ordre différent d'une session à
-// l'autre. Si aucun numéro n'est trouvé en fin de lieu (ex. match ponctuel
-// avec un lieu libre), on retombe sur un tri alphabétique du lieu, pour
-// rester stable et prévisible.
+// Détermine l'ordre d'affichage des terrains d'une même session (le plus
+// petit numéro en premier / à gauche), même si Firestore les renvoie dans un
+// ordre différent d'une session à l'autre. Un match généré via un abonnement
+// (voir CreateSeasonModal.jsx) porte désormais un champ structuré
+// `match.court` — on s'appuie dessus en priorité. Pour un match plus ancien
+// sans ce champ, on retombe sur l'ancienne méthode (extraire le numéro en
+// fin de `location`, ex. "Club VG — Terrain 6" → 6), et à défaut sur un tri
+// alphabétique du lieu, pour rester stable et prévisible.
 function courtSortKey(match) {
+  if (match.court != null && String(match.court).trim() !== "") {
+    const n = Number(match.court);
+    return { num: Number.isFinite(n) ? n : null, location: String(match.court) };
+  }
   const location = match.location || "";
   const numMatch = location.match(/(\d+)\s*$/);
   return {
@@ -133,7 +138,15 @@ function compareByCourt(a, b) {
 export function groupMatchesBySession(matches) {
   const map = new Map();
   matches.forEach((m) => {
-    const key = `${m.date}|${m.time}`;
+    // Le club (clubId) fait désormais partie de la clé de regroupement, en
+    // plus de la date et de l'heure : depuis que plusieurs abonnements
+    // peuvent coexister sur la même période (voir CreateSeasonModal.jsx), il
+    // est possible d'avoir deux clubs différents actifs à la même date/heure
+    // — il ne faut jamais les fusionner sous une seule session. Les anciens
+    // matchs sans clubId (créés avant cette fonctionnalité) partagent tous
+    // le même repère "__legacy__" pour continuer à se regrouper exactement
+    // comme avant (aucune régression sur les données existantes).
+    const key = `${m.date}|${m.time}|${m.clubId || "__legacy__"}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(m);
   });
