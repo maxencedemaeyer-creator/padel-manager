@@ -40,7 +40,15 @@ export function ClaimSettingsModal({ creditorId, creditorName, abonnement, onClo
       setError("Abonnement introuvable.");
       return;
     }
-    const parsedAmount = parseFeeInput(amount) || 0;
+    // Corrigé le 02/09/2026 (audit paiements) : rien n'empêchait jusqu'ici de
+    // saisir une créance négative (ex. faute de frappe) — ça aurait faussé
+    // silencieusement le solde affiché de ce créancier partout dans l'app.
+    const parsedAmountRaw = parseFeeInput(amount);
+    if (parsedAmountRaw != null && parsedAmountRaw < 0) {
+      setError("Le montant de la créance ne peut pas être négatif.");
+      return;
+    }
+    const parsedAmount = parsedAmountRaw || 0;
 
     setSaving(true);
     try {
