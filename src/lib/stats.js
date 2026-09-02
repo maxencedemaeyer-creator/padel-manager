@@ -114,6 +114,25 @@ export function getPlayerPayments(playerId, matches) {
   return { total, payments };
 }
 
+// Tous les joueurs à traiter comme "créancier" pour l'affichage/l'attribution
+// de paiement — pas seulement ceux ACTUELLEMENT cochés "Créancier" sur leur
+// fiche (`player.isCreditor`), mais aussi ceux qui ont financé un abonnement
+// par le passé (présents dans `abonnement.creditors[]`) même si la case a
+// depuis été décochée. Corrigé le 02/09/2026 (audit paiements) : décocher
+// "Créancier" sur un joueur le faisait disparaître de PaymentModal.jsx (plus
+// moyen de lui attribuer un paiement pour ses anciens matchs déjà financés)
+// et de la liste "Soldes des créanciers" d'AdminView.jsx, alors que ses
+// créances/paiements historiques restaient bien réels dans les données.
+export function getAllCreditorPlayerIds(players, abonnements) {
+  const ids = new Set((players || []).filter((p) => p.isCreditor === true).map((p) => p.id));
+  (abonnements || []).forEach((a) => {
+    (a.creditors || []).forEach((c) => {
+      if (c.playerId) ids.add(c.playerId);
+    });
+  });
+  return ids;
+}
+
 // Créances de départ d'un créancier — une par abonnement où il apparaît
 // dans `abonnement.creditors[]` (voir CreateSeasonModal.jsx : les
 // créanciers et leur montant avancé sont désormais définis À LA GÉNÉRATION
