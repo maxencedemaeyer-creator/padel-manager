@@ -64,6 +64,13 @@ export function PlayerSlotCard({
   const paid = isCreditorParticipant || participant.paidStatus === "paid";
   const badgeTone = isCreditorParticipant ? "blue" : paid ? "paid" : "unpaid";
   const badgeLabel = isCreditorParticipant ? "Avancé" : paid ? "Payé" : "Attente";
+  // Demande du 02/09/2026 : la notion de "créancier" (qui a avancé l'argent
+  // pour ce match) reste invisible pour les joueurs, mais doit être visible
+  // pour l'admin. Un joueur non-admin ne voit donc plus du tout la pastille
+  // de paiement sur une place "couverte" par un créancier (elle n'apporte de
+  // toute façon aucune action possible pour lui : le bouton est déjà
+  // désactivé dans ce cas via canPay/paid ci-dessous).
+  const hideCreditorStatusFromPlayer = isCreditorParticipant && !isAdmin;
   const side = normalizeSide(playerRecord?.preferredSide);
   const roleLabel =
     side === "Droite" ? "Joueur de droite" : side === "Gauche" ? "Joueur de gauche" : "Polyvalent";
@@ -97,7 +104,7 @@ export function PlayerSlotCard({
             {roleLabel}
             {isSelfSlot && canSelfManage && " · toucher pour se désinscrire"}
           </span>
-          {trackPayments && (
+          {trackPayments && !hideCreditorStatusFromPlayer && (
             <span className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
