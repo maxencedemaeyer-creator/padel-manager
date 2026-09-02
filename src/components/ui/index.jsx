@@ -119,6 +119,44 @@ export function Spinner() {
   );
 }
 
+// Écran/bloc de chargement avec une balle de padel qui rebondit. Réservé à
+// 3 endroits précis de l'app (voir App.tsx et AuthGate.jsx) : l'ouverture,
+// juste après la connexion par code PIN, et l'entrée dans le Game Center —
+// pour transformer ces 3 attentes réelles (connexion Firebase, premières
+// données, chargement du Game Center) en une pause courte et agréable au
+// lieu d'un simple indicateur qui tourne. Le Spinner ci-dessus reste utilisé
+// partout ailleurs dans l'app (attentes ponctuelles à l'intérieur des jeux,
+// etc.) : ne pas le remplacer partout par celui-ci.
+//
+// fullScreen=true (ouverture, après le code PIN) : prend tout l'écran, avec
+// le même fond dégradé que le reste de l'app (pm-root).
+// fullScreen=false (Game Center) : occupe seulement la zone de contenu,
+// sous l'en-tête et au-dessus de la barre de navigation, qui restent
+// visibles pendant le chargement.
+export function BounceLoader({ label = "Chargement...", fullScreen = false }) {
+  const content = (
+    <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center">
+        <Icon.Ball className="w-9 h-9 text-[var(--color-lime)] pm-bounce" />
+        <div className="w-7 h-2 rounded-full bg-[var(--color-text)]/20 pm-bounce-shadow mt-2" />
+      </div>
+      {label && (
+        <p className="text-xs font-semibold text-[var(--color-text-dim)] tracking-wide">
+          {label}
+        </p>
+      )}
+    </div>
+  );
+
+  if (!fullScreen) {
+    return <div className="flex items-center justify-center py-20">{content}</div>;
+  }
+
+  return (
+    <div className="pm-root min-h-screen flex items-center justify-center px-6">{content}</div>
+  );
+}
+
 // Interrupteur type "réglages iPhone" — utilisé pour les options on/off de
 // l'app (ex. activer le Fun Center pour tous, dans l'onglet Administration).
 export function Switch({ checked = false, onChange, disabled = false }) {
