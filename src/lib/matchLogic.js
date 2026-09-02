@@ -192,6 +192,21 @@ export function getSessionCreditorIds(match, allMatches, sessionGroups = null) {
   return new Set(session.flatMap((m) => (Array.isArray(m.creditorIds) ? m.creditorIds : [])));
 }
 
+// Un joueur donné est-il "créancier" pour CE match précis — soit parce
+// qu'il figure parmi les créanciers de LA SESSION de ce match (voir
+// getSessionCreditorIds ci-dessus), soit, à défaut de données de session
+// (matchs plus anciens sans `creditorIds`), parce qu'il porte le statut
+// global `isCreditor` sur sa fiche joueur. Ajouté le 02/09/2026 pour un
+// usage précis : décider qui, en plus de l'admin, a le droit de voir ET de
+// reprogrammer un match "à une date inconnue" (voir MatchesView.jsx,
+// MyMatchSummary.jsx, CourtPanel.jsx) — les autres joueurs ne doivent ni le
+// voir, ni pouvoir lui attribuer une date.
+export function isPlayerMatchCreditor(match, allMatches, players, playerId) {
+  const sessionCreditorIds = getSessionCreditorIds(match, allMatches);
+  if (sessionCreditorIds) return sessionCreditorIds.has(playerId);
+  return (players || []).some((p) => p.id === playerId && p.isCreditor === true);
+}
+
 // Matchs à exclure de l'affichage "en direct" (onglet Matchs) parce que leur
 // abonnement a été clôturé/archivé depuis Administration (voir
 // views/AdminView.jsx → section "Gestion des abonnements", ajoutée le
