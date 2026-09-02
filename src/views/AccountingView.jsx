@@ -108,8 +108,11 @@ export function AccountingView() {
   const upcomingMatchesReceivedCount = new Set(paymentsReceivedUpcoming.map((p) => p.matchId)).size;
   const totalMatchesReceivedCount = pastMatchesReceivedCount + upcomingMatchesReceivedCount;
 
-  // Bloc 5 — synthèse : créance − (ma saison) − (déjà perçu des autres).
-  const remainingNet = advanced - selfSeasonTotal - totalPaidPastMatches;
+  // Bloc 5 — synthèse : créance − (ma saison) − (total des remboursements
+  // perçus des autres, passés ET à venir payés d'avance — cet argent est
+  // déjà réellement encaissé, il doit donc réduire ce qu'il reste à
+  // récupérer, même si le match correspondant n'a pas encore eu lieu).
+  const remainingNet = advanced - selfSeasonTotal - totalReceivedAll;
 
   // Marque le joueur concerné comme ayant payé sa part de ce match, avec
   // "moi" (le créancier connecté) comme créancier destinataire — pas besoin
@@ -469,8 +472,8 @@ export function AccountingView() {
         </p>
         <p className="text-[11px] text-white/70 mt-3 pt-3 border-t border-white/20 leading-relaxed">
           Créance {advanced.toLocaleString("fr-FR")} € − Ma saison{" "}
-          {selfSeasonTotal.toLocaleString("fr-FR")} € − Déjà perçu{" "}
-          {totalPaidPastMatches.toLocaleString("fr-FR")} €
+          {selfSeasonTotal.toLocaleString("fr-FR")} € − Total perçu des autres{" "}
+          {totalReceivedAll.toLocaleString("fr-FR")} €
         </p>
       </div>
     </div>
