@@ -3,9 +3,10 @@
 // date/heure, et confirmation de suppression (action irréversible).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { doc, deleteDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { formatDateFR } from "../../lib/utils";
+import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 
@@ -123,12 +124,30 @@ export function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore, onPick
 }
 
 export function DeleteMatchConfirmModal({ match, onClose }) {
+  const { matches } = useAppData();
   const [deleting, setDeleting] = useState(false);
+
+  // Ajout du 02/09/2026 (soir) — gestion des abonnements (voir
+  // views/AdminView.jsx → "Gestion des abonnements") : si ce match est le
+  // DERNIER match encore rattaché à son abonnement (`abonnementId`),
+  // l'abonnement n'a plus aucune raison d'exister une fois celui-ci
+  // supprimé — sinon il reste indéfiniment affiché (créance, soldes) dans
+  // Administration sans plus aucun match derrière. On le supprime alors
+  // automatiquement, dans le même batch Firestore pour rester atomique. Un
+  // match ponctuel (sans abonnementId) n'est jamais concerné.
+  const isLastOfAbonnement =
+    Boolean(match.abonnementId) &&
+    !matches.some((m) => m.id !== match.id && m.abonnementId === match.abonnementId);
 
   const confirmDelete = async () => {
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "matches", match.id));
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "matches", match.id));
+      if (isLastOfAbonnement) {
+        batch.delete(doc(db, "abonnements", match.abonnementId));
+      }
+      await batch.commit();
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -161,6 +180,12 @@ export function DeleteMatchConfirmModal({ match, onClose }) {
         supprimé, ainsi que les joueurs assignés, le score et l'historique de
         paiement associés à ce match.
       </p>
+      {isLastOfAbonnement && (
+        <p className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+          ⚠️ C'est le dernier match encore rattaché à son abonnement — celui-ci sera également
+          supprimé (il ne resterait plus aucun match derrière).
+        </p>
+      )}
     </Modal>
   );
 }
