@@ -14,8 +14,9 @@
 //   naturel ici : dès qu'un match plus récent a commencé, il devient le
 //   nouveau "match de référence" (voir getReferenceMatch), donc l'ancien
 //   résultat disparaît de lui-même sans logique de date supplémentaire.
-// - En cas d'égalité entre plusieurs joueurs, aucun vainqueur n'est désigné
-//   (voir computeMvpWinner) plutôt que de trancher arbitrairement.
+// - En cas d'égalité entre plusieurs joueurs, TOUS les joueurs à égalité au
+//   plus haut nombre de voix sont élus hommes du match (voir
+//   computeMvpWinner) — plutôt que de trancher arbitrairement entre eux.
 // - Les votes sont stockés dans la nouvelle collection Firestore "mvpVotes"
 //   (un document par match, id du document = id du match), champ "votes" =
 //   { voterId: candidateId }. Nouveau bloc dédié dans firestore.rules (comme
@@ -103,23 +104,23 @@ export async function castMvpVote(matchId, voterId, candidateId) {
   });
 }
 
-// Vainqueur à partir d'une carte de votes {voterId: candidateId} : le(s)
-// candidat(s) avec le plus de voix. En cas d'égalité entre plusieurs
-// joueurs, aucun vainqueur n'est désigné (tie: true) plutôt que de trancher
-// arbitrairement.
+// Vainqueur(s) à partir d'une carte de votes {voterId: candidateId} : TOUS
+// les candidats à égalité au plus haut nombre de voix (donc un tableau d'un
+// seul id la plupart du temps, mais plusieurs en cas d'égalité — voir
+// commentaire en tête de fichier : plusieurs hommes du match plutôt qu'un
+// choix arbitraire entre joueurs à égalité).
 export function computeMvpWinner(votes) {
   const counts = new Map();
   Object.values(votes || {}).forEach((candidateId) => {
     counts.set(candidateId, (counts.get(candidateId) || 0) + 1);
   });
-  if (counts.size === 0) return { winnerId: null, tie: false, counts };
+  if (counts.size === 0) return { winnerIds: [], counts };
   let max = 0;
   counts.forEach((c) => {
     if (c > max) max = c;
   });
-  const top = [...counts.entries()].filter(([, c]) => c === max).map(([id]) => id);
-  if (top.length > 1) return { winnerId: null, tie: true, counts };
-  return { winnerId: top[0], tie: false, counts };
+  const winnerIds = [...counts.entries()].filter(([, c]) => c === max).map(([id]) => id);
+  return { winnerIds, counts };
 }
 
 // Bandeau "Bravo, tu as été élu..." (MyMatchSummary.jsx) : cherche, parmi
@@ -137,21 +138,22 @@ export async function findRecentMvpWin(matches, playerId, now = new Date()) {
 
   for (const match of candidates) {
     const data = await fetchMvpVotes(match.id);
-    const { winnerId } = computeMvpWinner(data.votes || {});
-    if (winnerId === playerId) return match;
+    const { winnerIds } = computeMvpWinner(data.votes || {});
+    if (winnerIds.includes(playerId)) return match;
   }
   return null;
 }
 
-// "Mon profil" — nombre de fois où ce joueur a été élu homme du match,
-// toute la saison confondue (lecture globale de la collection, comme le
-// classement Killer — voir fetchKillerLeaderboard dans lib/killer.js).
+// "Mon profil" — nombre de fois où ce joueur a été élu homme du match
+// (y compris ex æquo), toute la saison confondue (lecture globale de la
+// collection, comme le classement Killer — voir fetchKillerLeaderboard dans
+// lib/killer.js).
 export async function countMvpWins(playerId) {
   const snap = await getDocs(collection(db, "mvpVotes"));
   let count = 0;
   snap.forEach((docSnap) => {
-    const { winnerId } = computeMvpWinner(docSnap.data().votes || {});
-    if (winnerId === playerId) count += 1;
+    const { winnerIds } = computeMvpWinner(docSnap.data().votes || {});
+    if (winnerIds.includes(playerId)) count += 1;
   });
   return count;
 }
