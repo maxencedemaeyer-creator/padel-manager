@@ -83,12 +83,19 @@ export function SessionCard({ sessionMatches, now }) {
   // d'un autre joueur) sans passer par le placement sur le terrain.
   const [showManagePresence, setShowManagePresence] = useState(false);
   // Admin : le volet "préparation" (bandeau publier/dépublier, lien
-  // "Modifier une présence", tableau des réponses de présence) est replié
-  // par défaut — l'admin voit alors exactement le même affichage qu'un
-  // joueur normal (terrain(s) + sa propre présence). La flèche en haut à
-  // droite de la carte permet de le déplier pour retrouver la vue complète
-  // actuelle. Replié par défaut = moins de composants montés par carte,
-  // donc plus léger quand il y a beaucoup de matchs à l'écran.
+  // "Modifier une présence", tableau des réponses de présence, ET la grille
+  // des terrains/compositions elle-même) est replié par défaut — l'admin
+  // voit alors exactement le même affichage qu'un joueur normal tant que la
+  // composition n'a pas été publiée (uniquement sa propre présence). La
+  // flèche en haut à droite de la carte permet de tout déplier pour
+  // retrouver la vue complète actuelle (terrains compris). Ce repli est un
+  // simple état d'affichage LOCAL à l'admin connecté (aucune écriture
+  // Firestore) : il n'a aucun effet sur ce que voient les autres joueurs —
+  // une fois la composition publiée (voir isCompositionPublished), elle
+  // reste affichée d'office à tous les autres joueurs, quel que soit l'état
+  // (replié/déplié) de la flèche admin. Replié par défaut = moins de
+  // composants montés par carte, donc plus léger quand il y a beaucoup de
+  // matchs à l'écran.
   const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
   // La composition n'étant affichée (via cette carte) qu'une fois publiée
@@ -120,8 +127,8 @@ export function SessionCard({ sessionMatches, now }) {
               onClick={() => setPrepExpanded((v) => !v)}
               aria-label={
                 prepExpanded
-                  ? "Masquer le tableau des présences et la publication de la composition"
-                  : "Afficher le tableau des présences et la publication de la composition"
+                  ? "Masquer les terrains, le tableau des présences et la publication de la composition"
+                  : "Afficher les terrains, le tableau des présences et la publication de la composition"
               }
               title={prepExpanded ? "Replier la préparation" : "Déplier la préparation"}
               className="p-1.5 rounded-full bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 hover:text-sky-700 active:scale-95 transition-all"
@@ -152,11 +159,13 @@ export function SessionCard({ sessionMatches, now }) {
         </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {sessionMatches.map((m) => (
-          <CourtPanel key={m.id} match={m} now={now} />
-        ))}
-      </div>
+      {(!isAdmin || prepExpanded) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {sessionMatches.map((m) => (
+            <CourtPanel key={m.id} match={m} now={now} />
+          ))}
+        </div>
+      )}
 
       <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
         <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
