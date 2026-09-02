@@ -5,6 +5,7 @@
 // motivante (série/classement). Les messages sont cumulatifs : plusieurs
 // peuvent s'afficher en même temps, l'un sous l'autre.
 // ─────────────────────────────────────────────────────────────────────────
+import { useEffect, useState } from "react";
 import { clubNameOnly, formatDateFR, formatTimeFR, getFirstName } from "../../lib/utils";
 import {
   daysUntilMatch,
@@ -14,6 +15,7 @@ import {
 } from "../../lib/matchLogic";
 import { getSessionAvailability } from "../../lib/availability";
 import { computePlayerStats } from "../../lib/stats";
+import { findRecentMvpWin } from "../../lib/mvp";
 import { useAppData } from "../../context/AppContext";
 
 // Mêmes valeurs que dans MatchesView pour repérer "les 2 prochains matchs"
@@ -24,6 +26,21 @@ const UPCOMING_SESSIONS_COUNT = 2;
 
 export function MyMatchSummary({ now }) {
   const { connectedPlayer, players, matches } = useAppData();
+
+  // Jeu "Homme du match" (Game Center) — le joueur élu voit apparaître un
+  // message de félicitations ici, dès la publication des résultats et
+  // jusqu'à MVP_BADGE_WINDOW_DAYS jours après (voir lib/mvp.js).
+  const [mvpWinMatch, setMvpWinMatch] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    findRecentMvpWin(matches, connectedPlayer.id, now).then((match) => {
+      if (!cancelled) setMvpWinMatch(match);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, connectedPlayer.id]);
 
   const notFinished = matches.filter((m) => getMatchTiming(m, now) !== "finished");
 
@@ -123,6 +140,11 @@ export function MyMatchSummary({ now }) {
       <p className="pm-display font-bold text-lg mb-1">
         Bonjour {getFirstName(connectedPlayer.name)} 👋
       </p>
+      {mvpWinMatch && (
+        <p className="text-sm bg-amber-400/25 border border-amber-300/40 rounded-xl px-2.5 py-1.5 mb-2 font-semibold">
+          🥇 Bravo, tu as été élu homme du match lors du match précédent !
+        </p>
+      )}
       {hook && (
         <span className="inline-block bg-white/15 rounded-full px-2.5 py-1 text-xs font-semibold mb-2">
           {hook}
