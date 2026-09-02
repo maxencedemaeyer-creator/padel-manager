@@ -30,7 +30,23 @@ service cloud.firestore {
       allow create, update, delete: if isSignedIn();
     }
 
-    // 3. Withdrawals collection (détection des désinscriptions tardives —
+    // 3. Abonnements collection (ex-"saisons") — un document par lot généré
+    // depuis "Créer un abonnement" (voir CreateSeasonModal.jsx) : club,
+    // terrain(s), période, créanciers et leur créance de départ. Ce bloc
+    // était absent de ce fichier jusqu'au 02/09/2026 (soir) — repéré à
+    // l'occasion de l'ajout de la suppression/clôture d'abonnement depuis
+    // Administration — alors que l'app lit et écrit déjà cette collection en
+    // production (CreateSeasonModal, ClaimSettingsModal) : les règles
+    // réellement déployées sur la console Firebase étaient donc déjà plus
+    // permissives que ce fichier local, resté désynchronisé. Même niveau
+    // d'accès que "matches" ci-dessus, suppression comprise (nécessaire pour
+    // "Supprimer un abonnement").
+    match /abonnements/{abonnementId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // 4. Withdrawals collection (détection des désinscriptions tardives —
     // src/lib/withdrawalWatcher.js, CourtPanel.jsx, Header.jsx). Absente des
     // règles précédentes : toutes ces lectures/écritures étaient refusées
     // en silence, rendant la fonctionnalité inopérante en production.
@@ -39,7 +55,7 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
-    // 4. Player credentials collection (codes PIN) — verrouillée : ni lisible
+    // 5. Player credentials collection (codes PIN) — verrouillée : ni lisible
     // ni modifiable depuis un navigateur, quel que soit l'utilisateur. Seul
     // le SDK Admin Firebase (utilisé par les fonctions serveur api/verify-pin
     // et api/manage-pin, jamais exécuté dans un navigateur) peut y accéder,
@@ -48,7 +64,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 5. Settings collection — réglages globaux de l'app (ex. activation du
+    // 6. Settings collection — réglages globaux de l'app (ex. activation du
     // Fun Center pour tous les joueurs, voir src/views/AdminView.jsx). Même
     // niveau d'accès que le reste des collections ci-dessus.
     match /settings/{settingId} {
@@ -56,7 +72,7 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
-    // 6. Games collection — état partagé des mini-jeux du Fun Center (ex.
+    // 7. Games collection — état partagé des mini-jeux du Fun Center (ex.
     // "games/tourneeGenerale" : historique du jour des joueurs déjà tirés
     // au sort pour la tournée générale, voir src/lib/tourneeGenerale.js).
     // Même niveau d'accès que le reste des collections ci-dessus.
@@ -65,7 +81,7 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
-    // 7. Killer missions collection — mission personnelle du jour de chaque
+    // 8. Killer missions collection — mission personnelle du jour de chaque
     // joueur pour le jeu "Killer" du Fun Center (un document par joueur et
     // par jour), voir src/lib/killer.js. Même niveau d'accès que le reste :
     // la base ne distingue pas les joueurs entre eux (voir remarque
@@ -76,7 +92,7 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
-    // 8. MVP votes collection — votes pour le jeu "Homme du match" du Game
+    // 9. MVP votes collection — votes pour le jeu "Homme du match" du Game
     // Center (un document par match, voir src/lib/mvp.js). Même niveau
     // d'accès que le reste : la base ne distingue pas les joueurs entre eux
     // (voir remarque ci-dessous), c'est l'application qui empêche un joueur
