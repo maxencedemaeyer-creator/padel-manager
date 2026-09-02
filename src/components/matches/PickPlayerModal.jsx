@@ -1,14 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Modale admin "assigner / remplacer un joueur" sur une place de terrain,
-// avec recherche et détection des conflits (déjà engagé ce jour-là ailleurs,
-// ou ayant répondu absent à cette session).
+// avec détection des conflits (déjà engagé ce jour-là ailleurs, ou ayant
+// répondu absent à cette session).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
-import { Modal, Button, Badge, inputClass } from "../ui";
+import { Modal, Button, Badge } from "../ui";
 
 // Visuel de présence par joueur — mêmes couleurs que le panneau "Réponses
 // des joueurs" (Availability.jsx), pour repérer d'un coup d'œil qui a
@@ -26,7 +26,6 @@ const PRESENCE_RANK = { present: 0, unknown: 1, absent: 3 };
 
 export function PickPlayerModal({ match, team, courtSide, currentParticipant, onClose }) {
   const { players, matches } = useAppData();
-  const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Réponses de présence pour cette session — écrites sur chaque terrain de
@@ -54,7 +53,7 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
   );
 
   const filteredPlayers = players
-    .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .slice()
     .sort((a, b) => {
       const ra = PRESENCE_RANK[availability[a.id]] ?? 2;
       const rb = PRESENCE_RANK[availability[b.id]] ?? 2;
@@ -143,18 +142,10 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         </span>
       </div>
 
-      <input
-        className={cn(inputClass, "mb-3")}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Rechercher un joueur..."
-        autoFocus
-      />
-
       <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pm-scroll-visible pr-1">
         {filteredPlayers.length === 0 ? (
           <p className="text-xs text-[var(--color-text-faint)] italic py-2">
-            Aucun joueur ne correspond à cette recherche.
+            Aucun joueur enregistré.
           </p>
         ) : (
           filteredPlayers.map((p) => {
