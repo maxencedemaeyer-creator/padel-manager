@@ -52,8 +52,62 @@ function GameCenterSettingCard({ enabled }) {
   );
 }
 
+// Carte "Mode Maintenance" — interrupteur pour couper l'accès au site à
+// tous les joueurs (l'administrateur, lui, garde toujours l'accès complet,
+// justement pour pouvoir désactiver la maintenance depuis ce même écran).
+// Même mécanique que le Game Center ci-dessus : écrit dans
+// settings/appConfig, répercuté en temps réel partout via useAppSettings.
+function MaintenanceSettingCard({ enabled }) {
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async (next) => {
+    if (next) {
+      const sure = window.confirm(
+        "Activer le mode maintenance ? Tous les joueurs (sauf vous, l'administrateur) seront bloqués sur un écran d'attente jusqu'à ce que vous le désactiviez."
+      );
+      if (!sure) return;
+    }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "settings", "appConfig"), { maintenanceEnabled: next }, { merge: true });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card
+      className={`p-4 flex items-center gap-3 mb-6 ${
+        enabled ? "border-rose-300 bg-rose-50/70" : ""
+      }`}
+    >
+      <span
+        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+          enabled
+            ? "bg-rose-500/15 text-rose-600"
+            : "bg-[var(--color-text-dim)]/10 text-[var(--color-text-dim)]"
+        }`}
+      >
+        <Icon.AlertCircle className="w-5 h-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm">Mode maintenance</p>
+        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+          {enabled
+            ? "Site bloqué pour tous les joueurs, sauf vous (admin)."
+            : "Site accessible normalement à tous."}
+        </p>
+      </div>
+      <Switch checked={enabled} onChange={toggle} disabled={saving} />
+    </Card>
+  );
+}
+
 export function AdminView() {
-  const { players, matches, abonnements, clubs, gameCenterEnabled } = useAppData();
+  const { players, matches, abonnements, clubs, gameCenterEnabled, maintenanceEnabled } =
+    useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const [showManageClubs, setShowManageClubs] = useState(false);
   // Créance en cours d'édition — { creditorId, creditorName, abonnement }.
@@ -112,6 +166,7 @@ export function AdminView() {
         </div>
       </div>
 
+      <MaintenanceSettingCard enabled={maintenanceEnabled} />
       <GameCenterSettingCard enabled={gameCenterEnabled} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
