@@ -8,7 +8,7 @@ import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming } from "../lib/matchLogic";
+import { getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "../lib/matchLogic";
 import { getCreditorAccounting, getCreditorClaims, participantsOf } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
@@ -34,7 +34,9 @@ export function AccountingView() {
   // il figure), au lieu d'un seul montant global sur sa fiche joueur.
   const { claims, total: advanced } = getCreditorClaims(connectedPlayer.id, abonnements, matches);
 
-  const creditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
+  // Repli pour un match sans `creditorIds` (généré avant le chantier du
+  // 02/09/2026) : liste globale des créanciers, comme avant.
+  const fallbackCreditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
 
   // Bloc 3 — auto-remboursement : mes propres matchs, joués + à venir. On
@@ -59,16 +61,23 @@ export function AccountingView() {
   const selfSeasonTotal = selfReimbursed + selfUpcomingValue;
   const selfSeasonCount = selfPastMatchesCount + selfUpcomingCount;
 
-  // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers,
-  // exemptés). On garde ici le détail complet (match + joueur) et pas
-  // seulement le total, pour pouvoir afficher la liste nominative ci-dessous
-  // et marquer un paiement directement depuis "Ma comptabilité", sans devoir
-  // rouvrir chaque match dans l'onglet Matchs.
+  // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers de
+  // LA SESSION de ce match, exemptés — voir `getSessionCreditorIds` : un
+  // créancier qui a financé un autre terrain de la même session, ex. Donald
+  // sur le Terrain 6, n'est pas un débiteur ordinaire s'il joue ce jour-là
+  // sur un terrain financé par quelqu'un d'autre. On garde ici le détail
+  // complet (match + joueur) et pas seulement le total, pour pouvoir
+  // afficher la liste nominative ci-dessous et marquer un paiement
+  // directement depuis "Ma comptabilité", sans devoir rouvrir chaque match
+  // dans l'onglet Matchs.
+  const sessionGroups = groupMatchesBySession(matches);
   const unpaidPast = seasonMatches
     .filter((m) => getMatchTiming(m) === "finished")
-    .flatMap((m) =>
-      participantsOf(m)
-        .filter((p) => !creditorIds.has(p.playerId) && p.paidStatus !== "paid")
+    .flatMap((m) => {
+      const sessionCreditorIds =
+        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
+      return participantsOf(m)
+        .filter((p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid")
         .map((p) => ({
           key: `${m.id}-${p.playerId}`,
           matchId: m.id,
@@ -77,8 +86,8 @@ export function AccountingView() {
           fee: m.matchFeePerPlayer || 0,
           date: m.date,
           location: m.location || "Terrain",
-        }))
-    )
+        }));
+    })
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const unpaidAmount = unpaidPast.reduce((s, p) => s + p.fee, 0);
   const unpaidCount = unpaidPast.length;
