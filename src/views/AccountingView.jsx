@@ -9,7 +9,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
-import { getCreditorAccounting, getCoveredMatchesEstimate } from "../lib/stats";
+import { getCreditorAccounting, getCoveredMatchesEstimate, participantsOf } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, EmptyState } from "../components/ui";
@@ -49,12 +49,12 @@ export function AccountingView() {
   const selfPastMatchesCount = seasonMatches.filter(
     (m) =>
       getMatchTiming(m) === "finished" &&
-      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+      participantsOf(m).some((p) => p.playerId === connectedPlayer.id)
   ).length;
   const selfUpcomingMatches = seasonMatches.filter(
     (m) =>
       getMatchTiming(m) !== "finished" &&
-      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+      participantsOf(m).some((p) => p.playerId === connectedPlayer.id)
   );
   const selfUpcomingValue = selfUpcomingMatches.reduce(
     (sum, m) => sum + (m.matchFeePerPlayer || 0),
@@ -72,7 +72,7 @@ export function AccountingView() {
   const unpaidPast = seasonMatches
     .filter((m) => getMatchTiming(m) === "finished")
     .flatMap((m) =>
-      (m.participants || [])
+      participantsOf(m)
         .filter((p) => !creditorIds.has(p.playerId) && p.paidStatus !== "paid")
         .map((p) => ({
           key: `${m.id}-${p.playerId}`,
@@ -101,7 +101,7 @@ export function AccountingView() {
     try {
       const match = matches.find((m) => m.id === item.matchId);
       if (!match) return;
-      const updatedParticipants = (match.participants || []).map((p) =>
+      const updatedParticipants = participantsOf(match).map((p) =>
         p.playerId === item.playerId
           ? { ...p, paidStatus: "paid", creditorId: connectedPlayer.id }
           : p
