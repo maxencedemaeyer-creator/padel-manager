@@ -7,6 +7,7 @@ import { useState } from "react";
 import { cn } from "../lib/utils";
 import {
   daysUntilMatch,
+  excludeArchivedSeasonMatches,
   getMatchStart,
   getMatchTiming,
   groupMatchesBySession,
@@ -30,10 +31,16 @@ const UPCOMING_SESSIONS_COUNT = 2;
 const LAST_MATCH_WINDOW_DAYS = 15;
 
 export function MatchesView() {
-  const { matches, isAdmin, connectedPlayer } = useAppData();
+  const { matches: allMatches, abonnements, isAdmin, connectedPlayer } = useAppData();
   const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
+
+  // Ajout du 02/09/2026 (soir) : un abonnement clôturé depuis Administration
+  // masque ses matchs ici, pour tout le monde (y compris l'admin) — voir
+  // excludeArchivedSeasonMatches dans lib/matchLogic.js. Rien n'est
+  // supprimé : réactiver l'abonnement les fait immédiatement réapparaître.
+  const matches = excludeArchivedSeasonMatches(allMatches, abonnements);
 
   const sortedByStart = [...matches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
   const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
