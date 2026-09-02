@@ -21,8 +21,10 @@ export function participantsOf(match) {
 export function getCreditorAccounting(creditorId, matches) {
   let totalPaidAllTime = 0; // tout paiement confirmé, peu importe la date du match
   let totalPaidPastMatches = 0; // uniquement les matchs déjà passés
+  let totalPaidUpcomingMatches = 0; // payé D'AVANCE, pour des matchs pas encore joués
   let selfReimbursed = 0; // matchs déjà joués par le créancier lui-même
-  const paymentsReceived = [];
+  const paymentsReceived = []; // détail nominatif — matchs passés
+  const paymentsReceivedUpcoming = []; // détail nominatif — matchs à venir, payés d'avance
 
   matches
     .filter((m) => m.type === "Saison")
@@ -32,9 +34,26 @@ export function getCreditorAccounting(creditorId, matches) {
       participantsOf(m).forEach((p) => {
         if (p.paidStatus === "paid" && p.creditorId === creditorId) {
           totalPaidAllTime += fee;
+          // Détail complet (pas seulement le total) pour permettre l'affichage
+          // nominatif "qui a remboursé quel match" dans CreditorPaymentsModal,
+          // groupé par joueur — playerId est indispensable pour retrouver son
+          // avatar, date/heure/lieu pour identifier le match sans ambiguïté.
+          const entry = {
+            key: `${m.id}-${p.playerId}`,
+            matchId: m.id,
+            playerId: p.playerId,
+            name: p.name,
+            fee,
+            date: m.date,
+            time: m.time || "",
+            location: m.location || "Terrain",
+          };
           if (finished) {
             totalPaidPastMatches += fee;
-            paymentsReceived.push({ matchId: m.id, date: m.date, name: p.name, fee });
+            paymentsReceived.push(entry);
+          } else {
+            totalPaidUpcomingMatches += fee;
+            paymentsReceivedUpcoming.push(entry);
           }
         }
         if (p.playerId === creditorId && finished) {
@@ -43,8 +62,17 @@ export function getCreditorAccounting(creditorId, matches) {
       });
     });
 
+  // Passés : le plus récent en premier. À venir : le plus proche en premier.
   paymentsReceived.sort((a, b) => new Date(b.date) - new Date(a.date));
-  return { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived };
+  paymentsReceivedUpcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return {
+    totalPaidAllTime,
+    totalPaidPastMatches,
+    totalPaidUpcomingMatches,
+    selfReimbursed,
+    paymentsReceived,
+    paymentsReceivedUpcoming,
+  };
 }
 
 // Créances de départ d'un créancier — une par abonnement où il apparaît
