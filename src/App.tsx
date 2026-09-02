@@ -9,7 +9,7 @@ import { useMatches, useAppSettings, useAbonnements, useClubs } from "./hooks/us
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
-import { Spinner, Button } from "./components/ui";
+import { Spinner, BounceLoader, Button } from "./components/ui";
 import { authReady } from "./firebase";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
@@ -118,14 +118,34 @@ function MainApp() {
     );
   }
 
+  // Juste après la connexion (choix du profil + code PIN), les toutes
+  // premières données (matchs) sont encore en train d'arriver de Firebase :
+  // plutôt que d'afficher l'en-tête et la barre de navigation autour d'un
+  // simple spinner dans le contenu, on affiche un écran de chargement plein
+  // écran (balle qui rebondit) le temps de cette unique pause, puis on
+  // révèle l'app complète d'un coup, déjà prête et rapide.
+  if (matchesHook.loading) {
+    return (
+      <AppDataContext.Provider value={contextValue}>
+        <BounceLoader fullScreen label="Préparation de votre espace..." />
+      </AppDataContext.Provider>
+    );
+  }
+
   return (
     <AppDataContext.Provider value={contextValue}>
       <div className="pm-root">
         <Header setView={setView} />
-        <Suspense fallback={<Spinner />}>
-          {matchesHook.loading ? (
-            <Spinner />
-          ) : view === "matches" ? (
+        <Suspense
+          fallback={
+            view === "game-center" ? (
+              <BounceLoader label="Chargement du Game Center..." />
+            ) : (
+              <Spinner />
+            )
+          }
+        >
+          {view === "matches" ? (
             <MatchesView />
           ) : view === "players" ? (
             <PlayersView />
@@ -140,7 +160,7 @@ function MainApp() {
           )}
         </Suspense>
         <BottomNav view={view} setView={setView} />
-        {!matchesHook.loading && <PostMatchPrompt />}
+        <PostMatchPrompt />
       </div>
     </AppDataContext.Provider>
   );
@@ -157,11 +177,7 @@ export default function PadelManagerApp() {
   }, []);
 
   if (!authIsReady) {
-    return (
-      <div className="pm-root flex items-center justify-center min-h-screen">
-        <Spinner />
-      </div>
-    );
+    return <BounceLoader fullScreen />;
   }
 
   return (
