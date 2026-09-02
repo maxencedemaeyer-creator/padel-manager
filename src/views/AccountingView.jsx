@@ -12,8 +12,8 @@ import { getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "..
 import { getCreditorAccounting, getCreditorClaims, participantsOf } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
-import { Card, EmptyState } from "../components/ui";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
+import { CreditorPaymentsModal } from "../components/accounting/CreditorPaymentsModal";
 
 export function AccountingView() {
   const { connectedPlayer, players, matches, abonnements, clubs } = useAppData();
@@ -24,10 +24,15 @@ export function AccountingView() {
   // puis clé de la ligne en cours d'écriture Firestore (clic 2 confirmé).
   const [confirmingKey, setConfirmingKey] = useState(null);
   const [savingKey, setSavingKey] = useState(null);
-  const { totalPaidPastMatches, selfReimbursed, paymentsReceived } = getCreditorAccounting(
-    connectedPlayer.id,
-    matches
-  );
+  // Modale de détail des remboursements (bloc 4) : "past" | "upcoming" | null.
+  const [paymentsModalTab, setPaymentsModalTab] = useState(null);
+  const {
+    totalPaidPastMatches,
+    totalPaidUpcomingMatches,
+    selfReimbursed,
+    paymentsReceived,
+    paymentsReceivedUpcoming,
+  } = getCreditorAccounting(connectedPlayer.id, matches);
 
   // Créance(s) de départ — chantier du 02/09/2026 : un créancier peut
   // désormais cumuler plusieurs abonnements (une créance par abonnement où
@@ -92,6 +97,16 @@ export function AccountingView() {
   const unpaidAmount = unpaidPast.reduce((s, p) => s + p.fee, 0);
   const unpaidCount = unpaidPast.length;
   const allSettled = unpaidCount === 0;
+
+  // Bloc 4 — remboursements par les autres joueurs, même découpage à 3
+  // colonnes que le bloc 3 : total à gauche = somme des deux colonnes de
+  // détail. Le nombre de matchs de chaque colonne compte les matchs
+  // DISTINCTS concernés (et non le nombre de paiements) — cohérent avec le
+  // "nombre de matchs" affiché dans "Ma consommation personnelle".
+  const totalReceivedAll = totalPaidPastMatches + totalPaidUpcomingMatches;
+  const pastMatchesReceivedCount = new Set(paymentsReceived.map((p) => p.matchId)).size;
+  const upcomingMatchesReceivedCount = new Set(paymentsReceivedUpcoming.map((p) => p.matchId)).size;
+  const totalMatchesReceivedCount = pastMatchesReceivedCount + upcomingMatchesReceivedCount;
 
   // Bloc 5 — synthèse : créance − (ma saison) − (déjà perçu des autres).
   const remainingNet = advanced - selfSeasonTotal - totalPaidPastMatches;
@@ -339,18 +354,99 @@ export function AccountingView() {
         </div>
       </div>
 
-      {/* 4. Remboursements par les tiers — un seul chiffre, factuel : ce qui
-          a déjà été réellement encaissé. */}
+      {/* 4. Remboursements par les autres joueurs — même présentation à 3
+          colonnes que "Ma consommation personnelle" : total perçu mis en
+          évidence à gauche (= somme des 2 colonnes suivantes), puis déjà
+          perçu (matchs passés) / perçu d'avance (matchs à venir). Ces 2
+          dernières colonnes sont cliquables et ouvrent le détail nominatif
+          (CreditorPaymentsModal), groupé par joueur pour rester lisible même
+          avec des dizaines de remboursements. */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Remboursements par les autres joueurs
       </p>
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-5">
-        <Icon.CheckCircle className="w-4 h-4 text-emerald-600 mb-2" />
-        <p className="pm-display text-xl font-extrabold" style={{ color: "#1F2937" }}>
-          {totalPaidPastMatches.toLocaleString("fr-FR")} €
-        </p>
-        <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+        <div className="grid grid-cols-3 divide-x divide-slate-100">
+          <div className="p-2 sm:p-4" style={{ backgroundColor: "#1F2937" }}>
+            <Icon.Coin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 mb-1 sm:mb-2" />
+            <p className="pm-display text-sm sm:text-2xl font-extrabold text-white leading-tight">
+              {totalReceivedAll.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 leading-tight">
+              Total des remboursements perçus
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-white/40 mt-1">
+              {totalMatchesReceivedCount} match{totalMatchesReceivedCount > 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => paymentsReceived.length > 0 && setPaymentsModalTab("past")}
+            disabled={paymentsReceived.length === 0}
+            className="p-2 sm:p-4 text-left hover:bg-emerald-50/60 active:bg-emerald-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
+          >
+            <Icon.CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 mb-1 sm:mb-2" />
+            <p
+              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
+              style={{ color: "#1F2937" }}
+            >
+              {totalPaidPastMatches.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
+              Déjà perçu (matchs passés)
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
+              {pastMatchesReceivedCount} match{pastMatchesReceivedCount > 1 ? "s" : ""}
+              {paymentsReceived.length > 0 && <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => paymentsReceivedUpcoming.length > 0 && setPaymentsModalTab("upcoming")}
+            disabled={paymentsReceivedUpcoming.length === 0}
+            className="p-2 sm:p-4 text-left hover:bg-sky-50/60 active:bg-sky-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
+          >
+            <Icon.Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600 mb-1 sm:mb-2" />
+            <p
+              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
+              style={{ color: "#1F2937" }}
+            >
+              {totalPaidUpcomingMatches.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
+              Perçu d'avance (matchs à venir)
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
+              {upcomingMatchesReceivedCount} match{upcomingMatchesReceivedCount > 1 ? "s" : ""}
+              {paymentsReceivedUpcoming.length > 0 && (
+                <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />
+              )}
+            </p>
+          </button>
+        </div>
       </div>
+
+      {paymentsModalTab === "past" && (
+        <CreditorPaymentsModal
+          title="Remboursements reçus — matchs passés"
+          subtitle={`${pastMatchesReceivedCount} match${pastMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidPastMatches.toLocaleString("fr-FR")} € au total`}
+          payments={paymentsReceived}
+          players={players}
+          accent="emerald"
+          sortDir="desc"
+          onClose={() => setPaymentsModalTab(null)}
+        />
+      )}
+      {paymentsModalTab === "upcoming" && (
+        <CreditorPaymentsModal
+          title="Remboursements reçus — matchs à venir"
+          subtitle={`${upcomingMatchesReceivedCount} match${upcomingMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidUpcomingMatches.toLocaleString("fr-FR")} € au total`}
+          payments={paymentsReceivedUpcoming}
+          players={players}
+          accent="sky"
+          sortDir="asc"
+          onClose={() => setPaymentsModalTab(null)}
+        />
+      )}
 
       {/* 5. Synthèse — reste net à récupérer. */}
       <div
@@ -377,33 +473,6 @@ export function AccountingView() {
           {totalPaidPastMatches.toLocaleString("fr-FR")} €
         </p>
       </div>
-
-      <h3 className="font-semibold text-sm text-slate-500 mb-3">
-        Paiements reçus (matchs passés)
-      </h3>
-      {paymentsReceived.length === 0 ? (
-        <EmptyState
-          icon={<Icon.Coin className="w-6 h-6" />}
-          title="Aucun paiement enregistré pour l'instant"
-          subtitle="Les paiements que vous confirmez depuis l'onglet Matchs apparaîtront ici."
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {paymentsReceived.map((p, i) => (
-            <Card key={i} className="p-3.5 flex items-center gap-3">
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold truncate">{p.name}</span>
-                <span className="block text-xs text-[var(--color-text-faint)]">
-                  {formatDateFR(p.date)}
-                </span>
-              </span>
-              <span className="pm-mono font-bold text-emerald-600 text-sm shrink-0">
-                +{p.fee.toLocaleString("fr-FR")} €
-              </span>
-            </Card>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
