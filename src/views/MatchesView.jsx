@@ -19,6 +19,7 @@ import { EmptyState } from "../components/ui";
 import { isCompositionPublished } from "../lib/composition";
 import { MyMatchSummary } from "../components/matches/MyMatchSummary";
 import { SessionCard, LastMatchCard, AvailabilitySessionCard } from "../components/matches/SessionCard";
+import { CourtPanel } from "../components/matches/CourtPanel";
 import { CreateMatchModal } from "../components/matches/CreateMatchModal";
 
 // Nombre max de jours après la date de connexion pendant lesquels un match à
@@ -42,7 +43,16 @@ export function MatchesView() {
   // supprimé : réactiver l'abonnement les fait immédiatement réapparaître.
   const matches = excludeArchivedSeasonMatches(allMatches, abonnements);
 
-  const sortedByStart = [...matches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
+  // Matchs reportés "à une date inconnue" (voir MatchSettingsModals.jsx →
+  // "Reporter à une date inconnue") : sortis du flux chronologique habituel
+  // — leur ancienne date, gardée en base mais ignorée (voir getMatchTiming
+  // → "tbd"), ne doit plus jamais servir à les classer "à venir" / "terminé"
+  // — et affichés à part, dans leur propre section, pour qu'ils restent
+  // visibles de tous tant qu'une nouvelle date ne leur a pas été attribuée.
+  const tbdMatches = matches.filter((m) => m.dateTBD);
+  const datedMatches = matches.filter((m) => !m.dateTBD);
+
+  const sortedByStart = [...datedMatches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
   const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
   const finishedDesc = sortedByStart
     .filter((m) => getMatchTiming(m, now) === "finished")
@@ -86,6 +96,19 @@ export function MatchesView() {
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
       <MyMatchSummary now={now} />
+
+      {tbdMatches.length > 0 && (
+        <div className="mb-6">
+          <h3 className="font-semibold text-sm text-white mb-2">
+            Matchs à reprogrammer
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {tbdMatches.map((m) => (
+              <CourtPanel key={m.id} match={m} now={now} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {lastGroup.length > 0 && (
         <div className="mb-6">
