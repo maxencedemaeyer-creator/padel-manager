@@ -14,6 +14,7 @@ import {
   getCourtSlots,
   daysUntilMatch,
   getSessionCreditorIds,
+  isPlayerMatchCreditor,
 } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -56,6 +57,13 @@ export function CourtPanel({ match, now }) {
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
   const tbd = timing === "tbd";
+  // Un créancier (de ce match précis, ou global à défaut de données de
+  // session — voir isPlayerMatchCreditor) peut, uniquement tant que ce match
+  // est "à une date inconnue", lui attribuer lui-même une nouvelle date sans
+  // passer par un admin (voir le bouton ⚙️ plus bas, et
+  // MatchSettingsModals.jsx → CourtSettingsMenu `dateOnly`).
+  const isMatchCreditor = isPlayerMatchCreditor(match, matches, players, connectedPlayer.id);
+  const canManageTBDDate = !isAdmin && tbd && isMatchCreditor;
   const scoreEntered = hasMatchScore(match);
   // Seuls les matchs de la saison en cours ("Saison") ont un système de
   // paiement/créances ; les matchs ponctuels ajoutés en plus n'en ont pas.
@@ -241,11 +249,11 @@ export function CourtPanel({ match, now }) {
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge match={match} now={now} />
           </div>
-          {isAdmin && (
+          {(isAdmin || canManageTBDDate) && (
             <button
               type="button"
               onClick={() => setShowSettingsMenu(true)}
-              aria-label="Paramètres du terrain"
+              aria-label={canManageTBDDate ? "Attribuer une nouvelle date" : "Paramètres du terrain"}
               className="p-1.5 rounded-full bg-white/90 border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-blue)] hover:border-[var(--color-blue)]/40"
             >
               <Icon.Settings className="w-3.5 h-3.5" />
@@ -342,6 +350,7 @@ export function CourtPanel({ match, now }) {
       {showSettingsMenu && (
         <CourtSettingsMenu
           onClose={() => setShowSettingsMenu(false)}
+          dateOnly={!isAdmin}
           onPickDateTime={() => {
             setShowSettingsMenu(false);
             setShowDateTime(true);
