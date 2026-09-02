@@ -47,26 +47,35 @@ export function getCreditorAccounting(creditorId, matches) {
   return { totalPaidAllTime, totalPaidPastMatches, selfReimbursed, paymentsReceived };
 }
 
-// Estimation du nombre de matchs couverts par la "créance de départ" d'un
-// créancier, à partir de trois informations indicatives renseignées sur sa
-// fiche joueur : `advancedAmountPeriodStart`, `advancedAmountPeriodEnd` et
-// `advancedAmountCourts`. On compte le nombre de séances "Saison"
-// réellement enregistrées dans cette période (une séance = une date
-// distincte), multiplié par le nombre de terrains couverts. Retourne null
-// tant que les trois informations ne sont pas toutes renseignées — c'est
-// un indicateur, pas un décompte contractuel exact.
-export function getCoveredMatchesEstimate(creditor, matches) {
-  const start = creditor?.advancedAmountPeriodStart;
-  const end = creditor?.advancedAmountPeriodEnd;
-  const courts = creditor?.advancedAmountCourts;
-  if (!start || !end || !courts) return null;
-
-  const sessionDates = new Set(
-    matches
-      .filter((m) => m.type === "Saison" && m.date >= start && m.date <= end)
-      .map((m) => m.date)
-  );
-  return sessionDates.size * courts;
+// Créances de départ d'un créancier — une par abonnement où il apparaît
+// dans `abonnement.creditors[]` (voir CreateSeasonModal.jsx : les
+// créanciers et leur montant avancé sont désormais définis À LA GÉNÉRATION
+// d'un abonnement, pas via un champ unique sur la fiche joueur). Un même
+// créancier peut cumuler plusieurs abonnements (ex. deux terrains
+// différents, ou une reconduction) — d'où une LISTE de créances plutôt
+// qu'un seul montant. Le nombre de matchs couverts par chaque créance est
+// désormais un décompte EXACT (les matchs générés portent `abonnementId`),
+// et non plus une estimation par période de dates.
+export function getCreditorClaims(creditorId, abonnements, matches) {
+  const claims = (abonnements || [])
+    .filter((a) => (a.creditors || []).some((c) => c.playerId === creditorId))
+    .map((a) => {
+      const entry = a.creditors.find((c) => c.playerId === creditorId);
+      const coveredMatches = matches.filter((m) => m.abonnementId === a.id).length;
+      return {
+        abonnementId: a.id,
+        label: a.label || null,
+        clubId: a.clubId || null,
+        courts: a.courts || [],
+        startDate: a.startDate || null,
+        endDate: a.endDate || null,
+        amount: entry?.advancedAmount || 0,
+        coveredMatches,
+      };
+    })
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+  const total = claims.reduce((s, c) => s + (c.amount || 0), 0);
+  return { claims, total };
 }
 
 // Statistiques d'un joueur — uniquement sur les matchs déjà terminés.
@@ -267,6 +276,3 @@ export function computeHeadToHead(idA, idB, matches) {
 
   return { asOpponents, winsA, winsB, undecided, asPartners, partnerWins };
 }
-
-// Garde l'affichage à jour minute par minute (un match "à venir" doit basculer
-// tout seul en "terminé" sans que personne n'ait à rafraîchir la page).
