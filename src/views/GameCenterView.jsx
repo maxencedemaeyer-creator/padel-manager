@@ -11,6 +11,7 @@ import { Card } from "../components/ui";
 import { TourneeGeneraleModal } from "../components/games/TourneeGeneraleModal";
 import { KillerModal } from "../components/games/KillerModal";
 import { BrickBreakerModal } from "../components/games/BrickBreakerModal";
+import { MvpVoteModal } from "../components/games/MvpVoteModal";
 
 export function GameCenterView() {
   // Jeu actuellement ouvert en fenêtre modale, ou null si aucun.
@@ -27,7 +28,7 @@ export function GameCenterView() {
         petit à petit.
       </p>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <button type="button" onClick={() => setOpenGame("tournee-generale")} className="text-left">
           <Card className="p-4 flex flex-col items-center gap-2 hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all">
             <span className="text-2xl leading-none">🍻</span>
@@ -54,6 +55,15 @@ export function GameCenterView() {
             </span>
           </Card>
         </button>
+
+        <button type="button" onClick={() => setOpenGame("mvp")} className="text-left">
+          <Card className="p-4 flex flex-col items-center gap-2 hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all">
+            <span className="text-2xl leading-none">🥇</span>
+            <span className="text-[10px] font-semibold text-[var(--color-text)] text-center leading-tight">
+              Homme du match
+            </span>
+          </Card>
+        </button>
       </div>
 
       {openGame === "tournee-generale" && (
@@ -63,6 +73,7 @@ export function GameCenterView() {
       {openGame === "brick-breaker" && (
         <BrickBreakerModal onClose={() => setOpenGame(null)} />
       )}
+      {openGame === "mvp" && <MvpVoteModal onClose={() => setOpenGame(null)} />}
     </div>
   );
 }
