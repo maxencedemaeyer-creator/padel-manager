@@ -12,11 +12,13 @@ import {
   getMatchStart,
   getMatchTiming,
   groupMatchesBySession,
+  isPlayerMatchCreditor,
 } from "../../lib/matchLogic";
 import { getSessionAvailability } from "../../lib/availability";
 import { computePlayerStats } from "../../lib/stats";
 import { findRecentMvpWin } from "../../lib/mvp";
 import { useAppData } from "../../context/AppContext";
+import Icon from "../icons/Icon";
 
 // Mêmes valeurs que dans MatchesView pour repérer "les 2 prochains matchs"
 // exactement comme la liste "Prochains matchs" affichée juste en dessous
@@ -25,7 +27,23 @@ const UPCOMING_WINDOW_DAYS = 15;
 const UPCOMING_SESSIONS_COUNT = 2;
 
 export function MyMatchSummary({ now }) {
-  const { connectedPlayer, players, matches } = useAppData();
+  const { connectedPlayer, players, matches, isAdmin } = useAppData();
+
+  // Matchs "à une date inconnue" (voir MatchSettingsModals.jsx → "Reporter
+  // à une date inconnue") que CE joueur a le droit de gérer — admin, ou
+  // créancier du match concerné (voir isPlayerMatchCreditor). Sert
+  // uniquement à afficher le petit bouton d'alerte ci-dessous : pour tout
+  // autre joueur, ce tableau reste vide et aucun bouton n'apparaît (voir
+  // MatchesView.jsx, section "Matchs à reprogrammer", où ces mêmes matchs
+  // sont affichés en détail — visibilité identique, calculée pareil).
+  const tbdMatchesToHandle = matches.filter(
+    (m) => m.dateTBD && (isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id))
+  );
+  const scrollToReprogramSection = () => {
+    document
+      .getElementById("matchs-a-reprogrammer")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // Jeu "Homme du match" (Game Center) — le joueur élu voit apparaître un
   // message de félicitations ici, dès la publication des résultats et
@@ -136,8 +154,24 @@ export function MyMatchSummary({ now }) {
   }
 
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
-      <p className="pm-display font-bold text-lg mb-1">
+    <div className="relative rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
+      {tbdMatchesToHandle.length > 0 && (
+        <button
+          type="button"
+          onClick={scrollToReprogramSection}
+          aria-label={`${tbdMatchesToHandle.length} match${
+            tbdMatchesToHandle.length > 1 ? "s" : ""
+          } à reprogrammer — voir`}
+          title="Match(s) à reprogrammer"
+          className="absolute top-3 right-3 p-2 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all"
+        >
+          <Icon.Calendar className="w-4 h-4" />
+          <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">
+            !
+          </span>
+        </button>
+      )}
+      <p className="pm-display font-bold text-lg mb-1 pr-8">
         Bonjour {getFirstName(connectedPlayer.name)} 👋
       </p>
       {mvpWinMatch && (
