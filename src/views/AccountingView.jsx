@@ -9,15 +9,17 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
-import { getCreditorAccounting, getCoveredMatchesEstimate, participantsOf } from "../lib/stats";
+import { getCreditorAccounting, getCreditorClaims, participantsOf } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, EmptyState } from "../components/ui";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 
 export function AccountingView() {
-  const { connectedPlayer, players, matches } = useAppData();
-  const [showClaimSettings, setShowClaimSettings] = useState(false);
+  const { connectedPlayer, players, matches, abonnements, clubs } = useAppData();
+  // Créance en cours d'édition — l'objet "claim" (voir getCreditorClaims)
+  // porte l'abonnementId nécessaire pour rouvrir ClaimSettingsModal dessus.
+  const [editingClaim, setEditingClaim] = useState(null);
   // Détail des impayés : clé de la ligne en attente de confirmation (clic 1)
   // puis clé de la ligne en cours d'écriture Firestore (clic 2 confirmé).
   const [confirmingKey, setConfirmingKey] = useState(null);
@@ -26,18 +28,11 @@ export function AccountingView() {
     connectedPlayer.id,
     matches
   );
-  const advanced = connectedPlayer.advancedAmount || 0;
 
-  // Informations indicatives de la créance de départ : période couverte,
-  // nombre de terrains, et nombre de matchs couverts calculé automatiquement
-  // à partir des séances réellement enregistrées sur cette période.
-  const claimPeriodLabel = formatClaimPeriodLabel(
-    connectedPlayer.advancedAmountPeriodStart,
-    connectedPlayer.advancedAmountPeriodEnd
-  );
-  const claimCourts = connectedPlayer.advancedAmountCourts;
-  const coveredMatches = getCoveredMatchesEstimate(connectedPlayer, matches);
-  const hasClaimDetails = Boolean(claimPeriodLabel) || claimCourts != null;
+  // Créance(s) de départ — chantier du 02/09/2026 : un créancier peut
+  // désormais cumuler plusieurs abonnements (une créance par abonnement où
+  // il figure), au lieu d'un seul montant global sur sa fiche joueur.
+  const { claims, total: advanced } = getCreditorClaims(connectedPlayer.id, abonnements, matches);
 
   const creditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
@@ -205,51 +200,77 @@ export function AccountingView() {
         </div>
       )}
 
-      {/* 2. Créance de départ — modifiable par le créancier lui-même ou par
-          un administrateur, via la roulette de réglages. */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Icon.Wallet className="w-5 h-5 text-sky-600" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Créance de départ
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowClaimSettings(true)}
-            className="p-1.5 -m-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-            title="Modifier la créance de départ"
-          >
-            <Icon.Settings className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="pm-display text-3xl font-extrabold" style={{ color: "#1F2937" }}>
-          {advanced.toLocaleString("fr-FR")} €
-        </p>
-        <p className="text-xs text-slate-500 mt-1">
-          Votre investissement initial pour la réservation du terrain annuel.
-        </p>
-
-        {hasClaimDetails && (
-          <p className="text-[10px] text-slate-400 mt-2.5 pt-2.5 border-t border-slate-100">
-            {[
-              claimPeriodLabel,
-              claimCourts != null &&
-                `${claimCourts} terrain${claimCourts > 1 ? "s" : ""} couvert${claimCourts > 1 ? "s" : ""}`,
-              coveredMatches != null &&
-                `≈ ${coveredMatches} match${coveredMatches > 1 ? "s" : ""} couvert${coveredMatches > 1 ? "s" : ""}`,
-            ]
-              .filter(Boolean)
-              .join("  ·  ")}
+      {/* 2. Créance(s) de départ — une carte par abonnement où je figure
+          comme créancier (chantier du 02/09/2026 : je peux désormais en
+          cumuler plusieurs). Chaque carte reste modifiable via sa roulette
+          de réglages, par moi-même ou par un administrateur. */}
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+        Créance de départ
+      </p>
+      {claims.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-5">
+          <p className="pm-display text-3xl font-extrabold" style={{ color: "#1F2937" }}>
+            0 €
           </p>
-        )}
-      </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Aucune créance enregistrée pour l'instant — elle est désormais définie lors de la
+            génération d'un abonnement, depuis l'onglet Administration.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 mb-5">
+          {claims.map((claim) => {
+            const club = clubs.find((c) => c.id === claim.clubId);
+            const periodLabel = formatClaimPeriodLabel(claim.startDate, claim.endDate);
+            return (
+              <div
+                key={claim.abonnementId}
+                className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-500 truncate">
+                    {claim.label || club?.name || "Abonnement"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingClaim(claim)}
+                    className="p-1.5 -m-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+                    title="Modifier cette créance"
+                  >
+                    <Icon.Settings className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="pm-display text-2xl font-extrabold" style={{ color: "#1F2937" }}>
+                  {claim.amount.toLocaleString("fr-FR")} €
+                </p>
+                <p className="text-[10px] text-slate-400 mt-2.5 pt-2.5 border-t border-slate-100">
+                  {[
+                    club?.name,
+                    (claim.courts || []).length > 0 &&
+                      `Terrain${claim.courts.length > 1 ? "s" : ""} ${claim.courts.join(", ")}`,
+                    periodLabel,
+                    `${claim.coveredMatches} match${claim.coveredMatches > 1 ? "s" : ""} couvert${claim.coveredMatches > 1 ? "s" : ""}`,
+                  ]
+                    .filter(Boolean)
+                    .join("  ·  ")}
+                </p>
+              </div>
+            );
+          })}
+          {claims.length > 1 && (
+            <p className="text-xs text-slate-500 px-1">
+              Total : <span className="font-bold">{advanced.toLocaleString("fr-FR")} €</span>
+            </p>
+          )}
+        </div>
+      )}
 
-      {showClaimSettings && (
+      {editingClaim && (
         <ClaimSettingsModal
-          creditor={connectedPlayer}
-          onClose={() => setShowClaimSettings(false)}
+          creditorId={connectedPlayer.id}
+          creditorName={connectedPlayer.name}
+          abonnement={abonnements.find((a) => a.id === editingClaim.abonnementId)}
+          onClose={() => setEditingClaim(null)}
         />
       )}
 
@@ -310,16 +331,7 @@ export function AccountingView() {
       </div>
 
       {/* 4. Remboursements par les tiers — un seul chiffre, factuel : ce qui
-          a déjà été réellement encaissé. L'ancienne case "À percevoir
-          (engagé, matchs à venir)" a été retirée (30/08/2026) : elle
-          comptait tous les non-créanciers de tous les matchs à venir, sans
-          savoir lequel d'entre eux paiera réellement CE créancier-ci (le
-          creditorId n'existe qu'une fois le paiement confirmé) — un chiffre
-          structurellement faux dès qu'il y a plusieurs créanciers, et
-          trompeur même à un seul. La vraie réponse à "combien vais-je
-          encore toucher au total" est le bloc "Reste net à récupérer"
-          plus bas, qui se déduit de la créance et non d'un comptage
-          de joueurs. */}
+          a déjà été réellement encaissé. */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Remboursements par les autres joueurs
       </p>
@@ -331,17 +343,7 @@ export function AccountingView() {
         <p className="text-xs text-slate-500 mt-0.5">Déjà perçu (matchs passés)</p>
       </div>
 
-      {/* 5. Synthèse — reste net à récupérer. Le détail du calcul est affiché
-          sous le montant (créance − ma saison − déjà perçu) pour que ce soit
-          vérifiable d'un coup d'œil : si ce montant paraît faux, c'est
-          presque toujours que la "Créance de départ" ci-dessus n'a pas
-          encore été renseignée (elle vaut 0 par défaut tant qu'elle n'est
-          pas éditée via la roulette de réglages).
-          Note (30/08/2026) : le concept d'"ajustement manuel" a été retiré
-          de toute l'app à la demande de l'utilisateur (bloc jugé pas
-          instinctif, source de confusion — voir notes du projet). Toute
-          correction passe désormais uniquement par "Marquer payé" sur le
-          match concerné, dans la liste des impayés plus haut. */}
+      {/* 5. Synthèse — reste net à récupérer. */}
       <div
         className="rounded-2xl shadow-md p-5 mb-6 text-white"
         style={{ background: "linear-gradient(135deg, #0284C7, #4338CA)" }}
