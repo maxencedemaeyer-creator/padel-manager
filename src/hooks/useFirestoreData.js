@@ -69,6 +69,72 @@ export function useMatches() {
   return { matches, loading };
 }
 
+// Abonnements (ex-"saisons") — un document par lot généré depuis "Créer un
+// abonnement" (voir CreateSeasonModal.jsx) : club, terrain(s), période,
+// récurrence, tarif, et la liste des créanciers + leur créance de départ
+// pour ce lot précis. Chaque match généré référence son abonnement via
+// `match.abonnementId` — voir lib/stats.js (getCreditorClaims).
+export function useAbonnements() {
+  const [abonnements, setAbonnements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      const q = query(collection(db, "abonnements"), orderBy("startDate", "asc"));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          setAbonnements(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+        },
+        (error) => {
+          console.error(error);
+          setLoading(false);
+        }
+      );
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+    return () => unsub();
+  }, []);
+
+  return { abonnements, loading };
+}
+
+// Clubs — entités réutilisables lors de la génération d'un abonnement
+// (nom, adresse et logo optionnels, éditables depuis "Administration" →
+// "Clubs", voir ManageClubsModal.jsx).
+export function useClubs() {
+  const [clubs, setClubs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      const q = query(collection(db, "clubs"), orderBy("name", "asc"));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          setClubs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+        },
+        (error) => {
+          console.error(error);
+          setLoading(false);
+        }
+      );
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+    return () => unsub();
+  }, []);
+
+  return { clubs, loading };
+}
+
 // Réglages globaux de l'app (document unique "settings/appConfig") — pour
 // l'instant, uniquement l'activation du Fun Center pour tous les joueurs
 // (voir src/views/AdminView.jsx). Par défaut (document absent ou champ
