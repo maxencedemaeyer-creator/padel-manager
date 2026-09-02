@@ -27,6 +27,9 @@ import { PaymentModal } from "./PaymentModal";
 
 function StatusBadge({ match, now }) {
   const timing = getMatchTiming(match, now);
+  // Match reporté "à une date inconnue" (voir MatchSettingsModals.jsx) :
+  // pastille dédiée, prioritaire sur tout calcul basé sur l'ancienne date.
+  if (timing === "tbd") return <Badge tone="unpaid">⏳ Date à définir</Badge>;
   if (timing === "ongoing")
     return (
       <Badge tone="lime" className="pm-pulse">
@@ -52,6 +55,7 @@ export function CourtPanel({ match, now }) {
   const isParticipant = participants.some((p) => p.playerId === connectedPlayer.id);
   const timing = getMatchTiming(match, now);
   const finished = timing === "finished";
+  const tbd = timing === "tbd";
   const scoreEntered = hasMatchScore(match);
   // Seuls les matchs de la saison en cours ("Saison") ont un système de
   // paiement/créances ; les matchs ponctuels ajoutés en plus n'en ont pas.
@@ -204,7 +208,8 @@ export function CourtPanel({ match, now }) {
     <Card
       className={cn(
         "p-4 pm-rise",
-        isParticipant && "border-[var(--color-lime)]/40"
+        isParticipant && "border-[var(--color-lime)]/40",
+        tbd && "border-amber-300 bg-amber-50/40"
       )}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
