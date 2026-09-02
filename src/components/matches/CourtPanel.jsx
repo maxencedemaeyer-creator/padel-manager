@@ -124,8 +124,15 @@ export function CourtPanel({ match, now }) {
     }
   };
 
+  // Depuis le chantier du 02/09/2026 : les créanciers "couvrant" ce match
+  // sont ceux figés à sa génération (`match.creditorIds`, voir
+  // CreateSeasonModal.jsx), pas la liste globale des créanciers de l'app —
+  // un report de ce match (date/heure) ne change jamais ce résultat. Un
+  // match plus ancien sans ce champ retombe sur l'ancien comportement.
   const creditorPlayerIds = new Set(
-    players.filter((p) => p.isCreditor === true).map((p) => p.id)
+    Array.isArray(match.creditorIds) && match.creditorIds.length > 0
+      ? match.creditorIds
+      : players.filter((p) => p.isCreditor === true).map((p) => p.id)
   );
   const playerById = (id) => players.find((p) => p.id === id);
   const slots = getCourtSlots(match);
