@@ -181,3 +181,22 @@ export function getSessionCreditorIds(match, allMatches, sessionGroups = null) {
   if (!hasAnyCreditorIds) return null;
   return new Set(session.flatMap((m) => (Array.isArray(m.creditorIds) ? m.creditorIds : [])));
 }
+
+// Matchs à exclure de l'affichage "en direct" (onglet Matchs) parce que leur
+// abonnement a été clôturé/archivé depuis Administration (voir
+// views/AdminView.jsx → section "Gestion des abonnements", ajoutée le
+// 02/09/2026 soir). Un abonnement archivé garde TOUJOURS tous ses matchs
+// intacts dans Firestore — rien n'est supprimé, Stats / Comptabilité /
+// Administration continuent de tout calculer normalement dessus (ils lisent
+// `matches` directement depuis le contexte, jamais via cette fonction) —
+// seul l'onglet Matchs les masque, pour ranger une saison terminée et déjà
+// entièrement réglée sans polluer la liste au quotidien. Un match sans
+// `abonnementId` (match ponctuel créé à la volée, ou donnée très ancienne)
+// n'est jamais concerné.
+export function excludeArchivedSeasonMatches(matches, abonnements) {
+  const archivedIds = new Set(
+    (abonnements || []).filter((a) => a.archived === true).map((a) => a.id)
+  );
+  if (archivedIds.size === 0) return matches;
+  return matches.filter((m) => !m.abonnementId || !archivedIds.has(m.abonnementId));
+}
