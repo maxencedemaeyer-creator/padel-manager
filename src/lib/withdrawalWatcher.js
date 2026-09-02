@@ -3,12 +3,22 @@
 // components/matches/CourtPanel.jsx pour où les dossiers "withdrawals" sont
 // créés (selfLeave), et components/layout/Header.jsx pour la clochette.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { collection, doc, getDocs, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { WITHDRAWAL_ALERT_WINDOW_HOURS } from "./constants";
 
-async function resolvePendingWithdrawals() {
+// `matches` est fourni par l'appelant (useWithdrawalWatcher), lui-même
+// alimenté par le flux temps réel déjà ouvert par useMatches() (voir
+// src/hooks/useFirestoreData.js) — on ne refait plus ici un getDocs séparé
+// sur toute la collection "matches". Avant ce changement, cette fonction
+// retéléchargeait TOUS les matchs de l'app depuis Firestore à chaque
+// ouverture ET toutes les 60 secondes tant qu'un onglet restait ouvert, en
+// plus du flux temps réel déjà utilisé par le reste de l'app pour la même
+// donnée — un des principaux facteurs de lenteur au chargement (voir aussi
+// usePresenceAutoAbsentWatcher dans presenceWatcher.js, qui faisait la même
+// chose).
+async function resolvePendingWithdrawals(matches) {
   try {
     const pendingSnap = await getDocs(
       query(collection(db, "withdrawals"), where("resolved", "==", false))
@@ -21,8 +31,7 @@ async function resolvePendingWithdrawals() {
     );
     if (dueDocs.length === 0) return;
 
-    const matchesSnap = await getDocs(collection(db, "matches"));
-    const freshMatches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const freshMatches = matches || [];
 
     for (const docSnap of dueDocs) {
       const w = docSnap.data();
@@ -60,11 +69,19 @@ async function resolvePendingWithdrawals() {
   }
 }
 
-export function useWithdrawalWatcher() {
+// `matches` : tableau à jour venant de useMatches() côté appelant (voir
+// src/App.tsx) — gardé dans une ref pour que l'intervalle (créé une seule
+// fois) utilise toujours la dernière version reçue, sans avoir à recréer le
+// setInterval à chaque mise à jour des matchs.
+export function useWithdrawalWatcher(matches) {
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
+
   useEffect(() => {
-    resolvePendingWithdrawals();
-    const interval = setInterval(resolvePendingWithdrawals, 60000);
+    resolvePendingWithdrawals(matchesRef.current);
+    const interval = setInterval(() => resolvePendingWithdrawals(matchesRef.current), 60000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 
