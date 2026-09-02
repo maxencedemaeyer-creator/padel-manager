@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { useMatches, useAppSettings } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
+import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
 import { Spinner } from "./components/ui";
 import { authReady } from "./firebase";
@@ -43,6 +44,7 @@ function MainApp() {
   const settingsHook = useAppSettings();
   const [view, setView] = useState("matches");
   useWithdrawalWatcher();
+  usePresenceAutoAbsentWatcher();
   const appData = useAppData();
 
   // Mémoïsation : sans elle, un nouvel objet de contexte était recréé à
