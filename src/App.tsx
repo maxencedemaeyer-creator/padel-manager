@@ -9,12 +9,37 @@ import { useMatches, useAppSettings, useAbonnements, useClubs } from "./hooks/us
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
-import { Spinner } from "./components/ui";
+import { Spinner, Button } from "./components/ui";
 import { authReady } from "./firebase";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
+import Icon from "./components/icons/Icon";
+
+// Écran plein écran affiché à tous les joueurs non-admin quand le mode
+// maintenance est activé depuis l'onglet Administration (voir
+// src/views/AdminView.jsx, MaintenanceSettingCard). L'administrateur, lui,
+// n'est jamais bloqué : c'est le seul moyen de désactiver la maintenance.
+function MaintenanceScreen() {
+  const { logout } = useAppData();
+
+  return (
+    <div className="pm-root min-h-screen flex flex-col items-center justify-center px-6 py-10 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-300/40 flex items-center justify-center mb-5 text-rose-500">
+        <Icon.AlertCircle className="w-8 h-8" />
+      </div>
+      <h1 className="pm-display font-extrabold text-2xl mb-2">Maintenance en cours</h1>
+      <p className="text-sm text-[var(--color-text-dim)] max-w-xs mb-8">
+        L'application est momentanément indisponible pour effectuer une mise à jour. Merci de
+        votre patience, ça ne devrait pas être long !
+      </p>
+      <Button variant="secondary" onClick={logout}>
+        Changer de compte
+      </Button>
+    </div>
+  );
+}
 
 // Chargement à la demande (code-splitting) : chaque onglet n'est téléchargé
 // que la première fois qu'on l'ouvre, au lieu de tout charger d'un bloc dès
@@ -68,6 +93,7 @@ function MainApp() {
       ...appData,
       matches: matchesHook.matches,
       gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
+      maintenanceEnabled: settingsHook.settings.maintenanceEnabled,
       abonnements: abonnementsHook.abonnements,
       clubs: clubsHook.clubs,
     }),
@@ -75,10 +101,22 @@ function MainApp() {
       appData,
       matchesHook.matches,
       settingsHook.settings.gameCenterEnabled,
+      settingsHook.settings.maintenanceEnabled,
       abonnementsHook.abonnements,
       clubsHook.clubs,
     ]
   );
+
+  // Mode maintenance : tout le monde est bloqué sur l'écran d'attente, sauf
+  // l'administrateur (qui doit impérativement garder l'accès pour pouvoir
+  // désactiver la maintenance depuis l'onglet Administration).
+  if (settingsHook.settings.maintenanceEnabled && !appData.isAdmin) {
+    return (
+      <AppDataContext.Provider value={contextValue}>
+        <MaintenanceScreen />
+      </AppDataContext.Provider>
+    );
+  }
 
   return (
     <AppDataContext.Provider value={contextValue}>
