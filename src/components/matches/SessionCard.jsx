@@ -82,6 +82,14 @@ export function SessionCard({ sessionMatches, now }) {
   // Admin : modale permettant de modifier la présence (la sienne ou celle
   // d'un autre joueur) sans passer par le placement sur le terrain.
   const [showManagePresence, setShowManagePresence] = useState(false);
+  // Admin : le volet "préparation" (bandeau publier/dépublier, lien
+  // "Modifier une présence", tableau des réponses de présence) est replié
+  // par défaut — l'admin voit alors exactement le même affichage qu'un
+  // joueur normal (terrain(s) + sa propre présence). La flèche en haut à
+  // droite de la carte permet de le déplier pour retrouver la vue complète
+  // actuelle. Replié par défaut = moins de composants montés par carte,
+  // donc plus léger quand il y a beaucoup de matchs à l'écran.
+  const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
   // La composition n'étant affichée (via cette carte) qu'une fois publiée
   // pour les non-admins, ce badge est en pratique toujours visible des
@@ -102,25 +110,47 @@ export function SessionCard({ sessionMatches, now }) {
             </span>
           )}
         </div>
-        <Badge tone="neutral" className="!text-[10px] shrink-0">
-          {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Badge tone="neutral" className="!text-[10px] shrink-0">
+            {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
+          </Badge>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setPrepExpanded((v) => !v)}
+              aria-label={
+                prepExpanded
+                  ? "Masquer le tableau des présences et la publication de la composition"
+                  : "Afficher le tableau des présences et la publication de la composition"
+              }
+              title={prepExpanded ? "Replier la préparation" : "Déplier la préparation"}
+              className="p-1.5 rounded-full bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 hover:text-sky-700 active:scale-95 transition-all"
+            >
+              <Icon.Chevron
+                className={cn("w-3.5 h-3.5 transition-transform", prepExpanded && "rotate-90")}
+              />
+            </button>
+          )}
+        </div>
       </div>
 
-      {isAdmin && <PublishCompositionBar sessionMatches={sessionMatches} />}
+      {isAdmin && prepExpanded && (
+        <>
+          <PublishCompositionBar sessionMatches={sessionMatches} />
 
-      {isAdmin && (
-        <div className="flex items-center justify-end mb-1">
-          <button
-            type="button"
-            onClick={() => setShowManagePresence(true)}
-            className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
-          >
-            Modifier une présence
-          </button>
-        </div>
+          <div className="flex items-center justify-end mb-1">
+            <button
+              type="button"
+              onClick={() => setShowManagePresence(true)}
+              className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
+            >
+              Modifier une présence
+            </button>
+          </div>
+
+          <RespondedPlayersPanel sessionMatches={sessionMatches} />
+        </>
       )}
-      {isAdmin && <RespondedPlayersPanel sessionMatches={sessionMatches} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sessionMatches.map((m) => (
