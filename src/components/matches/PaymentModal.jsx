@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { getCreditorAccounting } from "../../lib/stats";
+import { getCreditorAccounting, getAllCreditorPlayerIds } from "../../lib/stats";
 import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -13,7 +13,7 @@ import { Modal, EmptyState } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PaymentModal({ match, participant, onClose }) {
-  const { players, matches, isAdmin, connectedPlayer } = useAppData();
+  const { players, matches, abonnements, isAdmin, connectedPlayer } = useAppData();
 
   // Chantier du 02/09/2026 (attribution figée) + ajustement du même jour :
   // un joueur peut légitimement avoir à rembourser un créancier qui n'est
@@ -31,7 +31,16 @@ export function PaymentModal({ match, participant, onClose }) {
   const sessionCreditorIds = getSessionCreditorIds(match, matches);
   const hasAnyCreditorIds = sessionCreditorIds !== null;
 
-  const allCreditors = players.filter((p) => p.isCreditor === true);
+  // Corrigé le 02/09/2026 (audit paiements) : un joueur reste proposable ici
+  // s'il est ACTUELLEMENT coché "Créancier", OU s'il a financé un abonnement
+  // par le passé (`abonnement.creditors[]`, voir getAllCreditorPlayerIds) —
+  // même si la case a depuis été décochée sur sa fiche. Sinon, décocher
+  // "Créancier" rendait impossible d'attribuer un paiement pour ses anciens
+  // matchs déjà financés : il disparaissait purement et simplement des deux
+  // listes ci-dessous.
+  const allCreditors = players.filter((p) =>
+    getAllCreditorPlayerIds(players, abonnements).has(p.id)
+  );
   const suggested = hasAnyCreditorIds
     ? allCreditors.filter((c) => sessionCreditorIds.has(c.id))
     : allCreditors;
