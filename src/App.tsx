@@ -43,8 +43,17 @@ function MainApp() {
   const matchesHook = useMatches();
   const settingsHook = useAppSettings();
   const [view, setView] = useState("matches");
-  useWithdrawalWatcher();
-  usePresenceAutoAbsentWatcher();
+  // Les deux watchers reçoivent directement les matchs déjà synchronisés par
+  // useMatches() ci-dessus, au lieu de retélécharger toute la collection
+  // "matches" en double de leur côté (voir withdrawalWatcher.js et
+  // presenceWatcher.js pour le détail — c'était une des principales causes
+  // de lenteur au chargement de l'app). Important : ces deux appels DOIVENT
+  // recevoir matchesHook.matches — un remplacement de ce fichier qui les
+  // appellerait sans argument réintroduirait le problème de lenteur pour
+  // usePresenceAutoAbsentWatcher (et viderait silencieusement les données
+  // utilisées par useWithdrawalWatcher).
+  useWithdrawalWatcher(matchesHook.matches);
+  usePresenceAutoAbsentWatcher(matchesHook.matches);
   const appData = useAppData();
 
   // Mémoïsation : sans elle, un nouvel objet de contexte était recréé à
