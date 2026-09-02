@@ -12,6 +12,7 @@ import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Button } from "../ui";
 import { PlayerSlotCard } from "./PlayerSlotCard";
+import { PlayerAvatar } from "../players/PlayerAvatar";
 import { EndMatchModal } from "./EndMatchModal";
 import { PickPlayerModal } from "./PickPlayerModal";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
@@ -135,6 +136,20 @@ export function CourtPanel({ match, now }) {
       : players.filter((p) => p.isCreditor === true).map((p) => p.id)
   );
   const playerById = (id) => players.find((p) => p.id === id);
+
+  // Ajout du 02/09/2026 (soir) : petits avatars des créanciers QUI ONT
+  // FINANCÉ CE TERRAIN précis, à côté de son nom — contrairement à la
+  // pastille "Avancé" sur une place (qui reste admin-only), cette info est
+  // VOLONTAIREMENT visible de tous les joueurs : le but est justement qu'un
+  // joueur sache qui rembourser, même si le créancier de son propre terrain
+  // ne joue pas ou est absent ce jour-là (il peut alors régler avec un autre
+  // créancier "du jour", voir PaymentModal.jsx). Uniquement le(s) créancier(s)
+  // figé(s) sur CE match précis (`match.creditorIds`) — pas de repli sur la
+  // liste globale des créanciers pour un match plus ancien sans ce champ, ce
+  // qui afficherait à tort tous les créanciers de l'app sur chaque match.
+  const courtCreditorPlayers = (Array.isArray(match.creditorIds) ? match.creditorIds : [])
+    .map((id) => playerById(id))
+    .filter(Boolean);
   const slots = getCourtSlots(match);
 
   const renderSlot = (def) => {
@@ -173,7 +188,21 @@ export function CourtPanel({ match, now }) {
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <p className="font-semibold text-sm truncate">{match.location || "Terrain"}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-semibold text-sm truncate">{match.location || "Terrain"}</p>
+            {trackPayments && courtCreditorPlayers.length > 0 && (
+              <span
+                className="flex items-center shrink-0 -space-x-1.5"
+                title={`Avancé par ${courtCreditorPlayers.map((p) => p.name).join(", ")}`}
+              >
+                {courtCreditorPlayers.map((p) => (
+                  <span key={p.id} className="rounded-full ring-2 ring-white/90">
+                    <PlayerAvatar player={p} size={18} />
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[var(--color-text-dim)] mt-0.5">
             {trackPayments
               ? match.matchFeePerPlayer != null
