@@ -43,13 +43,8 @@ function MainApp() {
   const matchesHook = useMatches();
   const settingsHook = useAppSettings();
   const [view, setView] = useState("matches");
-  // Les deux watchers reçoivent désormais directement les matchs déjà
-  // synchronisés par useMatches() ci-dessus, au lieu de retélécharger toute
-  // la collection "matches" en double de leur côté (voir withdrawalWatcher.js
-  // et presenceWatcher.js pour le détail — c'était une des principales
-  // causes de lenteur au chargement de l'app).
-  useWithdrawalWatcher(matchesHook.matches);
-  usePresenceAutoAbsentWatcher(matchesHook.matches);
+  useWithdrawalWatcher();
+  usePresenceAutoAbsentWatcher();
   const appData = useAppData();
 
   // Mémoïsation : sans elle, un nouvel objet de contexte était recréé à
