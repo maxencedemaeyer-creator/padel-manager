@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, normalizeSide, parseFeeInput } from "../../lib/utils";
+import { cn, normalizeSide } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -41,9 +41,6 @@ export function EditPlayerModal({ player, onClose }) {
   const [secondaryTestCode, setSecondaryTestCode] = useState("");
   const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState("");
   const [clearSecondary, setClearSecondary] = useState(false);
-  const [advancedAmount, setAdvancedAmount] = useState(
-    player.advancedAmount != null ? String(player.advancedAmount) : ""
-  );
 
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -131,7 +128,6 @@ export function EditPlayerModal({ player, onClose }) {
         isAdmin: playerIsAdmin,
         isCreditor,
         isTest,
-        advancedAmount: parseFeeInput(advancedAmount),
       };
       await updateDoc(doc(db, "players", player.id), payload);
 
@@ -336,16 +332,10 @@ export function EditPlayerModal({ player, onClose }) {
             Créancier (peut recevoir des paiements de match)
           </label>
           {isCreditor && (
-            <Field label="Montant avancé au club — € (optionnel)">
-              <input
-                type="text"
-                inputMode="decimal"
-                className={inputClass}
-                value={advancedAmount}
-                onChange={(e) => setAdvancedAmount(e.target.value)}
-                placeholder="Ex. 300"
-              />
-            </Field>
+            <p className="text-[11px] text-[var(--color-text-faint)] -mt-1 ml-6">
+              Le montant avancé (créance de départ) se définit désormais par abonnement, lors de
+              sa génération ou depuis l'onglet Administration — plus ici.
+            </p>
           )}
           <label className="flex items-center gap-2.5 text-sm">
             <input
