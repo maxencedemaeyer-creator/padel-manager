@@ -14,11 +14,28 @@ export function EditMatchDateTimeModal({ match, onClose }) {
   const [time, setTime] = useState(match.time);
   const [saving, setSaving] = useState(false);
 
+  // Un report à une AUTRE date (pas juste un changement d'heure le même
+  // jour) remet à zéro la présence et la composition de CE match : les
+  // réponses "Présent/Absent" et le placement sur le terrain n'ont plus de
+  // sens une fois le match déplacé à une date différente. Le ou les
+  // créanciers (`match.creditorIds`) ne sont volontairement JAMAIS touchés
+  // ici : un report ne doit jamais changer qui a financé ce match (voir
+  // claude/accounting-module-notes.md) — seuls `date`/`time` (et, si la date
+  // change, `participants`/`availability`/`compositionPublished`) sont
+  // écrits.
+  const dateChanged = date !== match.date;
+
   const submit = async () => {
     if (!date || !time) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, "matches", match.id), { date, time });
+      const updates = { date, time };
+      if (dateChanged) {
+        updates.participants = [];
+        updates.availability = {};
+        updates.compositionPublished = false;
+      }
+      await updateDoc(doc(db, "matches", match.id), updates);
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -60,6 +77,14 @@ export function EditMatchDateTimeModal({ match, onClose }) {
           />
         </Field>
       </div>
+      {dateChanged && (
+        <p className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+          ⚠️ Ce match change de date : les présences déjà répondues et la
+          composition du terrain seront remises à zéro (les joueurs devront
+          répondre à nouveau, et l'admin recomposera l'équipe). Le ou les
+          créanciers de ce match ne sont pas affectés.
+        </p>
+      )}
     </Modal>
   );
 }
