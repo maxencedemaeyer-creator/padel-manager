@@ -105,6 +105,18 @@ export function CourtPanel({ match, now }) {
   };
 
   const selfLeave = async () => {
+    // Corrigé le 02/09/2026 (audit paiements) : le statut de paiement ne vit
+    // que dans cette entrée `participants[]` — se désinscrire l'efface
+    // définitivement, même si le joueur avait déjà été marqué payé à
+    // l'avance. On prévient avant d'agir plutôt que de le faire disparaître
+    // silencieusement (s'il se réinscrit ensuite, il repartira sur "Attente").
+    const mine = participants.find((p) => p.playerId === connectedPlayer.id);
+    if (mine?.paidStatus === "paid") {
+      const sure = window.confirm(
+        "Vous avez déjà été marqué comme ayant payé votre part pour ce match. Vous désinscrire effacera cette information — si vous vous réinscrivez plus tard, il faudra la reconfirmer. Continuer ?"
+      );
+      if (!sure) return;
+    }
     setSelfBusy(true);
     try {
       const remaining = participants.filter((p) => p.playerId !== connectedPlayer.id);
