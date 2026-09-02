@@ -11,6 +11,7 @@ import {
   getMatchStart,
   getMatchTiming,
   groupMatchesBySession,
+  isPlayerMatchCreditor,
   useNow,
 } from "../lib/matchLogic";
 import { useAppData } from "../context/AppContext";
@@ -32,7 +33,7 @@ const UPCOMING_SESSIONS_COUNT = 2;
 const LAST_MATCH_WINDOW_DAYS = 15;
 
 export function MatchesView() {
-  const { matches: allMatches, abonnements, isAdmin, connectedPlayer } = useAppData();
+  const { matches: allMatches, abonnements, isAdmin, connectedPlayer, players } = useAppData();
   const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
@@ -45,12 +46,23 @@ export function MatchesView() {
 
   // Matchs reportés "à une date inconnue" (voir MatchSettingsModals.jsx →
   // "Reporter à une date inconnue") : sortis du flux chronologique habituel
-  // — leur ancienne date, gardée en base mais ignorée (voir getMatchTiming
-  // → "tbd"), ne doit plus jamais servir à les classer "à venir" / "terminé"
-  // — et affichés à part, dans leur propre section, pour qu'ils restent
-  // visibles de tous tant qu'une nouvelle date ne leur a pas été attribuée.
+  // pour TOUT LE MONDE — leur ancienne date, gardée en base mais ignorée
+  // (voir getMatchTiming → "tbd"), ne doit plus jamais servir à les classer
+  // "à venir" / "terminé".
   const tbdMatches = matches.filter((m) => m.dateTBD);
   const datedMatches = matches.filter((m) => !m.dateTBD);
+
+  // Affichés à part, dans leur propre section tout en bas de l'onglet (pour
+  // que "Prochains matchs" reste la première chose vue par tout le monde
+  // juste après le bloc "Bonjour") — et visibles UNIQUEMENT de l'admin et
+  // du/des créancier(s) de chaque match concerné (voir
+  // isPlayerMatchCreditor) : un joueur ordinaire n'a pas besoin de savoir
+  // qu'un match doit être reprogrammé, seuls ceux qui peuvent agir dessus le
+  // voient. Le bloc "Bonjour" (MyMatchSummary.jsx) affiche, pour ces mêmes
+  // personnes, un petit bouton d'alerte qui amène directement ici.
+  const visibleTbdMatches = tbdMatches.filter(
+    (m) => isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id)
+  );
 
   const sortedByStart = [...datedMatches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
   const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
@@ -96,19 +108,6 @@ export function MatchesView() {
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
       <MyMatchSummary now={now} />
-
-      {tbdMatches.length > 0 && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-sm text-white mb-2">
-            Matchs à reprogrammer
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tbdMatches.map((m) => (
-              <CourtPanel key={m.id} match={m} now={now} />
-            ))}
-          </div>
-        </div>
-      )}
 
       {lastGroup.length > 0 && (
         <div className="mb-6">
@@ -226,6 +225,23 @@ export function MatchesView() {
           </div>
         )}
       </div>
+
+      {visibleTbdMatches.length > 0 && (
+        <div id="matchs-a-reprogrammer" className="mb-6 scroll-mt-4">
+          <h3 className="font-semibold text-sm text-white mb-1">
+            Matchs à reprogrammer
+          </h3>
+          <p className="text-xs text-[var(--color-text-faint)] mb-2">
+            Visible uniquement par vous (admin / créancier) tant qu'aucune
+            nouvelle date n'est fixée.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {visibleTbdMatches.map((m) => (
+              <CourtPanel key={m.id} match={m} now={now} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <button
