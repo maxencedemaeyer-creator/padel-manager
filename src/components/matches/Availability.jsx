@@ -350,4 +350,187 @@ export function RespondedPlayersPanel({ sessionMatches }) {
       <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
         Réponses des joueurs
       </p>
-      <div className="rounded-xl border
+      <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
+        <table className="w-full table-fixed border-collapse">
+          <thead>
+            <tr>
+              {RESPONSE_COLUMNS.map(({ key, label }) => {
+                const StatusIcon = STATUS_PILL_ICON[key];
+                return (
+                  <th
+                    key={key}
+                    className={cn(
+                      "w-1/3 px-1.5 py-1 text-left border-b border-[var(--color-border)]",
+                      STATUS_COLUMN_CLASS[key]
+                    )}
+                  >
+                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide">
+                      <StatusIcon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{label}</span>
+                      <span className="font-normal normal-case opacity-70 shrink-0">
+                        {byStatus[key].length}
+                      </span>
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {RESPONSE_COLUMNS.map(({ key }, i) => (
+                <td
+                  key={key}
+                  className={cn(
+                    "w-1/3 align-top px-1.5 py-1.5",
+                    i < RESPONSE_COLUMNS.length - 1 && "border-r border-[var(--color-border)]"
+                  )}
+                >
+                  {byStatus[key].length === 0 ? (
+                    <span className="text-[10px] text-[var(--color-text-faint)] italic">—</span>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {byStatus[key].map((player) => {
+                        const isPlaced = placedPlayerIds.has(player.id);
+                        return (
+                          <span
+                            key={player.id}
+                            title={isPlaced ? "Déjà placé sur le terrain" : undefined}
+                            className={cn(
+                              "text-xs truncate",
+                              isPlaced ? "font-bold" : "font-normal"
+                            )}
+                          >
+                            {getFirstName(player.name)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
+// session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
+// Présent / Absent / Je ne sais pas encore, plus un 4e bouton pour
+// réinitialiser sa réponse. Permet à l'administrateur de modifier sa propre
+// présence ou celle de n'importe quel autre joueur.
+export function ManagePresenceModal({ sessionMatches, onClose }) {
+  const { players, matches } = useAppData();
+  const [savingId, setSavingId] = useState(null);
+
+  const { availability } = getAvailabilityGroups(sessionMatches, players);
+
+  const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
+
+  const setStatus = async (playerId, status) => {
+    setSavingId(playerId);
+    try {
+      await setSessionAvailability(sessionMatches, playerId, status);
+      if (status === "present") {
+        const player = players.find((p) => p.id === playerId);
+        if (player) await autoPlacePresentPlayer(sessionMatches, matches, player);
+      }
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Réinitialise la réponse d'un joueur — il redevient "en attente" et devra
+  // rechoisir lui-même (utile si un joueur s'est trompé de bouton).
+  const resetStatus = async (playerId) => {
+    setSavingId(playerId);
+    try {
+      await resetSessionAvailability(sessionMatches, playerId);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const statusIcon = {
+    present: Icon.Check,
+    absent: Icon.X,
+    unknown: Icon.Question,
+  };
+  const statusActiveClass = {
+    present: "bg-emerald-500 border-emerald-500 text-white",
+    absent: "bg-rose-500 border-rose-500 text-white",
+    unknown: "bg-amber-500 border-amber-500 text-white",
+  };
+
+  return (
+    <Modal title="Gérer les présences" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Modifiez la présence de n'importe quel joueur pour cette date — y compris la vôtre.
+      </p>
+
+      <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
+        {sortedPlayers.length === 0 ? (
+          <p className="text-xs text-[var(--color-text-faint)] italic py-2">
+            Aucun joueur.
+          </p>
+        ) : (
+          sortedPlayers.map((p) => {
+            const status = availability[p.id];
+            const busy = savingId === p.id;
+            return (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              >
+                <span className="flex-1 min-w-0 truncate text-sm font-medium">
+                  {p.emoji} {p.name}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {AVAILABILITY_STATUSES.map((s) => {
+                    const StatusIcon = statusIcon[s];
+                    const active = status === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setStatus(p.id, s)}
+                        aria-label={STATUS_META[s].label}
+                        title={STATUS_META[s].label}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center border transition-all disabled:opacity-40",
+                          active
+                            ? statusActiveClass[s]
+                            : "bg-white border-[var(--color-border)] text-[var(--color-text-faint)] hover:border-sky-300"
+                        )}
+                      >
+                        <StatusIcon className="w-3.5 h-3.5" />
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    disabled={busy || !status}
+                    onClick={() => resetStatus(p.id)}
+                    aria-label="Réinitialiser sa réponse"
+                    title="Réinitialiser — il devra rechoisir lui-même"
+                    className="w-8 h-8 ml-1 rounded-full flex items-center justify-center border border-[var(--color-border)] bg-white text-[var(--color-text-faint)] hover:border-slate-400 hover:text-slate-600 disabled:opacity-30 transition-all"
+                  >
+                    <Icon.Refresh className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Modal>
+  );
+}
