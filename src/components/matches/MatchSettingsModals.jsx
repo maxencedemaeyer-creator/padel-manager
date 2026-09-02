@@ -56,14 +56,17 @@ export function EditMatchDateTimeModal({ match, onClose }) {
   // "Reporter à une date inconnue" : pour un match qu'il faut déplacer mais
   // dont la nouvelle date n'est pas encore connue (terrain indisponible, en
   // attente d'un nouveau créneau...). Le match n'est PAS supprimé : il reste
-  // visible de tous (admin ET joueurs), regroupé à part tout en haut de
-  // l'onglet Matchs dans "Matchs à reprogrammer" (voir MatchesView.jsx et
-  // getMatchTiming → "tbd"), le temps qu'un admin lui attribue une nouvelle
-  // date/heure via cette même modale (bouton "Enregistrer" ci-dessus).
-  // `date`/`time` sont volontairement laissés tels quels en base — seul
-  // `dateTBD` change l'affichage, l'ancienne valeur ne sert plus à rien tant
-  // qu'il vaut `true`. Comme pour un report à date connue, composition et
-  // présences sont remises à zéro (elles n'ont plus de sens). Abonnement
+  // accessible dans "Matchs à reprogrammer" (voir MatchesView.jsx et
+  // getMatchTiming → "tbd") — visible UNIQUEMENT de l'admin et du/des
+  // créancier(s) de ce match (voir isPlayerMatchCreditor dans matchLogic.js),
+  // qui peuvent tous les deux lui attribuer une nouvelle date/heure via cette
+  // même modale (bouton "Enregistrer" ci-dessus) : les autres joueurs ne
+  // voient rien de ce match tant qu'il reste "à une date inconnue", pour ne
+  // pas les distraire d'un problème qu'ils n'ont pas à gérer. `date`/`time`
+  // sont volontairement laissés tels quels en base — seul `dateTBD` change
+  // l'affichage, l'ancienne valeur ne sert plus à rien tant qu'il vaut
+  // `true`. Comme pour un report à date connue, composition et présences
+  // sont remises à zéro (elles n'ont plus de sens). Abonnement
   // (`abonnementId`), créancier(s) (`creditorIds`) et tarif
   // (`matchFeePerPlayer`) ne sont, eux, JAMAIS touchés : le match reste
   // rattaché à son abonnement et à son financement d'origine.
@@ -135,18 +138,29 @@ export function EditMatchDateTimeModal({ match, onClose }) {
           ⏳ Je ne connais pas encore la nouvelle date — Reporter à une date inconnue
         </button>
         <p className="mt-1.5 text-[11px] text-[var(--color-text-faint)]">
-          Le match reste visible de tous dans « Matchs à reprogrammer », en
-          attente d'une nouvelle date. L'abonnement et le(s) créancier(s)
-          restent inchangés.
+          Le match reste accessible dans « Matchs à reprogrammer », visible
+          uniquement par vous et le(s) créancier(s) — pas par les autres
+          joueurs. L'abonnement et le(s) créancier(s) restent inchangés.
         </p>
       </div>
     </Modal>
   );
 }
 
-export function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore, onPickDelete }) {
+// `dateOnly` : un créancier non-admin peut, UNIQUEMENT pour un match "à une
+// date inconnue" qu'il finance, ouvrir ce menu pour lui attribuer une
+// nouvelle date (voir CourtPanel.jsx) — mais pas modifier le score ni
+// supprimer le match, qui restent des actions réservées à l'admin. Dans ce
+// cas seul le premier bouton est affiché.
+export function CourtSettingsMenu({
+  onClose,
+  onPickDateTime,
+  onPickScore,
+  onPickDelete,
+  dateOnly = false,
+}) {
   return (
-    <Modal title="Paramètres du terrain" onClose={onClose}>
+    <Modal title={dateOnly ? "Reprogrammer ce match" : "Paramètres du terrain"} onClose={onClose}>
       <div className="flex flex-col gap-2">
         <button
           type="button"
@@ -156,22 +170,26 @@ export function CourtSettingsMenu({ onClose, onPickDateTime, onPickScore, onPick
           <Icon.Calendar className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
           Modifier la date et l'heure du match
         </button>
-        <button
-          type="button"
-          onClick={onPickScore}
-          className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
-        >
-          <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
-          Modifier le score du match
-        </button>
-        <button
-          type="button"
-          onClick={onPickDelete}
-          className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 hover:border-rose-400 text-left text-sm font-semibold text-rose-700"
-        >
-          <Icon.Trash className="w-4 h-4 text-rose-600 shrink-0" />
-          Supprimer le match
-        </button>
+        {!dateOnly && (
+          <>
+            <button
+              type="button"
+              onClick={onPickScore}
+              className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+            >
+              <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
+              Modifier le score du match
+            </button>
+            <button
+              type="button"
+              onClick={onPickDelete}
+              className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 hover:border-rose-400 text-left text-sm font-semibold text-rose-700"
+            >
+              <Icon.Trash className="w-4 h-4 text-rose-600 shrink-0" />
+              Supprimer le match
+            </button>
+          </>
+        )}
       </div>
     </Modal>
   );
