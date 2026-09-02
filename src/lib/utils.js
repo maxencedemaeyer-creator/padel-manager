@@ -96,6 +96,25 @@ export function getRecurringDates(startDateStr, intervalDays, count) {
   return dates.map((d) => toLocalISODate(d));
 }
 
+// Génère les dates d'occurrence d'un abonnement entre une date de début et
+// une date de fin (les deux incluses), à intervalle fixe — remplace l'ancien
+// mode "nombre de matchs" saisi à la main : c'est désormais la date de fin
+// elle-même qui détermine le nombre d'occurrences générées (voir
+// CreateSeasonModal.jsx). Retourne un tableau vide si les dates sont
+// invalides ou si la fin précède le début.
+export function getRecurringDatesInRange(startDateStr, intervalDays, endDateStr) {
+  const dates = [];
+  if (!startDateStr || !endDateStr) return dates;
+  let d = new Date(startDateStr + "T00:00:00");
+  const end = new Date(endDateStr + "T00:00:00");
+  if (isNaN(d.getTime()) || isNaN(end.getTime()) || d > end) return dates;
+  while (d <= end) {
+    dates.push(new Date(d));
+    d.setDate(d.getDate() + Number(intervalDays));
+  }
+  return dates.map((d) => toLocalISODate(d));
+}
+
 export function parseFeeInput(value) {
   if (value === "" || value === null || value === undefined) return null;
   const n = parseFloat(String(value).replace(",", "."));
