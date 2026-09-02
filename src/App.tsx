@@ -5,7 +5,7 @@
 // (anciennement injecté via <GlobalStyles/>, maintenant un fichier CSS normal).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
-import { useMatches, useAppSettings } from "./hooks/useFirestoreData";
+import { useMatches, useAppSettings, useAbonnements, useClubs } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
 import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
@@ -42,6 +42,8 @@ const GameCenterView = lazy(() =>
 function MainApp() {
   const matchesHook = useMatches();
   const settingsHook = useAppSettings();
+  const abonnementsHook = useAbonnements();
+  const clubsHook = useClubs();
   const [view, setView] = useState("matches");
   // Les deux watchers reçoivent directement les matchs déjà synchronisés par
   // useMatches() ci-dessus, au lieu de retélécharger toute la collection
@@ -66,8 +68,16 @@ function MainApp() {
       ...appData,
       matches: matchesHook.matches,
       gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
+      abonnements: abonnementsHook.abonnements,
+      clubs: clubsHook.clubs,
     }),
-    [appData, matchesHook.matches, settingsHook.settings.gameCenterEnabled]
+    [
+      appData,
+      matchesHook.matches,
+      settingsHook.settings.gameCenterEnabled,
+      abonnementsHook.abonnements,
+      clubsHook.clubs,
+    ]
   );
 
   return (
