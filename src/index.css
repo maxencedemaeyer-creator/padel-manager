@@ -100,3 +100,33 @@ html, body{
   from{ opacity:0; } to{ opacity:1; }
 }
 .pm-fade{ animation: pm-fade .2s ease-out both; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Balle de padel qui rebondit — utilisée uniquement par <BounceLoader/>
+   (voir src/components/ui/index.jsx), pour les 3 écrans de chargement de
+   l'app (ouverture, après le code PIN, entrée dans le Game Center).
+   Technique classique : la balle (pm-bounce) et son ombre (pm-bounce-shadow)
+   utilisent chacune leur propre timing-function par étape du keyframe pour
+   simuler l'accélération/décélération d'un vrai rebond (rapide en bas,
+   qui ralentit en haut), au lieu d'un simple aller-retour linéaire.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes pm-bounce{
+  0%, 100%{
+    transform: translateY(0) scale(1, 0.9);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  20%{
+    transform: translateY(0) scale(1.12, 0.85);
+  }
+  50%{
+    transform: translateY(-46px) scale(0.94, 1.06);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+.pm-bounce{ animation: pm-bounce 0.95s infinite; transform-origin: bottom center; }
+
+@keyframes pm-bounce-shadow{
+  0%, 100%{ transform: scaleX(1); opacity: 0.35; }
+  50%{ transform: scaleX(0.5); opacity: 0.12; }
+}
+.pm-bounce-shadow{ animation: pm-bounce-shadow 0.95s infinite; }
