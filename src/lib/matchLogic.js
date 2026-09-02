@@ -21,7 +21,17 @@ export function daysUntilMatch(match, now) {
 
 // Le statut n'est plus déclenché manuellement par un bouton : il est calculé
 // automatiquement à partir de l'heure de début encodée et de sa durée fixe.
+//
+// Un match reporté "à une date inconnue" (voir MatchSettingsModals.jsx →
+// "Reporter à une date inconnue") retourne "tbd" plutôt qu'un statut basé
+// sur son ancienne date : cette ancienne date reste en base à titre
+// indicatif (jamais effacée), mais ne doit plus jamais servir à classer le
+// match "à venir"/"en cours"/"terminé" — sinon il glisserait silencieusement
+// dans les matchs "Terminés" dès que cette ancienne date est dépassée, alors
+// qu'il doit au contraire rester bien visible, en attente d'une nouvelle
+// date (voir MatchesView.jsx, section "Matchs à reprogrammer").
 export function getMatchTiming(match, now = new Date()) {
+  if (match.dateTBD) return "tbd";
   const start = getMatchStart(match);
   const end = getMatchEnd(match);
   if (now < start) return "upcoming";
