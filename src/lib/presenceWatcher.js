@@ -25,22 +25,17 @@
 // voulu : ça évite qu'un joueur qui a déjà cédé sa place soit réassigné par
 // erreur, sans empêcher une correction volontaire de l'admin.
 // ─────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../firebase";
 import { PRESENCE_AUTO_ABSENT_DELAY_MINUTES } from "./constants";
 import { getMatchStart, groupMatchesBySession } from "./matchLogic";
 import { setSessionAvailability } from "./availability";
 
-// `matches` est fourni par l'appelant (usePresenceAutoAbsentWatcher), déjà
-// synchronisé en temps réel par useMatches() (voir
-// src/hooks/useFirestoreData.js) — on ne refait plus ici un getDocs séparé
-// sur toute la collection "matches" (cette fonction retéléchargeait avant
-// TOUS les matchs à chaque ouverture de l'app ET toutes les 60 secondes tant
-// qu'un onglet restait ouvert, en double du flux temps réel déjà utilisé par
-// le reste de l'app — un des principaux facteurs de lenteur au chargement ;
-// voir aussi withdrawalWatcher.js, qui faisait la même chose).
-async function autoAbsentUnplacedPresences(matches) {
+async function autoAbsentUnplacedPresences() {
   try {
-    matches = matches || [];
+    const matchesSnap = await getDocs(collection(db, "matches"));
+    const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const now = Date.now();
 
     for (const session of groupMatchesBySession(matches)) {
@@ -73,18 +68,10 @@ async function autoAbsentUnplacedPresences(matches) {
   }
 }
 
-// `matches` : tableau à jour venant de useMatches() côté appelant (voir
-// src/App.tsx) — gardé dans une ref pour que l'intervalle (créé une seule
-// fois) utilise toujours la dernière version reçue, sans avoir à recréer le
-// setInterval à chaque mise à jour des matchs.
-export function usePresenceAutoAbsentWatcher(matches) {
-  const matchesRef = useRef(matches);
-  matchesRef.current = matches;
-
+export function usePresenceAutoAbsentWatcher() {
   useEffect(() => {
-    autoAbsentUnplacedPresences(matchesRef.current);
-    const interval = setInterval(() => autoAbsentUnplacedPresences(matchesRef.current), 60000);
+    autoAbsentUnplacedPresences();
+    const interval = setInterval(autoAbsentUnplacedPresences, 60000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
