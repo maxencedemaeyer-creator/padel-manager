@@ -9,7 +9,7 @@ import { cn, isPlayerAdmin } from "../../lib/utils";
 import { usePlayers } from "../../hooks/useFirestoreData";
 import { AppDataContext } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Field, Button, Spinner, inputClass } from "../ui";
+import { Field, Button, BounceLoader, inputClass } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PlayerTile({ player, onClick }) {
@@ -337,11 +337,7 @@ export function AuthGate({ children }) {
   );
 
   if (loading || restoring) {
-    return (
-      <div className="pm-root flex items-center justify-center min-h-screen">
-        <Spinner />
-      </div>
-    );
+    return <BounceLoader fullScreen />;
   }
 
   if (connectedPlayer) {
