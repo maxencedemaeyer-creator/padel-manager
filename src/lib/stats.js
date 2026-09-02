@@ -4,6 +4,20 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { getMatchStart, getMatchTiming } from "./matchLogic";
 
+// Petit garde-fou : un très ancien match (créé avant que le format actuel
+// de "participants" se stabilise, ou une donnée corrompue par un souci
+// réseau lors d'une écriture) peut avoir un champ "participants" absent ou
+// dans un format inattendu (pas un tableau). Les méthodes de tableau
+// (.filter/.some/.forEach/.find...) plantent immédiatement dans ce cas — et
+// comme l'app n'a pas de filet de sécurité au niveau de l'affichage, une
+// seule donnée de ce genre suffisait à faire disparaître tout l'écran
+// (Comptabilité, Stats...) pour tout le monde, pas seulement pour le match
+// concerné. On s'assure ici de toujours retomber sur un tableau (vide au
+// pire) avant d'itérer dessus.
+export function participantsOf(match) {
+  return Array.isArray(match?.participants) ? match.participants : [];
+}
+
 export function getCreditorAccounting(creditorId, matches) {
   let totalPaidAllTime = 0; // tout paiement confirmé, peu importe la date du match
   let totalPaidPastMatches = 0; // uniquement les matchs déjà passés
@@ -15,7 +29,7 @@ export function getCreditorAccounting(creditorId, matches) {
     .forEach((m) => {
       const fee = m.matchFeePerPlayer || 0;
       const finished = getMatchTiming(m) === "finished";
-      (m.participants || []).forEach((p) => {
+      participantsOf(m).forEach((p) => {
         if (p.paidStatus === "paid" && p.creditorId === creditorId) {
           totalPaidAllTime += fee;
           if (finished) {
@@ -73,7 +87,7 @@ export function computePlayerStats(playerId, matches) {
 
   matches.forEach((m) => {
     if (getMatchTiming(m) !== "finished") return;
-    const participants = m.participants || [];
+    const participants = participantsOf(m);
     const me = participants.find((p) => p.playerId === playerId);
     if (!me) return;
     played += 1;
@@ -209,12 +223,12 @@ export function getRecentForm(playerId, matches, limit = 10) {
     .filter(
       (m) =>
         getMatchTiming(m) === "finished" &&
-        (m.participants || []).some((p) => p.playerId === playerId)
+        participantsOf(m).some((p) => p.playerId === playerId)
     )
     .sort((a, b) => getMatchStart(a) - getMatchStart(b));
 
   return relevant.slice(-limit).map((m) => {
-    const me = m.participants.find((p) => p.playerId === playerId);
+    const me = participantsOf(m).find((p) => p.playerId === playerId);
     let result = "X";
     if (!m.teamsUnreliable && me?.team && m.winningTeam) {
       result = me.team === m.winningTeam ? "V" : "D";
@@ -235,7 +249,7 @@ export function computeHeadToHead(idA, idB, matches) {
 
   matches.forEach((m) => {
     if (getMatchTiming(m) !== "finished" || m.teamsUnreliable) return;
-    const participants = m.participants || [];
+    const participants = participantsOf(m);
     const pa = participants.find((p) => p.playerId === idA);
     const pb = participants.find((p) => p.playerId === idB);
     if (!pa || !pb || !pa.team || !pb.team) return;
