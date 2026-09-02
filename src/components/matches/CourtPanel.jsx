@@ -7,7 +7,14 @@ import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn } from "../../lib/utils";
 import { COURT_SLOT_DEFS, SELF_REGISTRATION_WINDOW_DAYS, WITHDRAWAL_RESOLVE_DELAY_MINUTES } from "../../lib/constants";
-import { getMatchTiming, hasMatchScore, getSetDisplay, getCourtSlots, daysUntilMatch } from "../../lib/matchLogic";
+import {
+  getMatchTiming,
+  hasMatchScore,
+  getSetDisplay,
+  getCourtSlots,
+  daysUntilMatch,
+  getSessionCreditorIds,
+} from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Button } from "../ui";
@@ -125,16 +132,18 @@ export function CourtPanel({ match, now }) {
     }
   };
 
-  // Depuis le chantier du 02/09/2026 : les créanciers "couvrant" ce match
-  // sont ceux figés à sa génération (`match.creditorIds`, voir
-  // CreateSeasonModal.jsx), pas la liste globale des créanciers de l'app —
-  // un report de ce match (date/heure) ne change jamais ce résultat. Un
-  // match plus ancien sans ce champ retombe sur l'ancien comportement.
-  const creditorPlayerIds = new Set(
-    Array.isArray(match.creditorIds) && match.creditorIds.length > 0
-      ? match.creditorIds
-      : players.filter((p) => p.isCreditor === true).map((p) => p.id)
-  );
+  // Ajusté le 02/09/2026 (soir, cas réel remonté par Max) : les créanciers
+  // "couvrant" une place ne sont plus seulement ceux figés sur CE terrain
+  // (`match.creditorIds`), mais ceux de TOUTE la session (même date + heure
+  // + club, tous terrains confondus, voir `getSessionCreditorIds`). Sinon un
+  // créancier qui finance un autre terrain de la session et qui joue ce
+  // jour-là sur CE terrain-ci apparaissait à tort comme un débiteur ordinaire
+  // ("Attente") alors qu'il a déjà avancé de l'argent pour le club ce
+  // jour-là. Repli sur la liste globale des créanciers pour un match plus
+  // ancien sans `creditorIds` (comportement inchangé dans ce cas).
+  const creditorPlayerIds =
+    getSessionCreditorIds(match, matches) ||
+    new Set(players.filter((p) => p.isCreditor === true).map((p) => p.id));
   const playerById = (id) => players.find((p) => p.id === id);
 
   // Ajout du 02/09/2026 (soir) : petits avatars des créanciers QUI ONT
