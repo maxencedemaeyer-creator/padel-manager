@@ -6,7 +6,7 @@ import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { getCreditorAccounting } from "../../lib/stats";
-import { groupMatchesBySession } from "../../lib/matchLogic";
+import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, EmptyState } from "../ui";
@@ -20,23 +20,16 @@ export function PaymentModal({ match, participant, onClose }) {
   // pas celui de SON terrain précis — ex. son créancier est absent ce
   // jour-là, ou il préfère régler avec quelqu'un d'autre. On propose donc
   // en priorité les créanciers de LA SESSION de ce match (même date + heure
-  // + club, tous terrains confondus — via groupMatchesBySession, le même
+  // + club, tous terrains confondus — voir `getSessionCreditorIds`, même
   // regroupement que celui utilisé pour l'affichage des cartes de match),
   // puis TOUS les autres créanciers de l'app en dessous sous "Autres
   // créanciers", pour couvrir tous les cas de figure sans jamais bloquer.
-  const session =
-    groupMatchesBySession(matches).find((group) => group.some((m) => m.id === match.id)) || [
-      match,
-    ];
-  const sessionCreditorIds = new Set(
-    session.flatMap((m) => (Array.isArray(m.creditorIds) ? m.creditorIds : []))
-  );
   // Repli pour un match plus ancien (généré avant le chantier du 02/09,
-  // donc sans creditorIds) : aucune suggestion prioritaire, comportement
-  // identique à avant (tous les créanciers proposés d'un coup).
-  const hasAnyCreditorIds = session.some(
-    (m) => Array.isArray(m.creditorIds) && m.creditorIds.length > 0
-  );
+  // donc sans creditorIds, `getSessionCreditorIds` renvoie alors `null`) :
+  // aucune suggestion prioritaire, comportement identique à avant (tous les
+  // créanciers proposés d'un coup).
+  const sessionCreditorIds = getSessionCreditorIds(match, matches);
+  const hasAnyCreditorIds = sessionCreditorIds !== null;
 
   const allCreditors = players.filter((p) => p.isCreditor === true);
   const suggested = hasAnyCreditorIds
