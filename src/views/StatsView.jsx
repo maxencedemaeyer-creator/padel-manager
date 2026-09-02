@@ -18,6 +18,7 @@ import {
   FEDERATION_OPTIONS,
 } from "../lib/constants";
 import { computePlayerStats, getRecentForm, computeHeadToHead } from "../lib/stats";
+import { countMvpWins } from "../lib/mvp";
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
@@ -339,6 +340,20 @@ export function StatsView() {
   const [editingPref, setEditingPref] = useState(null);
   const [showPinEdit, setShowPinEdit] = useState(false);
 
+  // Jeu "Homme du match" (Game Center) — nombre de fois où CE joueur a été
+  // élu, toute la saison confondue. Rien n'est affiché s'il n'a jamais été
+  // élu (voir lib/mvp.js → countMvpWins).
+  const [mvpWins, setMvpWins] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    countMvpWins(connectedPlayer.id).then((count) => {
+      if (!cancelled) setMvpWins(count);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedPlayer.id]);
+
   const formStyle = {
     V: "bg-emerald-500 text-white",
     D: "bg-rose-500 text-white",
@@ -453,6 +468,18 @@ export function StatsView() {
       )}
 
       <div className="px-4">
+        {mvpWins > 0 && (
+          <Card className="p-4 mb-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-amber-100/80 border-amber-200/70">
+            <span className="text-3xl leading-none">🥇</span>
+            <div>
+              <p className="pm-display font-extrabold text-2xl leading-none">{mvpWins}</p>
+              <p className="text-xs text-amber-800 mt-1">
+                fois élu homme du match
+              </p>
+            </div>
+          </Card>
+        )}
+
         {myStats.played === 0 ? (
           <Card className="p-5 mb-6">
             <p className="text-sm text-[var(--color-text-dim)] text-center">
