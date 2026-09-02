@@ -31,12 +31,30 @@ const UPCOMING_SESSIONS_COUNT = 2;
 // Nombre de jours après SON dernier match joué pendant lesquels le bloc
 // "Dernier match joué" reste visible pour un joueur donné.
 const LAST_MATCH_WINDOW_DAYS = 15;
+// Nombre de sessions (dates de match) affichées d'un coup dans "Reste de la
+// saison", avant d'avoir besoin de cliquer sur "Charger plus". Les matchs
+// sont déjà tous récupérés en une fois depuis Firebase (nécessaire pour que
+// le reste de l'app — Stats, Comptabilité, jeux du Game Center — reste
+// synchronisé en temps réel) : cette limite ne change rien au chargement
+// des données, seulement au nombre de cartes construites et affichées d'un
+// coup, qui peut devenir coûteux une fois la saison bien avancée.
+const REST_OF_SEASON_PAGE_SIZE = 10;
 
 export function MatchesView() {
   const { matches: allMatches, abonnements, isAdmin, connectedPlayer, players } = useAppData();
   const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
+  // Réinitialisé à REST_OF_SEASON_PAGE_SIZE à chaque bascule "À venir" /
+  // "Terminés" (voir handleFilterChange plus bas), pour ne jamais se
+  // retrouver bloqué sur un onglet qui affiche 0 carte alors qu'il y en a.
+  const [restOfSeasonVisibleCount, setRestOfSeasonVisibleCount] = useState(
+    REST_OF_SEASON_PAGE_SIZE
+  );
+  const handleFilterChange = (id) => {
+    setFilter(id);
+    setRestOfSeasonVisibleCount(REST_OF_SEASON_PAGE_SIZE);
+  };
 
   // Ajout du 02/09/2026 (soir) : un abonnement clôturé depuis Administration
   // masque ses matchs ici, pour tout le monde (y compris l'admin) — voir
@@ -104,6 +122,12 @@ export function MatchesView() {
       ? getMatchTiming(m, now) !== "finished"
       : getMatchTiming(m, now) === "finished"
   );
+  // Regroupement en sessions calculé une seule fois ici (au lieu de dans le
+  // JSX) pour pouvoir le paginer : seules les REST_OF_SEASON_PAGE_SIZE
+  // premières sessions sont réellement construites en cartes à l'écran.
+  const otherSessions = groupMatchesBySession(otherFiltered);
+  const visibleOtherSessions = otherSessions.slice(0, restOfSeasonVisibleCount);
+  const remainingOtherSessionsCount = otherSessions.length - visibleOtherSessions.length;
 
   return (
     <div className="px-4 pt-4 pb-28 relative min-h-[70vh]">
@@ -177,7 +201,7 @@ export function MatchesView() {
             ].map(([id, label]) => (
               <button
                 key={id}
-                onClick={() => setFilter(id)}
+                onClick={() => handleFilterChange(id)}
                 className={cn(
                   "px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
                   filter === id
@@ -201,7 +225,7 @@ export function MatchesView() {
           />
         ) : (
           <div className="flex flex-col gap-4">
-            {groupMatchesBySession(otherFiltered).map((session) => {
+            {visibleOtherSessions.map((session) => {
               const key = `${session[0].date}|${session[0].time}`;
               // Un match déjà terminé garde son affichage résultat habituel
               // (score compact) quel que soit l'état de publication — la
@@ -222,6 +246,18 @@ export function MatchesView() {
                 />
               );
             })}
+            {remainingOtherSessionsCount > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setRestOfSeasonVisibleCount((c) => c + REST_OF_SEASON_PAGE_SIZE)
+                }
+                className="w-full py-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-dim)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all"
+              >
+                Charger plus ({remainingOtherSessionsCount} restant
+                {remainingOtherSessionsCount > 1 ? "s" : ""})
+              </button>
+            )}
           </div>
         )}
       </div>
