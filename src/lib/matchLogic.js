@@ -152,3 +152,32 @@ export function groupMatchesBySession(matches) {
   });
   return [...map.values()].map((group) => [...group].sort(compareByCourt));
 }
+
+// Créanciers de TOUTE la session (même date + heure + club, tous terrains
+// confondus) à laquelle appartient ce match — pas seulement ceux figés sur
+// CE terrain précis. Ajusté le 02/09/2026 suite à un cas réel : un créancier
+// qui a financé un autre terrain de la même session (ex. Donald, créancier
+// du Terrain 6, qui joue ce jour-là sur le Terrain 1 financé par quelqu'un
+// d'autre) ne doit pas être traité comme un débiteur ordinaire sur CE
+// terrain — il a déjà avancé de l'argent pour le club ce jour-là, juste sur
+// un autre terrain. Utilisé partout où "être créancier ce jour-là" doit
+// compter (pastille "Avancé", détail des impayés dans "Ma comptabilité"),
+// par opposition aux avatars affichés à côté du nom d'un terrain
+// (`CourtPanel.jsx`), qui eux restent volontairement limités à CE terrain
+// précis (ils indiquent qui a financé CE terrain, pas qui est exempté).
+//
+// Retourne `null` quand aucun match de la session ne porte `creditorIds`
+// (données générées avant le chantier du 02/09/2026) — l'appelant doit alors
+// se replier sur l'ancien comportement (liste globale des créanciers).
+// `sessionGroups` est optionnel : à passer si l'appelant a déjà calculé
+// `groupMatchesBySession(allMatches)` lui-même (boucle sur plusieurs
+// matchs), pour éviter de refaire ce regroupement à chaque appel.
+export function getSessionCreditorIds(match, allMatches, sessionGroups = null) {
+  const groups = sessionGroups || groupMatchesBySession(allMatches);
+  const session = groups.find((group) => group.some((m) => m.id === match.id)) || [match];
+  const hasAnyCreditorIds = session.some(
+    (m) => Array.isArray(m.creditorIds) && m.creditorIds.length > 0
+  );
+  if (!hasAnyCreditorIds) return null;
+  return new Set(session.flatMap((m) => (Array.isArray(m.creditorIds) ? m.creditorIds : [])));
+}
