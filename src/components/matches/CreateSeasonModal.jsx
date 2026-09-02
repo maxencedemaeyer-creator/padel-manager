@@ -90,13 +90,34 @@ export function CreateSeasonModal({ onClose }) {
   const totalMatches = dates.length * courtNumbers.length;
   const usingNewClub = selectedClubId === NEW_CLUB_VALUE;
 
+  // Corrigé le 02/09/2026 (audit paiements) : rien n'empêchait jusqu'ici de
+  // saisir un tarif ou un montant avancé négatif (ex. faute de frappe "-5"
+  // au lieu de "15") — ça aurait faussé silencieusement tous les totaux
+  // dérivés (soldes créanciers, impayés, synthèse "Ma comptabilité") pour
+  // tout l'abonnement généré. Un champ vide reste autorisé (tarif optionnel).
+  const parsedFeePreview = parseFeeInput(fee);
+  const feeError =
+    parsedFeePreview != null && parsedFeePreview < 0
+      ? "Le tarif par joueur ne peut pas être négatif."
+      : "";
+  const invalidCreditorAmountIds = [...creditorIds].filter((playerId) => {
+    const parsed = parseFeeInput(creditorAmounts[playerId]);
+    return parsed != null && parsed < 0;
+  });
+  const creditorAmountsError =
+    invalidCreditorAmountIds.length > 0
+      ? "Le montant avancé d'un créancier ne peut pas être négatif."
+      : "";
+
   const canSubmit =
     Boolean(startDate) &&
     Boolean(endDate) &&
     startDate <= endDate &&
     dates.length > 0 &&
     courtNumbers.length > 0 &&
-    (usingNewClub ? newClubName.trim().length > 0 : Boolean(selectedClubId));
+    (usingNewClub ? newClubName.trim().length > 0 : Boolean(selectedClubId)) &&
+    !feeError &&
+    !creditorAmountsError;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -275,6 +296,7 @@ export function CreateSeasonModal({ onClose }) {
           onChange={(e) => setFee(e.target.value)}
           placeholder="Ex. 13,5"
         />
+        {feeError && <p className="text-[11px] font-semibold text-rose-600 mt-1">{feeError}</p>}
       </Field>
 
       <Field label="Nombre de terrains">
@@ -353,7 +375,11 @@ export function CreateSeasonModal({ onClose }) {
                   <input
                     type="text"
                     inputMode="decimal"
-                    className={cn(inputClass, "!py-1.5 !px-2.5 w-28 shrink-0 text-right")}
+                    className={cn(
+                      inputClass,
+                      "!py-1.5 !px-2.5 w-28 shrink-0 text-right",
+                      invalidCreditorAmountIds.includes(p.id) && "!border-rose-400"
+                    )}
                     value={creditorAmounts[p.id] || ""}
                     onChange={(e) => setCreditorAmount(p.id, e.target.value)}
                     placeholder="Montant €"
@@ -370,6 +396,9 @@ export function CreateSeasonModal({ onClose }) {
           créanciers sur chacun des matchs générés ci-dessous, quelle que soit la date à laquelle
           ce match sera finalement joué (même après un report).
         </p>
+        {creditorAmountsError && (
+          <p className="text-[11px] font-semibold text-rose-600 mt-1">{creditorAmountsError}</p>
+        )}
       </Field>
 
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
