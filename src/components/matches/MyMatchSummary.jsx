@@ -60,7 +60,14 @@ export function MyMatchSummary({ now }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, connectedPlayer.id]);
 
-  const notFinished = matches.filter((m) => getMatchTiming(m, now) !== "finished");
+  // Ajout du 03/09/2026 : comme dans MatchesView.jsx, on exclut d'abord les
+  // matchs reportés "à une date inconnue" (dateTBD) — leur ancienne date,
+  // gardée en base à titre indicatif mais jamais mise à jour, ne doit jamais
+  // servir à les considérer "à venir" ici. Sans ce filtre, un match TBD resté
+  // bloqué dans le passé faussait le rappel de présence ci-dessous : personne
+  // n'a jamais pu répondre pour une session qui, en réalité, n'existe plus.
+  const datedMatches = matches.filter((m) => !m.dateTBD);
+  const notFinished = datedMatches.filter((m) => getMatchTiming(m, now) !== "finished");
 
   // "Vous jouez" : la première session à venir (même dans plusieurs mois,
   // pas de limite de fenêtre ici) où le joueur va effectivement jouer — soit
@@ -102,9 +109,13 @@ export function MyMatchSummary({ now }) {
   // réponse ? Présent, absent, ou même "je ne sais pas encore" comptent
   // tous les 3 comme "répondu" — seule l'absence totale de réponse déclenche
   // le rappel.
-  const upcomingWithinWindow = notFinished.filter(
-    (m) => daysUntilMatch(m, now) < UPCOMING_WINDOW_DAYS
-  );
+  // Triés chronologiquement (comme sortedByStart dans MatchesView.jsx) avant
+  // d'en tirer les prochaines dates : sans ce tri, l'ordre venait de
+  // Firestore et pouvait faire apparaître dans "nextDates" une date plus
+  // lointaine avant une date plus proche.
+  const upcomingWithinWindow = notFinished
+    .filter((m) => daysUntilMatch(m, now) < UPCOMING_WINDOW_DAYS)
+    .sort((a, b) => getMatchStart(a) - getMatchStart(b));
   const nextDates = [...new Set(upcomingWithinWindow.map((m) => m.date))].slice(
     0,
     UPCOMING_SESSIONS_COUNT
