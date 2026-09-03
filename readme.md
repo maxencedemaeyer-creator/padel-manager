@@ -1,6 +1,6 @@
 # Padel Manager
 
-Application de gestion pour un groupe de padel entre amis : planning des séances, composition des équipes par terrain, présences, statistiques et suivi des avances/dettes entre joueurs. Développée avec l'aide de Claude (Anthropic), en réponse à des demandes de fonctionnalités successives — voir la section [Comment ce projet est maintenu](#comment-ce-projet-est-maintenu) plus bas pour comprendre pourquoi certains commits remplacent un fichier entier d'un coup.
+Application de gestion pour un groupe de padel entre amis : planning des séances, composition des équipes par terrain, présences, statistiques et suivi des avances/dettes entre joueurs. Développée avec l'aide de Claude (Anthropic), en réponse à des demandes de fonctionnalités successives.
 
 - **Site en ligne :** https://padel-manager-omega.vercel.app/
 - **Dépôt GitHub :** https://github.com/maxencedemaeyer-creator/padel-manager
@@ -56,5 +56,3 @@ npm run lint      # tsc --noEmit (vérification de types)
 ```
 
 ⚠️ `npm run dev` (Vite seul) ne sert **pas** les fonctions du dossier `api/` — elles ne tournent que sur Vercel. Pour les tester en local, utiliser `vercel dev` (CLI Vercel) avec `FIREBASE_SERVICE_ACCOUNT` défini dans un fichier `.env.local`.
-
-## Structure du projet
