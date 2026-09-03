@@ -1,6 +1,0 @@
-{
-  "name": "Padel Manager",
-  "description": "Application de gestion de club de padel avec planning de saison, suivi des présences par terrain et comptabilité des avances et dettes.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
