@@ -77,6 +77,15 @@ export function getCreditorAccounting(creditorId, matches, players) {
           const entry = {
             key: `${m.id}-${p.playerId}`,
             matchId: m.id,
+            // Même clé que groupMatchesBySession (matchLogic.js) : deux
+            // matchs de la même session (même date + heure + club, mais des
+            // terrains différents) partagent cette clé. Utilisé le
+            // 04/09/2026 pour afficher "Remboursements par les autres
+            // joueurs" en nombre de SESSIONS plutôt qu'en nombre de matchs
+            // (AccountingView.jsx) — deux joueurs qui ont chacun réglé leur
+            // place le même jour, sur deux terrains différents, comptent
+            // pour 1 session, pas 2.
+            sessionKey: `${m.date}|${m.time}|${m.clubId || "__legacy__"}`,
             playerId: p.playerId,
             name: p.name,
             fee,
