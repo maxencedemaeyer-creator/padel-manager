@@ -443,6 +443,7 @@ export function AccountingView() {
           subtitle={`${pastMatchesReceivedCount} match${pastMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidPastMatches.toLocaleString("fr-FR")} € au total`}
           payments={paymentsReceived}
           players={players}
+          matches={matches}
           accent="emerald"
           sortDir="desc"
           onClose={() => setPaymentsModalTab(null)}
@@ -454,6 +455,7 @@ export function AccountingView() {
           subtitle={`${upcomingMatchesReceivedCount} match${upcomingMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidUpcomingMatches.toLocaleString("fr-FR")} € au total`}
           payments={paymentsReceivedUpcoming}
           players={players}
+          matches={matches}
           accent="sky"
           sortDir="asc"
           onClose={() => setPaymentsModalTab(null)}
