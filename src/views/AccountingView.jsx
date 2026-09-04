@@ -8,7 +8,6 @@ import { useRef, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming } from "../lib/matchLogic";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -40,38 +39,38 @@ export function AccountingView() {
     totalPaidPastMatches,
     totalPaidUpcomingMatches,
     selfReimbursed,
+    selfPastCoveredCount,
+    selfUpcomingCoveredValue,
+    selfUpcomingCoveredCount,
     paymentsReceived,
     paymentsReceivedUpcoming,
-  } = getCreditorAccounting(connectedPlayer.id, matches);
+    selfPayableMatches,
+    selfPayablePastCount,
+    selfPayableUpcomingCount,
+    selfPayableTotal,
+  } = getCreditorAccounting(connectedPlayer.id, matches, players);
 
   // Créance(s) de départ — chantier du 02/09/2026 : un créancier peut
   // désormais cumuler plusieurs abonnements (une créance par abonnement où
   // il figure), au lieu d'un seul montant global sur sa fiche joueur.
   const { claims, total: advanced } = getCreditorClaims(connectedPlayer.id, abonnements, matches);
 
-  const seasonMatches = matches.filter((m) => m.type === "Saison");
+  // Bloc 3 — auto-remboursement : mes propres matchs COUVERTS par ma
+  // créance (je finance un terrain de la session, voir getSessionCreditorIds
+  // dans getCreditorAccounting), joués + à venir.
+  const selfSeasonTotal = selfReimbursed + selfUpcomingCoveredValue;
+  const selfSeasonCount = selfPastCoveredCount + selfUpcomingCoveredCount;
 
-  // Bloc 3 — auto-remboursement : mes propres matchs, joués + à venir. On
-  // garde aussi le nombre de matchs (pas seulement le montant) pour
-  // l'afficher en petit sous chaque montant, sans que le créancier ait à
-  // les recompter lui-même.
-  const selfPastMatchesCount = seasonMatches.filter(
-    (m) =>
-      getMatchTiming(m) === "finished" &&
-      participantsOf(m).some((p) => p.playerId === connectedPlayer.id)
-  ).length;
-  const selfUpcomingMatches = seasonMatches.filter(
-    (m) =>
-      getMatchTiming(m) !== "finished" &&
-      participantsOf(m).some((p) => p.playerId === connectedPlayer.id)
-  );
-  const selfUpcomingValue = selfUpcomingMatches.reduce(
-    (sum, m) => sum + (m.matchFeePerPlayer || 0),
-    0
-  );
-  const selfUpcomingCount = selfUpcomingMatches.length;
-  const selfSeasonTotal = selfReimbursed + selfUpcomingValue;
-  const selfSeasonCount = selfPastMatchesCount + selfUpcomingCount;
+  // Bloc 3bis — mes matchs HORS abonnement (04/09/2026, demande de Max) :
+  // parmi les matchs que je joue, ceux où je ne suis créancier d'AUCUN
+  // terrain de la session — je dois les régler comme n'importe quel joueur.
+  // Permet de distinguer d'un coup d'œil, dans ma propre comptabilité, les
+  // matchs qui ne me coûtent rien de ceux qu'il me faudra payer.
+  const selfPayablePastTotal = selfPayableMatches
+    .filter((m) => m.finished)
+    .reduce((s, m) => s + m.fee, 0);
+  const selfPayableUpcomingTotal = selfPayableTotal - selfPayablePastTotal;
+  const hasPayableMatches = selfPayableMatches.length > 0;
 
   // Bloc 1 — alerte : impayés sur les matchs déjà joués (hors créanciers de
   // LA SESSION de ce match, exemptés — voir `getSessionCreditorIds` : un
@@ -375,7 +374,7 @@ export function AccountingView() {
               Mes matchs déjà joués
             </p>
             <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1">
-              {selfPastMatchesCount} match{selfPastMatchesCount > 1 ? "s" : ""}
+              {selfPastCoveredCount} match{selfPastCoveredCount > 1 ? "s" : ""}
             </p>
           </div>
           <div className="p-2 sm:p-4">
@@ -384,17 +383,113 @@ export function AccountingView() {
               className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
               style={{ color: "#1F2937" }}
             >
-              {selfUpcomingValue.toLocaleString("fr-FR")} €
+              {selfUpcomingCoveredValue.toLocaleString("fr-FR")} €
             </p>
             <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
               Mes matchs à venir
             </p>
             <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1">
-              {selfUpcomingCount} match{selfUpcomingCount > 1 ? "s" : ""}
+              {selfUpcomingCoveredCount} match{selfUpcomingCoveredCount > 1 ? "s" : ""}
             </p>
           </div>
         </div>
       </div>
+
+      {/* 3bis. Ma consommation personnelle hors abonnement (04/09/2026) —
+          matchs que je joue mais que je ne finance pas (aucun terrain de la
+          session n'est le mien) : à régler comme n'importe quel joueur,
+          contrairement au bloc "Ma consommation personnelle" ci-dessus.
+          Volontairement sur fond rouge pastel (demande de Max) pour bien la
+          distinguer visuellement d'une consommation "gratuite". N'apparaît
+          que si j'ai effectivement joué au moins un match de ce type, pour
+          ne rien surcharger chez un créancier qui ne joue jamais ailleurs.
+          EXCLUE du calcul "Reste net à récupérer" (bloc 5 plus bas) — ce
+          n'est pas de l'argent que je dois récupérer, c'est de l'argent que
+          JE dois payer, un calcul totalement séparé. */}
+      {hasPayableMatches && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-500 mb-2">
+            Ma consommation personnelle hors abonnement
+          </p>
+          <p className="text-xs text-rose-600/80 mb-2">
+            Je ne suis créancier d'aucun terrain ces jours-là — ces matchs ne sont pas couverts
+            par ma créance, je dois les régler comme n'importe quel joueur.
+          </p>
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl shadow-sm mb-3 overflow-hidden">
+            <div className="grid grid-cols-3 divide-x divide-rose-200/70">
+              <div className="p-2 sm:p-4 bg-rose-100/70">
+                <Icon.AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 mb-1 sm:mb-2" />
+                <p className="pm-display text-sm sm:text-2xl font-extrabold text-rose-800 leading-tight">
+                  {selfPayableTotal.toLocaleString("fr-FR")} €
+                </p>
+                <p className="text-[9px] sm:text-xs text-rose-700/80 mt-0.5 leading-tight">
+                  Total hors abonnement
+                </p>
+                <p className="text-[8px] sm:text-[10px] text-rose-600/60 mt-1">
+                  {selfPayableMatches.length} match{selfPayableMatches.length > 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="p-2 sm:p-4">
+                <Icon.CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 mb-1 sm:mb-2" />
+                <p className="pm-display text-sm sm:text-xl font-extrabold leading-tight text-rose-800">
+                  {selfPayablePastTotal.toLocaleString("fr-FR")} €
+                </p>
+                <p className="text-[9px] sm:text-xs text-rose-700/70 mt-0.5 leading-tight">
+                  Déjà joués
+                </p>
+                <p className="text-[8px] sm:text-[10px] text-rose-600/50 mt-1">
+                  {selfPayablePastCount} match{selfPayablePastCount > 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="p-2 sm:p-4">
+                <Icon.Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 mb-1 sm:mb-2" />
+                <p className="pm-display text-sm sm:text-xl font-extrabold leading-tight text-rose-800">
+                  {selfPayableUpcomingTotal.toLocaleString("fr-FR")} €
+                </p>
+                <p className="text-[9px] sm:text-xs text-rose-700/70 mt-0.5 leading-tight">
+                  À venir
+                </p>
+                <p className="text-[8px] sm:text-[10px] text-rose-600/50 mt-1">
+                  {selfPayableUpcomingCount} match{selfPayableUpcomingCount > 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 mb-5">
+            {selfPayableMatches.map((item) => {
+              const statusLabel = !item.finished ? "À venir" : item.paid ? "Réglé" : "À régler";
+              const statusTone = !item.finished
+                ? "text-sky-700 bg-sky-50 border-sky-200"
+                : item.paid
+                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                : "text-rose-700 bg-rose-100 border-rose-200";
+              return (
+                <div
+                  key={item.key}
+                  className="bg-rose-50/60 border border-rose-200 rounded-2xl p-3 flex items-center gap-3"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold truncate">
+                      {formatDateFR(item.date)} · {item.location}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-block mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold",
+                        statusTone
+                      )}
+                    >
+                      {statusLabel}
+                    </span>
+                  </span>
+                  <span className="pm-mono font-bold text-sm text-rose-800 shrink-0">
+                    {item.fee.toLocaleString("fr-FR")} €
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* 4. Remboursements par les autres joueurs — même présentation à 3
           colonnes que "Ma consommation personnelle" : total perçu mis en
