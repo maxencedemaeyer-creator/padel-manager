@@ -97,9 +97,18 @@ export function AccountingView() {
   // DISTINCTS concernés (et non le nombre de paiements) — cohérent avec le
   // "nombre de matchs" affiché dans "Ma consommation personnelle".
   const totalReceivedAll = totalPaidPastMatches + totalPaidUpcomingMatches;
-  const pastMatchesReceivedCount = new Set(paymentsReceived.map((p) => p.matchId)).size;
-  const upcomingMatchesReceivedCount = new Set(paymentsReceivedUpcoming.map((p) => p.matchId)).size;
-  const totalMatchesReceivedCount = pastMatchesReceivedCount + upcomingMatchesReceivedCount;
+  // Corrigé le 04/09/2026 (demande de Max) : compté en SESSIONS (même date +
+  // heure + club, voir `sessionKey` dans getCreditorAccounting/lib/stats.js)
+  // plutôt qu'en matchs distincts — deux joueurs qui ont chacun réglé leur
+  // place le même jour, sur deux terrains différents de la même session,
+  // comptaient à tort pour "2 matchs" alors que c'est une seule session.
+  // Le montant total, lui, ne change pas : c'est la somme de tous les
+  // paiements, quel que soit le regroupement choisi pour l'affichage.
+  const pastSessionsReceivedCount = new Set(paymentsReceived.map((p) => p.sessionKey)).size;
+  const upcomingSessionsReceivedCount = new Set(
+    paymentsReceivedUpcoming.map((p) => p.sessionKey)
+  ).size;
+  const totalSessionsReceivedCount = pastSessionsReceivedCount + upcomingSessionsReceivedCount;
 
   // Bloc 5 — synthèse : créance − (ma saison) − (total des remboursements
   // perçus des autres, passés ET à venir payés d'avance — cet argent est
@@ -395,17 +404,160 @@ export function AccountingView() {
         </div>
       </div>
 
-      {/* 3bis. Ma consommation personnelle hors abonnement (04/09/2026) —
+      {/* 4. Remboursements par les autres joueurs — même présentation à 3
+          colonnes que "Ma consommation personnelle" : total perçu mis en
+          évidence à gauche (= somme des 2 colonnes suivantes), puis déjà
+          perçu (matchs passés) / perçu d'avance (matchs à venir). Ces 2
+          dernières colonnes sont cliquables et ouvrent le détail nominatif
+          (CreditorPaymentsModal), groupé par joueur pour rester lisible même
+          avec des dizaines de remboursements. */}
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Remboursements par les autres joueurs
+        </p>
+        {/* Pastille "Doit me payer" — repère compact vers la liste des
+            impayés déjà affichée plus haut (bloc 1bis), sans dupliquer
+            l'affichage ni ajouter de nouvelle colonne. N'apparaît pas du
+            tout si tout est réglé, pour ne rien surcharger. */}
+        {!allSettled && (
+          <button
+            type="button"
+            onClick={() =>
+              unpaidListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+            }
+            className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[11px] font-semibold hover:bg-orange-100 transition-colors shrink-0"
+            title="Voir le détail des impayés plus haut"
+          >
+            <Icon.AlertCircle className="w-3 h-3" />
+            {unpaidCount} impayé{unpaidCount > 1 ? "s" : ""} ·{" "}
+            {unpaidAmount.toLocaleString("fr-FR")} €
+          </button>
+        )}
+      </div>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+        <div className="grid grid-cols-3 divide-x divide-slate-100">
+          <div className="p-2 sm:p-4" style={{ backgroundColor: "#1F2937" }}>
+            <Icon.Coin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 mb-1 sm:mb-2" />
+            <p className="pm-display text-sm sm:text-2xl font-extrabold text-white leading-tight">
+              {totalReceivedAll.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 leading-tight">
+              Total des remboursements perçus
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-white/40 mt-1">
+              {totalSessionsReceivedCount} session{totalSessionsReceivedCount > 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => paymentsReceived.length > 0 && setPaymentsModalTab("past")}
+            disabled={paymentsReceived.length === 0}
+            className="p-2 sm:p-4 text-left hover:bg-emerald-50/60 active:bg-emerald-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
+          >
+            <Icon.CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 mb-1 sm:mb-2" />
+            <p
+              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
+              style={{ color: "#1F2937" }}
+            >
+              {totalPaidPastMatches.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
+              Déjà perçu (matchs passés)
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
+              {pastSessionsReceivedCount} session{pastSessionsReceivedCount > 1 ? "s" : ""}
+              {paymentsReceived.length > 0 && <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => paymentsReceivedUpcoming.length > 0 && setPaymentsModalTab("upcoming")}
+            disabled={paymentsReceivedUpcoming.length === 0}
+            className="p-2 sm:p-4 text-left hover:bg-sky-50/60 active:bg-sky-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
+          >
+            <Icon.Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600 mb-1 sm:mb-2" />
+            <p
+              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
+              style={{ color: "#1F2937" }}
+            >
+              {totalPaidUpcomingMatches.toLocaleString("fr-FR")} €
+            </p>
+            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
+              Perçu d'avance (matchs à venir)
+            </p>
+            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
+              {upcomingSessionsReceivedCount} session{upcomingSessionsReceivedCount > 1 ? "s" : ""}
+              {paymentsReceivedUpcoming.length > 0 && (
+                <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />
+              )}
+            </p>
+          </button>
+        </div>
+      </div>
+
+      {paymentsModalTab === "past" && (
+        <CreditorPaymentsModal
+          title="Remboursements reçus — matchs passés"
+          subtitle={`${pastSessionsReceivedCount} session${pastSessionsReceivedCount > 1 ? "s" : ""} · ${totalPaidPastMatches.toLocaleString("fr-FR")} € au total`}
+          payments={paymentsReceived}
+          players={players}
+          matches={matches}
+          accent="emerald"
+          sortDir="desc"
+          onClose={() => setPaymentsModalTab(null)}
+        />
+      )}
+      {paymentsModalTab === "upcoming" && (
+        <CreditorPaymentsModal
+          title="Remboursements reçus — matchs à venir"
+          subtitle={`${upcomingSessionsReceivedCount} session${upcomingSessionsReceivedCount > 1 ? "s" : ""} · ${totalPaidUpcomingMatches.toLocaleString("fr-FR")} € au total`}
+          payments={paymentsReceivedUpcoming}
+          players={players}
+          matches={matches}
+          accent="sky"
+          sortDir="asc"
+          onClose={() => setPaymentsModalTab(null)}
+        />
+      )}
+
+      {/* 5. Synthèse — reste net à récupérer. */}
+      <div
+        className="rounded-2xl shadow-md p-5 mb-6 text-white"
+        style={{ background: "linear-gradient(135deg, #0284C7, #4338CA)" }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Icon.Wallet className="w-5 h-5" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-white/70">
+            Reste net à récupérer
+          </span>
+        </div>
+        <p className="pm-display text-3xl font-extrabold">
+          {remainingNet.toLocaleString("fr-FR")} €
+        </p>
+        <p className="text-xs text-white/80 mt-2">
+          Ce montant représente la somme brute que vous devez encore recevoir en
+          liquide/virement pour clôturer votre créance tout en couvrant votre propre
+          saison.
+        </p>
+        <p className="text-[11px] text-white/70 mt-3 pt-3 border-t border-white/20 leading-relaxed">
+          Créance {advanced.toLocaleString("fr-FR")} € − Ma saison{" "}
+          {selfSeasonTotal.toLocaleString("fr-FR")} € − Total perçu des autres{" "}
+          {totalReceivedAll.toLocaleString("fr-FR")} €
+        </p>
+      </div>
+
+      {/* 6. Ma consommation personnelle hors abonnement (04/09/2026) —
           matchs que je joue mais que je ne finance pas (aucun terrain de la
           session n'est le mien) : à régler comme n'importe quel joueur,
-          contrairement au bloc "Ma consommation personnelle" ci-dessus.
-          Volontairement sur fond rouge pastel (demande de Max) pour bien la
-          distinguer visuellement d'une consommation "gratuite". N'apparaît
-          que si j'ai effectivement joué au moins un match de ce type, pour
-          ne rien surcharger chez un créancier qui ne joue jamais ailleurs.
-          EXCLUE du calcul "Reste net à récupérer" (bloc 5 plus bas) — ce
-          n'est pas de l'argent que je dois récupérer, c'est de l'argent que
-          JE dois payer, un calcul totalement séparé. */}
+          contrairement au bloc "Ma consommation personnelle" plus haut.
+          Volontairement tout en bas de page (demande de Max) et sur fond
+          rouge pastel pour bien la distinguer visuellement d'une
+          consommation "gratuite". N'apparaît que si j'ai effectivement joué
+          au moins un match de ce type, pour ne rien surcharger chez un
+          créancier qui ne joue jamais ailleurs. EXCLUE du calcul "Reste net
+          à récupérer" ci-dessus — ce n'est pas de l'argent que je dois
+          récupérer, c'est de l'argent que JE dois payer, un calcul
+          totalement séparé. */}
       {hasPayableMatches && (
         <>
           <p className="text-xs font-semibold uppercase tracking-wide text-rose-500 mb-2">
@@ -455,7 +607,7 @@ export function AccountingView() {
               </div>
             </div>
           </div>
-          <div className="flex flex-col gap-2 mb-5">
+          <div className="flex flex-col gap-2">
             {selfPayableMatches.map((item) => {
               const statusLabel = !item.finished ? "À venir" : item.paid ? "Réglé" : "À régler";
               const statusTone = !item.finished
@@ -490,148 +642,6 @@ export function AccountingView() {
           </div>
         </>
       )}
-
-      {/* 4. Remboursements par les autres joueurs — même présentation à 3
-          colonnes que "Ma consommation personnelle" : total perçu mis en
-          évidence à gauche (= somme des 2 colonnes suivantes), puis déjà
-          perçu (matchs passés) / perçu d'avance (matchs à venir). Ces 2
-          dernières colonnes sont cliquables et ouvrent le détail nominatif
-          (CreditorPaymentsModal), groupé par joueur pour rester lisible même
-          avec des dizaines de remboursements. */}
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Remboursements par les autres joueurs
-        </p>
-        {/* Pastille "Doit me payer" — repère compact vers la liste des
-            impayés déjà affichée plus haut (bloc 1bis), sans dupliquer
-            l'affichage ni ajouter de nouvelle colonne. N'apparaît pas du
-            tout si tout est réglé, pour ne rien surcharger. */}
-        {!allSettled && (
-          <button
-            type="button"
-            onClick={() =>
-              unpaidListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-            }
-            className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[11px] font-semibold hover:bg-orange-100 transition-colors shrink-0"
-            title="Voir le détail des impayés plus haut"
-          >
-            <Icon.AlertCircle className="w-3 h-3" />
-            {unpaidCount} impayé{unpaidCount > 1 ? "s" : ""} ·{" "}
-            {unpaidAmount.toLocaleString("fr-FR")} €
-          </button>
-        )}
-      </div>
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
-        <div className="grid grid-cols-3 divide-x divide-slate-100">
-          <div className="p-2 sm:p-4" style={{ backgroundColor: "#1F2937" }}>
-            <Icon.Coin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 mb-1 sm:mb-2" />
-            <p className="pm-display text-sm sm:text-2xl font-extrabold text-white leading-tight">
-              {totalReceivedAll.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 leading-tight">
-              Total des remboursements perçus
-            </p>
-            <p className="text-[8px] sm:text-[10px] text-white/40 mt-1">
-              {totalMatchesReceivedCount} match{totalMatchesReceivedCount > 1 ? "s" : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => paymentsReceived.length > 0 && setPaymentsModalTab("past")}
-            disabled={paymentsReceived.length === 0}
-            className="p-2 sm:p-4 text-left hover:bg-emerald-50/60 active:bg-emerald-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
-          >
-            <Icon.CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 mb-1 sm:mb-2" />
-            <p
-              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
-              style={{ color: "#1F2937" }}
-            >
-              {totalPaidPastMatches.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
-              Déjà perçu (matchs passés)
-            </p>
-            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
-              {pastMatchesReceivedCount} match{pastMatchesReceivedCount > 1 ? "s" : ""}
-              {paymentsReceived.length > 0 && <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />}
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => paymentsReceivedUpcoming.length > 0 && setPaymentsModalTab("upcoming")}
-            disabled={paymentsReceivedUpcoming.length === 0}
-            className="p-2 sm:p-4 text-left hover:bg-sky-50/60 active:bg-sky-50 transition-colors disabled:hover:bg-transparent disabled:cursor-default"
-          >
-            <Icon.Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600 mb-1 sm:mb-2" />
-            <p
-              className="pm-display text-sm sm:text-xl font-extrabold leading-tight"
-              style={{ color: "#1F2937" }}
-            >
-              {totalPaidUpcomingMatches.toLocaleString("fr-FR")} €
-            </p>
-            <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 leading-tight">
-              Perçu d'avance (matchs à venir)
-            </p>
-            <p className="text-[8px] sm:text-[10px] text-slate-400 mt-1 flex items-center gap-0.5">
-              {upcomingMatchesReceivedCount} match{upcomingMatchesReceivedCount > 1 ? "s" : ""}
-              {paymentsReceivedUpcoming.length > 0 && (
-                <Icon.Chevron className="w-2.5 h-2.5 text-slate-300" />
-              )}
-            </p>
-          </button>
-        </div>
-      </div>
-
-      {paymentsModalTab === "past" && (
-        <CreditorPaymentsModal
-          title="Remboursements reçus — matchs passés"
-          subtitle={`${pastMatchesReceivedCount} match${pastMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidPastMatches.toLocaleString("fr-FR")} € au total`}
-          payments={paymentsReceived}
-          players={players}
-          matches={matches}
-          accent="emerald"
-          sortDir="desc"
-          onClose={() => setPaymentsModalTab(null)}
-        />
-      )}
-      {paymentsModalTab === "upcoming" && (
-        <CreditorPaymentsModal
-          title="Remboursements reçus — matchs à venir"
-          subtitle={`${upcomingMatchesReceivedCount} match${upcomingMatchesReceivedCount > 1 ? "s" : ""} · ${totalPaidUpcomingMatches.toLocaleString("fr-FR")} € au total`}
-          payments={paymentsReceivedUpcoming}
-          players={players}
-          matches={matches}
-          accent="sky"
-          sortDir="asc"
-          onClose={() => setPaymentsModalTab(null)}
-        />
-      )}
-
-      {/* 5. Synthèse — reste net à récupérer. */}
-      <div
-        className="rounded-2xl shadow-md p-5 mb-6 text-white"
-        style={{ background: "linear-gradient(135deg, #0284C7, #4338CA)" }}
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <Icon.Wallet className="w-5 h-5" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-white/70">
-            Reste net à récupérer
-          </span>
-        </div>
-        <p className="pm-display text-3xl font-extrabold">
-          {remainingNet.toLocaleString("fr-FR")} €
-        </p>
-        <p className="text-xs text-white/80 mt-2">
-          Ce montant représente la somme brute que vous devez encore recevoir en
-          liquide/virement pour clôturer votre créance tout en couvrant votre propre
-          saison.
-        </p>
-        <p className="text-[11px] text-white/70 mt-3 pt-3 border-t border-white/20 leading-relaxed">
-          Créance {advanced.toLocaleString("fr-FR")} € − Ma saison{" "}
-          {selfSeasonTotal.toLocaleString("fr-FR")} € − Total perçu des autres{" "}
-          {totalReceivedAll.toLocaleString("fr-FR")} €
-        </p>
-      </div>
     </div>
   );
 }
