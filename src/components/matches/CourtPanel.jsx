@@ -122,11 +122,15 @@ export function CourtPanel({ match, now }) {
     // définitivement, même si le joueur avait déjà été marqué payé à
     // l'avance. On prévient avant d'agir plutôt que de le faire disparaître
     // silencieusement (s'il se réinscrit ensuite, il repartira sur "Attente").
+    // Étendu le 04/09/2026 au statut "owed" (dette assignée à un créancier
+    // précis) : la perdre romprait le lien "à qui je dois rembourser".
     const mine = participants.find((p) => p.playerId === connectedPlayer.id);
-    if (mine?.paidStatus === "paid") {
-      const sure = window.confirm(
-        "Vous avez déjà été marqué comme ayant payé votre part pour ce match. Vous désinscrire effacera cette information — si vous vous réinscrivez plus tard, il faudra la reconfirmer. Continuer ?"
-      );
+    if (mine?.paidStatus === "paid" || mine?.paidStatus === "owed") {
+      const message =
+        mine?.paidStatus === "paid"
+          ? "Vous avez déjà été marqué comme ayant payé votre part pour ce match. Vous désinscrire effacera cette information — si vous vous réinscrivez plus tard, il faudra la reconfirmer. Continuer ?"
+          : "Votre dette pour ce match avait été assignée à un créancier précis. Vous désinscrire effacera cette assignation — si vous vous réinscrivez plus tard, il faudra la refaire. Continuer ?";
+      const sure = window.confirm(message);
       if (!sure) return;
     }
     setSelfBusy(true);
