@@ -270,6 +270,24 @@ export function AvailabilityButtons({ sessionMatches }) {
     );
   }
 
+  // Joueur occasionnel pas encore "activé" pour CETTE session (aucune
+  // réponse — présent/absent/incertain — n'a jamais été donnée pour lui) :
+  // pas de boutons, c'est l'admin qui répond à sa place (voir
+  // ManagePresenceModal). Dès que l'admin répond une fois pour lui sur
+  // cette session, `hasAnswered` devient vrai et il retrouve exactement le
+  // même bloc (rectangle + compteurs, cliquable) que n'importe quel joueur —
+  // rien d'autre à faire ici.
+  if (connectedPlayer.isOccasional) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3 text-center">
+        <p className="text-[11px] font-semibold text-[var(--color-text-dim)]">
+          En tant que joueur occasionnel, c'est l'administrateur qui indique
+          votre présence pour ce match.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-3 gap-2">
       <button
@@ -489,8 +507,15 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
                 key={p.id}
                 className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
               >
-                <span className="flex-1 min-w-0 truncate text-sm font-medium">
-                  {p.emoji} {p.name}
+                <span className="flex-1 min-w-0 truncate text-sm font-medium flex items-center gap-1.5">
+                  <span className="truncate">
+                    {p.emoji} {p.name}
+                  </span>
+                  {p.isOccasional && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-orange-700 bg-orange-100 border border-orange-200 rounded-full px-1.5 py-0.5">
+                      Occasionnel
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   {AVAILABILITY_STATUSES.map((s) => {
