@@ -123,10 +123,16 @@ export function MyMatchSummary({ now }) {
   const nextSessions = groupMatchesBySession(
     upcomingWithinWindow.filter((m) => nextDates.includes(m.date))
   );
-  const needsPresenceReminder = nextSessions.some((session) => {
-    const availability = getSessionAvailability(session);
-    return availability[connectedPlayer.id] === undefined;
-  });
+  // Un joueur occasionnel n'a pas la main pour répondre lui-même tant que
+  // l'admin ne l'a pas fait pour lui (voir Availability.jsx) — lui afficher
+  // ce rappel serait donc trompeur, puisqu'il n'a aucun bouton pour agir
+  // dessus. On ne le lui montre jamais.
+  const needsPresenceReminder =
+    !connectedPlayer.isOccasional &&
+    nextSessions.some((session) => {
+      const availability = getSessionAvailability(session);
+      return availability[connectedPlayer.id] === undefined;
+    });
 
   const myLastFinished = [...matches]
     .filter(
