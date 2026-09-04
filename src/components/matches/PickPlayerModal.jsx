@@ -80,15 +80,20 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
     // Si la place remplace un AUTRE joueur qui avait déjà été marqué payé,
     // son statut de paiement va être définitivement perdu (il ne joue plus
     // ce match) — on prévient avant d'agir plutôt que de le faire
-    // disparaître silencieusement.
+    // disparaître silencieusement. Étendu le 04/09/2026 au statut "owed"
+    // (dette assignée à un créancier précis via AssignCreditorModal) : la
+    // perdre silencieusement romprait le lien "qui doit payer à qui" que ce
+    // statut sert justement à établir.
     if (
       currentParticipant &&
       currentParticipant.playerId !== player.id &&
-      currentParticipant.paidStatus === "paid"
+      (currentParticipant.paidStatus === "paid" || currentParticipant.paidStatus === "owed")
     ) {
-      const sure = window.confirm(
-        `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le remplacer par ${player.name} effacera cette information de paiement. Continuer ?`
-      );
+      const message =
+        currentParticipant.paidStatus === "paid"
+          ? `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le remplacer par ${player.name} effacera cette information de paiement. Continuer ?`
+          : `${currentParticipant.name} avait une dette assignée à un créancier pour ce match. Le remplacer par ${player.name} effacera cette assignation. Continuer ?`;
+      const sure = window.confirm(message);
       if (!sure) return;
     }
     setSaving(true);
@@ -120,11 +125,14 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
     // Corrigé le 02/09/2026 (audit paiements) : retirer un joueur déjà marqué
     // payé efface définitivement cette information (le statut ne vit que
     // dans cette entrée `participants[]`, pas ailleurs) — on prévient avant
-    // d'agir plutôt que de le faire disparaître silencieusement.
-    if (currentParticipant.paidStatus === "paid") {
-      const sure = window.confirm(
-        `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le retirer effacera cette information de paiement. Continuer ?`
-      );
+    // d'agir plutôt que de le faire disparaître silencieusement. Étendu le
+    // 04/09/2026 au statut "owed" (dette assignée à un créancier précis).
+    if (currentParticipant.paidStatus === "paid" || currentParticipant.paidStatus === "owed") {
+      const message =
+        currentParticipant.paidStatus === "paid"
+          ? `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le retirer effacera cette information de paiement. Continuer ?`
+          : `${currentParticipant.name} avait une dette assignée à un créancier pour ce match. Le retirer effacera cette assignation. Continuer ?`;
+      const sure = window.confirm(message);
       if (!sure) return;
     }
     setSaving(true);
