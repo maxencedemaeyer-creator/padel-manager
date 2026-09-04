@@ -4,12 +4,17 @@
 // Volontairement sur fond clair (au lieu du bleu du reste de l'app) pour
 // un meilleur contraste sur ces montants financiers.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "../lib/matchLogic";
-import { getCreditorAccounting, getCreditorClaims, participantsOf } from "../lib/stats";
+import { getMatchTiming } from "../lib/matchLogic";
+import {
+  getCreditorAccounting,
+  getCreditorClaims,
+  getUnpaidPastParticipations,
+  participantsOf,
+} from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
@@ -39,9 +44,6 @@ export function AccountingView() {
   // il figure), au lieu d'un seul montant global sur sa fiche joueur.
   const { claims, total: advanced } = getCreditorClaims(connectedPlayer.id, abonnements, matches);
 
-  // Repli pour un match sans `creditorIds` (généré avant le chantier du
-  // 02/09/2026) : liste globale des créanciers, comme avant.
-  const fallbackCreditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
   const seasonMatches = matches.filter((m) => m.type === "Saison");
 
   // Bloc 3 — auto-remboursement : mes propres matchs, joués + à venir. On
@@ -70,33 +72,20 @@ export function AccountingView() {
   // LA SESSION de ce match, exemptés — voir `getSessionCreditorIds` : un
   // créancier qui a financé un autre terrain de la même session, ex. Donald
   // sur le Terrain 6, n'est pas un débiteur ordinaire s'il joue ce jour-là
-  // sur un terrain financé par quelqu'un d'autre. On garde ici le détail
-  // complet (match + joueur) et pas seulement le total, pour pouvoir
-  // afficher la liste nominative ci-dessous et marquer un paiement
-  // directement depuis "Ma comptabilité", sans devoir rouvrir chaque match
-  // dans l'onglet Matchs.
-  const sessionGroups = groupMatchesBySession(matches);
-  const unpaidPast = seasonMatches
-    .filter((m) => getMatchTiming(m) === "finished")
-    .flatMap((m) => {
-      const sessionCreditorIds =
-        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
-      return participantsOf(m)
-        .filter((p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid")
-        .map((p) => ({
-          key: `${m.id}-${p.playerId}`,
-          matchId: m.id,
-          playerId: p.playerId,
-          name: p.name,
-          fee: m.matchFeePerPlayer || 0,
-          date: m.date,
-          location: m.location || "Terrain",
-        }));
-    })
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  // sur un terrain financé par quelqu'un d'autre. Calcul déplacé dans
+  // `getUnpaidPastParticipations` (lib/stats.js, chantier "Ce que je dois /
+  // Doit me payer" du 04/09/2026) pour être réutilisé tel quel côté joueur
+  // (voir `getPlayerDebts`, consommé dans StatsView.jsx → "Ce que je dois")
+  // — une seule source de vérité, jamais deux calculs qui pourraient
+  // diverger.
+  const unpaidPast = getUnpaidPastParticipations(matches, players);
   const unpaidAmount = unpaidPast.reduce((s, p) => s + p.fee, 0);
   const unpaidCount = unpaidPast.length;
   const allSettled = unpaidCount === 0;
+  // Ancre de défilement pour la pastille "impayés" ajoutée dans l'en-tête du
+  // bloc "Remboursements" plus bas — clic dessus = on remonte à cette liste
+  // déjà existante, plutôt que de dupliquer son affichage dans une modale.
+  const unpaidListRef = useRef(null);
 
   // Bloc 4 — remboursements par les autres joueurs, même découpage à 3
   // colonnes que le bloc 3 : total à gauche = somme des deux colonnes de
@@ -172,7 +161,7 @@ export function AccountingView() {
           avec confirmation de paiement en 2 clics directement depuis cette
           liste (pas besoin de rouvrir le match dans l'onglet Matchs). */}
       {!allSettled && (
-        <div className="flex flex-col gap-2 mb-5">
+        <div ref={unpaidListRef} className="flex flex-col gap-2 mb-5">
           {unpaidPast.map((item) => {
             const isConfirming = confirmingKey === item.key;
             const isSaving = savingKey === item.key;
@@ -364,9 +353,29 @@ export function AccountingView() {
           dernières colonnes sont cliquables et ouvrent le détail nominatif
           (CreditorPaymentsModal), groupé par joueur pour rester lisible même
           avec des dizaines de remboursements. */}
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-        Remboursements par les autres joueurs
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Remboursements par les autres joueurs
+        </p>
+        {/* Pastille "Doit me payer" — repère compact vers la liste des
+            impayés déjà affichée plus haut (bloc 1bis), sans dupliquer
+            l'affichage ni ajouter de nouvelle colonne. N'apparaît pas du
+            tout si tout est réglé, pour ne rien surcharger. */}
+        {!allSettled && (
+          <button
+            type="button"
+            onClick={() =>
+              unpaidListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+            }
+            className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[11px] font-semibold hover:bg-orange-100 transition-colors shrink-0"
+            title="Voir le détail des impayés plus haut"
+          >
+            <Icon.AlertCircle className="w-3 h-3" />
+            {unpaidCount} impayé{unpaidCount > 1 ? "s" : ""} ·{" "}
+            {unpaidAmount.toLocaleString("fr-FR")} €
+          </button>
+        )}
+      </div>
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
         <div className="grid grid-cols-3 divide-x divide-slate-100">
           <div className="p-2 sm:p-4" style={{ backgroundColor: "#1F2937" }}>
