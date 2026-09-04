@@ -39,6 +39,14 @@ export function getSessionAvailability(sessionMatches) {
 // - pending : n'ont pas répondu OU ont répondu "je ne sais pas encore"
 // - responded : tous ceux qui ont fait un choix (les 3 statuts confondus),
 //   avec leur statut — utile pour la liste admin "qui a répondu".
+//
+// Joueurs occasionnels (player.isOccasional === true) : totalement exclus de
+// ces groupes (donc des listes ET des compteurs Présent/Absent/En attente)
+// tant que personne — l'admin, via ManagePresenceModal — n'a explicitement
+// répondu pour eux sur CETTE session. Dès qu'une réponse existe pour eux
+// (présent, absent, ou même "je ne sais pas encore"), ils rentrent dans les
+// groupes exactement comme n'importe quel autre joueur. Voir feature
+// "joueurs occasionnels".
 export function getAvailabilityGroups(sessionMatches, players) {
   const availability = getSessionAvailability(sessionMatches);
   const present = [];
@@ -48,6 +56,7 @@ export function getAvailabilityGroups(sessionMatches, players) {
 
   (players || []).forEach((p) => {
     const status = availability[p.id];
+    if (p.isOccasional && !status) return;
     if (status === "present") present.push(p);
     else if (status === "absent") absent.push(p);
     else pending.push(p);
