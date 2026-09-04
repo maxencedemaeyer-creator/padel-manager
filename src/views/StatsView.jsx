@@ -99,6 +99,28 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
   );
 }
 
+// Variante de PersonHighlightCard sans joueur : affichée à la place de la
+// carte "Bête noire" quand le joueur n'a encaissé aucune défaite (voir
+// highlightPeople plus bas) — pas d'adversaire à mettre en avant dans ce cas.
+function NoNemesisCard() {
+  return (
+    <div className="w-40 shrink-0 rounded-2xl overflow-hidden border border-[var(--color-border)] bg-white shadow-sm">
+      <div className="h-24 flex items-center justify-center bg-emerald-600">
+        <span className="text-4xl">🏆</span>
+      </div>
+      <div className="p-3">
+        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
+          Bête noire
+        </p>
+        <p className="text-sm font-bold">Aucune</p>
+        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+          Tu as tout gagné pour l'instant
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Ligne de préférence — icône ronde à gauche, libellé fin, valeur en gras.
 // Si `onEdit` est fourni, un petit bouton crayon apparaît en haut à droite
 // de la zone pour permettre de modifier cette préférence.
@@ -394,9 +416,15 @@ export function StatsView() {
       playerOf(myStats.topOpponent.id) && {
         player: playerOf(myStats.topOpponent.id),
         title: "Bête noire",
-        subtitle: `${myStats.topOpponent.count} confrontation${myStats.topOpponent.count > 1 ? "s" : ""}`,
+        subtitle: `${myStats.topOpponent.losses} défaite${myStats.topOpponent.losses > 1 ? "s" : ""} sur ${myStats.topOpponent.count} confrontation${myStats.topOpponent.count > 1 ? "s" : ""}`,
         accentTone: "rose",
       },
+    // Pas de bête noire à afficher (aucun adversaire n'a de défaite face à
+    // nous) mais on a bien des matchs décidés au compteur : le dire
+    // explicitement plutôt que de laisser disparaître la carte en silence.
+    !myStats.topOpponent &&
+      myStats.losses === 0 &&
+      myStats.wins > 0 && { noNemesis: true },
   ].filter(Boolean);
 
   const preferences = [
@@ -566,7 +594,7 @@ export function StatsView() {
                 <div className="flex gap-3 overflow-x-auto pb-3 mb-6 -mx-4 px-4 snap-x snap-mandatory">
                   {highlightPeople.map((p, i) => (
                     <div key={i} className="snap-start">
-                      <PersonHighlightCard {...p} />
+                      {p.noNemesis ? <NoNemesisCard /> : <PersonHighlightCard {...p} />}
                     </div>
                   ))}
                 </div>
