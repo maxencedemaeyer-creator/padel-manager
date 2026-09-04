@@ -47,6 +47,11 @@ export function PlayerRow({ player }) {
                   Test
                 </Badge>
               )}
+              {player.isOccasional && (
+                <Badge tone="unpaid" className="!px-1.5 !py-0.5 !text-[9px]">
+                  Occasionnel
+                </Badge>
+              )}
               {player.federation && player.federation !== "Aucune" && (
                 <span className="text-[10px] text-[var(--color-text-faint)]">
                   {player.federation}
