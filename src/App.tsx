@@ -16,6 +16,10 @@ import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
 import Icon from "./components/icons/Icon";
+// "Matchs" est importé normalement (pas en chargement à la demande) — voir
+// le commentaire détaillé plus bas, juste avant les 5 autres onglets qui
+// restent, eux, chargés à la demande.
+import { MatchesView } from "./views/MatchesView";
 
 // Écran plein écran affiché à tous les joueurs non-admin quand le mode
 // maintenance est activé depuis l'onglet Administration (voir
@@ -45,6 +49,24 @@ function MaintenanceScreen() {
 // que la première fois qu'on l'ouvre, au lieu de tout charger d'un bloc dès
 // l'arrivée sur le site. Réduit nettement le temps avant que l'app devienne
 // utilisable, surtout sur mobile / réseau lent.
+//
+// EXCEPTION — "Matchs" (voir l'import de MatchesView tout en haut du
+// fichier, hors de ce groupe) : c'est le tout premier onglet affiché à
+// TOUT LE MONDE juste après la connexion, jamais un onglet "optionnel"
+// qu'on ouvre parfois. Le charger "à la demande" comme les 5 autres ne fait
+// donc gagner rien : ça ajoute au contraire un aller-retour réseau
+// systématique, pile au moment le plus visible (juste après l'écran de
+// connexion). C'est précisément ce qui donnait l'impression de "deux
+// écrans de chargement l'un après l'autre" (signalé par Max le 04/09/2026,
+// confirmé par vidéo) : l'écran plein écran "Chargement..." (données) était
+// immédiatement suivi d'un second petit chargement (le code de l'onglet
+// Matchs, récupéré séparément) avant que le contenu n'apparaisse enfin.
+// Cet onglet est donc désormais inclus directement dans le fichier
+// principal du site (comme avant l'introduction du chargement à la
+// demande) — un peu plus gros à télécharger au tout début, mais plus
+// aucun aller-retour ni second écran de chargement une fois arrivé dessus.
+// Les 5 autres onglets ci-dessous, eux, restent chargés à la demande : on
+// ne les ouvre pas forcément à chaque visite, ça reste donc un vrai gain.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // Rechargement automatique après une mise à jour du site (04/09/2026).
@@ -110,9 +132,8 @@ function lazyWithReload(chunkName, importer) {
   );
 }
 
-const MatchesView = lazyWithReload("matches", () =>
-  import("./views/MatchesView").then((m) => ({ default: m.MatchesView }))
-);
+// "Matchs" n'est PAS dans ce groupe : voir le commentaire au-dessus de
+// l'import de MatchesView, en haut du fichier.
 const PlayersView = lazyWithReload("players", () =>
   import("./views/PlayersView").then((m) => ({ default: m.PlayersView }))
 );
@@ -242,7 +263,15 @@ export default function PadelManagerApp() {
   }, []);
 
   if (!authIsReady) {
-    return <BounceLoader fullScreen />;
+    // Libellé ajouté le 04/09/2026 : jusqu'ici cet écran et celui juste
+    // après (AuthGate.jsx, pendant le chargement de la liste des joueurs)
+    // affichaient tous les deux le même texte générique "Chargement..." —
+    // impossible de distinguer les deux à l'oeil si quelqu'un rapporte avoir
+    // vu "deux écrans de chargement" à la suite. Un libellé différent à
+    // chaque étape (ici / AuthGate.jsx / App.tsx-MainApp) permet de savoir
+    // précisément laquelle des 3 étapes est concernée si ça se reproduit —
+    // aucun changement de comportement, seulement le texte affiché.
+    return <BounceLoader fullScreen label="Connexion en cours..." />;
   }
 
   return (
