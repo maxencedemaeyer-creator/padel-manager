@@ -22,7 +22,13 @@ export function PostMatchPrompt() {
   const eligible = matches.filter((m) => {
     if (dismissedIds.has(m.id)) return false;
     if (getMatchTiming(m, now) !== "finished") return false;
-    if (hasMatchScore(m)) return false;
+    // "Pas de score" (match amical / équipes changées) est une réponse
+    // valable au même titre qu'un vrai score : matchType passe à "Amical"
+    // sans qu'aucun set ne soit rempli (voir PostMatchModal.noScore). Ne
+    // vérifier que hasMatchScore() ici faisait donc réapparaître le rappel
+    // à chaque ouverture de l'app tant que la fenêtre de 24h n'était pas
+    // dépassée, même après réponse.
+    if (hasMatchScore(m) || m.matchType === "Amical") return false;
     const end = getMatchEnd(m);
     const windowEnd = new Date(end.getTime() + POST_MATCH_ENCODE_WINDOW_HOURS * 3600000);
     if (now < end || now > windowEnd) return false;
