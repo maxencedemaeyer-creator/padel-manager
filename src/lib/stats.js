@@ -2,7 +2,7 @@
 // Calculs de statistiques et de comptabilité — dérivés en direct depuis
 // les matchs, jamais depuis un compteur stocké qui pourrait dériver.
 // ─────────────────────────────────────────────────────────────────────────
-import { getMatchStart, getMatchTiming } from "./matchLogic";
+import { getMatchStart, getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "./matchLogic";
 
 // Petit garde-fou : un très ancien match (créé avant que le format actuel
 // de "participants" se stabilise, ou une donnée corrompue par un souci
@@ -112,6 +112,59 @@ export function getPlayerPayments(playerId, matches) {
   // Le plus récent en premier — cohérent avec paymentsReceived côté créancier.
   payments.sort((a, b) => new Date(b.date) - new Date(a.date));
   return { total, payments };
+}
+
+// Détail nominatif de TOUS les impayés sur des matchs déjà joués, toute
+// l'app confondue (pas filtré par créancier — voir "Ma comptabilité" qui
+// affichait déjà cette liste en dur avant le chantier du 04/09/2026 : un
+// impayé reste "l'affaire" de tous les créanciers puisque le joueur peut
+// rembourser n'importe quel créancier de la session, voir "remboursement
+// croisé" dans accounting-module-notes.md). Extrait ici en fonction
+// partagée pour être réutilisé tel quel côté joueur par `getPlayerDebts`
+// ci-dessous — une seule source de vérité pour ne jamais avoir deux calculs
+// d'impayés qui divergent (voir aussi la suppression volontaire de
+// `manualAdjustment`, plus jamais d'état saisi à la main en dehors de
+// "Marquer payé").
+export function getUnpaidPastParticipations(matches, players) {
+  const fallbackCreditorIds = new Set(
+    (players || []).filter((p) => p.isCreditor).map((p) => p.id)
+  );
+  const sessionGroups = groupMatchesBySession(matches || []);
+  return (matches || [])
+    .filter((m) => m.type === "Saison" && getMatchTiming(m) === "finished")
+    .flatMap((m) => {
+      const sessionCreditorIds =
+        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
+      return participantsOf(m)
+        .filter((p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid")
+        .map((p) => ({
+          key: `${m.id}-${p.playerId}`,
+          matchId: m.id,
+          playerId: p.playerId,
+          name: p.name,
+          fee: m.matchFeePerPlayer || 0,
+          date: m.date,
+          time: m.time || "",
+          location: m.location || "Terrain",
+          // Créanciers éligibles pour CE match précis — le joueur peut
+          // régler auprès de n'importe lequel d'entre eux, pas uniquement
+          // celui de son propre terrain (voir PaymentModal.jsx).
+          creditorIds: [...sessionCreditorIds],
+        }));
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+// "Ce que je dois" — le miroir de getUnpaidPastParticipations côté débiteur
+// plutôt que côté créancier (voir "Ce que je dois" dans StatsView.jsx,
+// symétrique de "Mes paiements"/getPlayerPayments). Un match n'apparaît ici
+// que si CE joueur précis y a une part encore non réglée.
+export function getPlayerDebts(playerId, matches, players) {
+  const debts = getUnpaidPastParticipations(matches, players).filter(
+    (item) => item.playerId === playerId
+  );
+  const total = debts.reduce((s, d) => s + d.fee, 0);
+  return { debts, total };
 }
 
 // Tous les joueurs à traiter comme "créancier" pour l'affichage/l'attribution
