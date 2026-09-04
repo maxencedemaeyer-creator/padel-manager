@@ -61,7 +61,14 @@ export function PaymentModal({ match, participant, onClose }) {
   const confirmPayment = async (creditor) => {
     setSaving(true);
     try {
-      const updatedParticipants = match.participants.map((p) =>
+      // Garde-fou (04/09/2026) : un match très ancien, ou une écriture
+      // Firestore interrompue, peut porter un champ "participants" absent ou
+      // dans un format inattendu (pas un tableau). Sans ce filet, ".map"
+      // plante immédiatement et, faute de mieux, faisait disparaître toute
+      // l'app (voir le même correctif déjà appliqué à stats.js/AccountingView
+      // le 02/09/2026 pour la cause n°1 identifiée à l'époque).
+      const currentParticipants = Array.isArray(match.participants) ? match.participants : [];
+      const updatedParticipants = currentParticipants.map((p) =>
         p.playerId === participant.playerId
           ? { ...p, paidStatus: "paid", creditorId: creditor.id }
           : p
