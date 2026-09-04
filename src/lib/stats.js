@@ -125,6 +125,17 @@ export function getPlayerPayments(playerId, matches) {
 // d'impayés qui divergent (voir aussi la suppression volontaire de
 // `manualAdjustment`, plus jamais d'état saisi à la main en dehors de
 // "Marquer payé").
+//
+// Chantier du 04/09/2026 (soir) — statut intermédiaire "owed" : un
+// participant impayé peut désormais être explicitement assigné à un
+// créancier précis (`paidStatus: "owed"` + `creditorId`, via
+// AssignCreditorModal.jsx), sans que ça marque le match comme réglé. Ce
+// n'est PAS un nouveau champ inventé : `creditorId` existait déjà, on
+// l'utilise simplement aussi hors du cas "paid". `owedTo` ci-dessous
+// distingue ce choix explicite de `creditorIds` (la liste des créanciers
+// ÉLIGIBLES pour la session, inchangée) — tant que personne n'a assigné la
+// dette, `owedTo` reste `null` et le joueur voit toujours la liste complète
+// des créanciers possibles.
 export function getUnpaidPastParticipations(matches, players) {
   const fallbackCreditorIds = new Set(
     (players || []).filter((p) => p.isCreditor).map((p) => p.id)
@@ -150,6 +161,9 @@ export function getUnpaidPastParticipations(matches, players) {
           // régler auprès de n'importe lequel d'entre eux, pas uniquement
           // celui de son propre terrain (voir PaymentModal.jsx).
           creditorIds: [...sessionCreditorIds],
+          // Créancier explicitement désigné pour CETTE dette (ou `null` si
+          // encore non assigné) — voir le commentaire du chantier ci-dessus.
+          owedTo: p.paidStatus === "owed" ? p.creditorId : null,
         }));
     })
     .sort((a, b) => new Date(a.date) - new Date(b.date));
