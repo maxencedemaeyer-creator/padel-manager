@@ -19,6 +19,7 @@ import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState, Switch, Modal } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
+import { CreditorAccountingModal } from "../components/accounting/CreditorAccountingModal";
 import { ManageClubsModal } from "../components/clubs/ManageClubsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 
@@ -398,6 +399,11 @@ export function AdminView() {
   // Même modale que celle utilisée par le créancier lui-même depuis "Ma
   // comptabilité", pour que les deux parcours restent parfaitement cohérents.
   const [editingClaim, setEditingClaim] = useState(null);
+  // Créancier dont on consulte la comptabilité complète en lecture seule
+  // (04/09/2026) — clic sur un nom dans "Soldes des créanciers" ci-dessous,
+  // ouvre CreditorAccountingModal (copie visuelle exacte de "Ma comptabilité"
+  // pour ce créancier, sans aucune action possible depuis ici).
+  const [viewingCreditor, setViewingCreditor] = useState(null);
   // Corrigé le 02/09/2026 (audit paiements) : inclut aussi un joueur dont la
   // case "Créancier" a depuis été décochée mais qui a réellement financé un
   // abonnement (présent dans `abonnement.creditors[]`) — sinon il disparaît
@@ -502,10 +508,16 @@ export function AdminView() {
 
               return (
                 <Card key={c.id} className="p-4 flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setViewingCreditor(c)}
+                    className="flex items-center gap-3 text-left -m-1 p-1 rounded-xl hover:bg-[var(--color-surface-2)] transition-colors"
+                    title="Voir sa comptabilité complète (lecture seule)"
+                  >
                     <PlayerAvatar player={c} size={40} />
                     <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                  </div>
+                    <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)] shrink-0" />
+                  </button>
 
                   <div className="pl-[52px] flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -595,6 +607,12 @@ export function AdminView() {
           creditorName={editingClaim.creditorName}
           abonnement={editingClaim.abonnement}
           onClose={() => setEditingClaim(null)}
+        />
+      )}
+      {viewingCreditor && (
+        <CreditorAccountingModal
+          creditor={viewingCreditor}
+          onClose={() => setViewingCreditor(null)}
         />
       )}
     </div>
