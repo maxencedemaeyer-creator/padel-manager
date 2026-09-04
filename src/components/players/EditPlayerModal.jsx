@@ -38,6 +38,7 @@ export function EditPlayerModal({ player, onClose }) {
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
   const [isTest, setIsTest] = useState(player.isTest === true);
+  const [isOccasional, setIsOccasional] = useState(player.isOccasional === true);
   const [secondaryTestCode, setSecondaryTestCode] = useState("");
   const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState("");
   const [clearSecondary, setClearSecondary] = useState(false);
@@ -128,6 +129,7 @@ export function EditPlayerModal({ player, onClose }) {
         isAdmin: playerIsAdmin,
         isCreditor,
         isTest,
+        isOccasional,
       };
       await updateDoc(doc(db, "players", player.id), payload);
 
@@ -346,6 +348,27 @@ export function EditPlayerModal({ player, onClose }) {
             />
             Compte test (invisible sur l'écran de connexion et pour les autres joueurs)
           </label>
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={isOccasional}
+              onChange={(e) => setIsOccasional(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Joueur occasionnel
+          </label>
+          {isOccasional && (
+            <p className="text-[11px] text-[var(--color-text-faint)] -mt-1 ml-6">
+              Masqué par défaut sur l'écran de connexion (accessible via le
+              lien "Je suis un joueur occasionnel") et absent des listes/
+              compteurs de présence des matchs, sauf pour un match précis où
+              vous avez vous-même répondu sa présence via "Modifier une
+              présence" — il redevient alors visible et peut répondre
+              lui-même, uniquement pour ce match-là. Ses statistiques restent
+              conservées mais masquées par défaut dans l'onglet Équipe
+              (bouton "Charger les joueurs occasionnels").
+            </p>
+          )}
 
           <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
             <p className="text-xs font-semibold text-[var(--color-text-dim)] mb-1">
@@ -388,6 +411,7 @@ export function EditPlayerModal({ player, onClose }) {
                       <option key={p.id} value={p.id}>
                         {p.name}
                         {p.isTest ? " (test)" : ""}
+                        {p.isOccasional ? " (occasionnel)" : ""}
                       </option>
                     ))}
                 </select>
