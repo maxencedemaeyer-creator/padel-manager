@@ -167,8 +167,8 @@ export function AccountingView() {
         Ma comptabilité
       </h2>
       <p className="text-xs text-slate-500 mb-4">
-        Il vous reste {remainingMatchesCount} match{remainingMatchesCount > 1 ? "s" : ""} restant
-        {remainingMatchesCount > 1 ? "s" : ""} dans votre abonnement.
+        Il vous reste {remainingMatchesCount} match{remainingMatchesCount > 1 ? "s" : ""} à jouer
+        dans votre abonnement.
       </p>
 
       {/* 1. Bannière d'alerte / suivi des paiements */}
