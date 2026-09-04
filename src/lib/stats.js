@@ -2,7 +2,12 @@
 // Calculs de statistiques et de comptabilité — dérivés en direct depuis
 // les matchs, jamais depuis un compteur stocké qui pourrait dériver.
 // ─────────────────────────────────────────────────────────────────────────
-import { getMatchStart, getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "./matchLogic";
+import {
+  getMatchStart,
+  getMatchTiming,
+  groupMatchesBySession,
+  getSessionCreditorIds,
+} from "./matchLogic";
 
 // Petit garde-fou : un très ancien match (créé avant que le format actuel
 // de "participants" se stabilise, ou une donnée corrompue par un souci
@@ -18,19 +23,50 @@ export function participantsOf(match) {
   return Array.isArray(match?.participants) ? match.participants : [];
 }
 
-export function getCreditorAccounting(creditorId, matches) {
+// `players` est nécessaire pour dériver, match par match, les créanciers de
+// LA SESSION de ce match (`getSessionCreditorIds`, avec repli sur la liste
+// globale des créanciers pour un match sans `creditorIds`, données
+// antérieures au 02/09/2026) — voir `selfReimbursed`/`selfPayableMatches`
+// ci-dessous, corrigés le 04/09/2026.
+export function getCreditorAccounting(creditorId, matches, players) {
   let totalPaidAllTime = 0; // tout paiement confirmé, peu importe la date du match
   let totalPaidPastMatches = 0; // uniquement les matchs déjà passés
   let totalPaidUpcomingMatches = 0; // payé D'AVANCE, pour des matchs pas encore joués
-  let selfReimbursed = 0; // matchs déjà joués par le créancier lui-même
+  let selfReimbursed = 0; // matchs déjà joués par le créancier lui-même, COUVERTS par sa créance
+  let selfPastCoveredCount = 0;
+  let selfUpcomingCoveredValue = 0; // matchs à venir COUVERTS par sa créance
+  let selfUpcomingCoveredCount = 0;
   const paymentsReceived = []; // détail nominatif — matchs passés
   const paymentsReceivedUpcoming = []; // détail nominatif — matchs à venir, payés d'avance
+  // Matchs joués par ce créancier mais NON couverts par sa créance (il n'est
+  // créancier d'AUCUN terrain de la session de ce match) — il doit les payer
+  // comme n'importe quel joueur. Nouveau le 04/09/2026, pour permettre à
+  // "Ma consommation personnelle" (AccountingView.jsx) de distinguer les deux
+  // cas — demande explicite de Max suite à un cas réel mal calculé.
+  const selfPayableMatches = [];
+
+  const sessionGroups = groupMatchesBySession(matches);
+  const fallbackCreditorIds = new Set(
+    (players || []).filter((p) => p.isCreditor === true).map((p) => p.id)
+  );
 
   matches
     .filter((m) => m.type === "Saison")
     .forEach((m) => {
       const fee = m.matchFeePerPlayer || 0;
       const finished = getMatchTiming(m) === "finished";
+      // Couvert par sa créance : ce créancier finance-t-il un terrain
+      // quelconque de LA SESSION de ce match (même date + heure + club, tous
+      // terrains confondus) ? Pas seulement CE terrain précis — un créancier
+      // qui finance le Terrain 6 mais joue ce jour-là sur le Terrain 1 (par
+      // ex. parce que le créancier du Terrain 1 est absent) reste couvert :
+      // il a déjà avancé de l'argent pour le club ce jour-là, juste sur un
+      // autre terrain (voir getSessionCreditorIds, matchLogic.js). Ce n'est
+      // QUE lorsqu'AUCUN terrain de la session n'est le sien qu'un match
+      // devient réellement "hors abonnement" et donc payant pour lui.
+      const sessionCreditorIds =
+        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
+      const isCovered = sessionCreditorIds.has(creditorId);
       participantsOf(m).forEach((p) => {
         if (p.paidStatus === "paid" && p.creditorId === creditorId) {
           totalPaidAllTime += fee;
@@ -56,8 +92,27 @@ export function getCreditorAccounting(creditorId, matches) {
             paymentsReceivedUpcoming.push(entry);
           }
         }
-        if (p.playerId === creditorId && finished) {
-          selfReimbursed += fee;
+        if (p.playerId === creditorId) {
+          if (isCovered) {
+            if (finished) {
+              selfReimbursed += fee;
+              selfPastCoveredCount += 1;
+            } else {
+              selfUpcomingCoveredValue += fee;
+              selfUpcomingCoveredCount += 1;
+            }
+          } else {
+            selfPayableMatches.push({
+              key: `${m.id}-${p.playerId}`,
+              matchId: m.id,
+              date: m.date,
+              time: m.time || "",
+              location: m.location || "Terrain",
+              fee,
+              finished,
+              paid: p.paidStatus === "paid",
+            });
+          }
         }
       });
     });
@@ -65,13 +120,25 @@ export function getCreditorAccounting(creditorId, matches) {
   // Passés : le plus récent en premier. À venir : le plus proche en premier.
   paymentsReceived.sort((a, b) => new Date(b.date) - new Date(a.date));
   paymentsReceivedUpcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
+  selfPayableMatches.sort((a, b) => new Date(b.date) - new Date(a.date));
+  const selfPayablePastCount = selfPayableMatches.filter((m) => m.finished).length;
+  const selfPayableUpcomingCount = selfPayableMatches.length - selfPayablePastCount;
+  const selfPayableTotal = selfPayableMatches.reduce((s, m) => s + m.fee, 0);
+
   return {
     totalPaidAllTime,
     totalPaidPastMatches,
     totalPaidUpcomingMatches,
     selfReimbursed,
+    selfPastCoveredCount,
+    selfUpcomingCoveredValue,
+    selfUpcomingCoveredCount,
     paymentsReceived,
     paymentsReceivedUpcoming,
+    selfPayableMatches,
+    selfPayablePastCount,
+    selfPayableUpcomingCount,
+    selfPayableTotal,
   };
 }
 
@@ -144,6 +211,15 @@ export function getUnpaidPastParticipations(matches, players) {
   return (matches || [])
     .filter((m) => m.type === "Saison" && getMatchTiming(m) === "finished")
     .flatMap((m) => {
+      // Créanciers de LA SESSION de ce match (tous terrains confondus) —
+      // à la fois ceux qui PEUVENT recevoir le paiement ("remboursement
+      // croisé") et ceux qui sont EXEMPTÉS de payer ce match : un créancier
+      // qui finance un autre terrain de la même session (ex. Donald,
+      // créancier du Terrain 6, qui joue ce jour-là sur le Terrain 1 financé
+      // par quelqu'un d'autre) reste exempté — il a déjà avancé de l'argent
+      // pour le club ce jour-là, juste sur un autre terrain (voir
+      // getSessionCreditorIds, matchLogic.js). Il ne redevient un débiteur
+      // ordinaire que le jour où AUCUN terrain de la session n'est le sien.
       const sessionCreditorIds =
         getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
       return participantsOf(m)
