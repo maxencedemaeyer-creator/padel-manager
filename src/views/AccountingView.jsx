@@ -19,6 +19,7 @@ import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { CreditorPaymentsModal } from "../components/accounting/CreditorPaymentsModal";
+import { AssignCreditorModal } from "../components/accounting/AssignCreditorModal";
 
 export function AccountingView() {
   const { connectedPlayer, players, matches, abonnements, clubs } = useAppData();
@@ -29,6 +30,10 @@ export function AccountingView() {
   // puis clé de la ligne en cours d'écriture Firestore (clic 2 confirmé).
   const [confirmingKey, setConfirmingKey] = useState(null);
   const [savingKey, setSavingKey] = useState(null);
+  // Chantier "doit payer à" du 04/09/2026 (soir) : clé de la ligne pour
+  // laquelle AssignCreditorModal est ouverte (assignation ou réassignation
+  // d'un impayé à un créancier précis, sans le marquer payé).
+  const [assigningKey, setAssigningKey] = useState(null);
   // Modale de détail des remboursements (bloc 4) : "past" | "upcoming" | null.
   const [paymentsModalTab, setPaymentsModalTab] = useState(null);
   const {
@@ -103,10 +108,13 @@ export function AccountingView() {
   // récupérer, même si le match correspondant n'a pas encore eu lieu).
   const remainingNet = advanced - selfSeasonTotal - totalReceivedAll;
 
-  // Marque le joueur concerné comme ayant payé sa part de ce match, avec
-  // "moi" (le créancier connecté) comme créancier destinataire — pas besoin
-  // de demander "à quel créancier ?" ici puisque cette vue est déjà celle
-  // d'un seul créancier sur sa propre créance.
+  // Marque le joueur concerné comme ayant payé sa part de ce match. Si la
+  // dette a déjà été assignée à un créancier précis via "Doit payer à..."
+  // (item.owedTo), le paiement lui est crédité directement — plus besoin de
+  // redemander "à quel créancier ?" à ce stade. Sinon (dette pas encore
+  // assignée), on garde le comportement d'origine : crédité au créancier
+  // connecté, puisque c'est lui qui confirme depuis sa propre "Ma
+  // comptabilité".
   const markAsPaid = async (item) => {
     setSavingKey(item.key);
     try {
@@ -114,7 +122,7 @@ export function AccountingView() {
       if (!match) return;
       const updatedParticipants = participantsOf(match).map((p) =>
         p.playerId === item.playerId
-          ? { ...p, paidStatus: "paid", creditorId: connectedPlayer.id }
+          ? { ...p, paidStatus: "paid", creditorId: item.owedTo || connectedPlayer.id }
           : p
       );
       await updateDoc(doc(db, "matches", item.matchId), {
@@ -127,6 +135,12 @@ export function AccountingView() {
       setSavingKey(null);
     }
   };
+
+  // Item actuellement ouvert dans AssignCreditorModal (ou null) — dérivé de
+  // unpaidPast plutôt qu'un état séparé, pour toujours refléter la donnée
+  // Firestore la plus fraîche (utile si un autre créancier modifie la même
+  // dette en même temps).
+  const assigningItem = unpaidPast.find((i) => i.key === assigningKey) || null;
 
   return (
     <div className="min-h-screen px-4 pt-4 pb-28" style={{ backgroundColor: "#F8FAFC" }}>
@@ -165,55 +179,91 @@ export function AccountingView() {
           {unpaidPast.map((item) => {
             const isConfirming = confirmingKey === item.key;
             const isSaving = savingKey === item.key;
+            // Chantier "doit payer à" du 04/09/2026 (soir) : nom du
+            // créancier explicitement désigné pour cette dette, s'il y en a
+            // un (voir owedTo dans getUnpaidPastParticipations).
+            const owedToPlayer = item.owedTo
+              ? players.find((p) => p.id === item.owedTo) || null
+              : null;
             return (
               <div
                 key={item.key}
-                className="bg-white border border-orange-200/70 rounded-2xl p-3.5 flex items-center gap-3"
+                className="bg-white border border-orange-200/70 rounded-2xl p-3.5 flex flex-col gap-2"
               >
-                <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
-                  <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-semibold truncate">{item.name}</span>
-                  <span className="block text-xs text-slate-400 truncate">
-                    {formatDateFR(item.date)} · {item.location}
+                <div className="flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                    <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
                   </span>
-                </span>
-                <span className="pm-mono font-bold text-orange-600 text-sm shrink-0">
-                  {item.fee.toLocaleString("fr-FR")} €
-                </span>
-                {isConfirming ? (
-                  <span className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      disabled={isSaving}
-                      onClick={() => markAsPaid(item)}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                    >
-                      {isSaving ? "…" : "Confirmer"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSaving}
-                      onClick={() => setConfirmingKey(null)}
-                      className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
-                    >
-                      Annuler
-                    </button>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold truncate">{item.name}</span>
+                    <span className="block text-xs text-slate-400 truncate">
+                      {formatDateFR(item.date)} · {item.location}
+                    </span>
+                    {owedToPlayer && (
+                      <span className="block text-[11px] font-medium text-sky-700 mt-0.5 truncate">
+                        → Doit payer à{" "}
+                        {owedToPlayer.id === connectedPlayer.id ? "moi" : owedToPlayer.name}
+                      </span>
+                    )}
                   </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingKey(item.key)}
-                    className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                  >
-                    Marquer payé
-                  </button>
-                )}
+                  <span className="pm-mono font-bold text-orange-600 text-sm shrink-0">
+                    {item.fee.toLocaleString("fr-FR")} €
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap pl-12">
+                  {isConfirming ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => markAsPaid(item)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                      >
+                        {isSaving ? "…" : "Confirmer"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => setConfirmingKey(null)}
+                        className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
+                      >
+                        Annuler
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingKey(item.key)}
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                      >
+                        Marquer payé
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssigningKey(item.key)}
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
+                      >
+                        {owedToPlayer ? "Changer de créancier" : "Doit payer à…"}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {assigningItem && (
+        <AssignCreditorModal
+          matchId={assigningItem.matchId}
+          playerId={assigningItem.playerId}
+          playerName={assigningItem.name}
+          fee={assigningItem.fee}
+          currentOwedTo={assigningItem.owedTo}
+          onClose={() => setAssigningKey(null)}
+        />
       )}
 
       {/* 2. Créance(s) de départ — une carte par abonnement où je figure
