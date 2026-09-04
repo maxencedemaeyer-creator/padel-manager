@@ -11,6 +11,7 @@ import { cn, formatDateFR, formatClaimPeriodLabel } from "../lib/utils";
 import {
   getCreditorAccounting,
   getCreditorClaims,
+  getCreditorRemainingMatchesCount,
   getUnpaidPastParticipations,
   participantsOf,
 } from "../lib/stats";
@@ -54,6 +55,16 @@ export function AccountingView() {
   // désormais cumuler plusieurs abonnements (une créance par abonnement où
   // il figure), au lieu d'un seul montant global sur sa fiche joueur.
   const { claims, total: advanced } = getCreditorClaims(connectedPlayer.id, abonnements, matches);
+
+  // Sous-titre en haut de page (04/09/2026, demande de Max) : nombre de
+  // matchs à venir (pas de sessions) pour lesquels je suis créancier d'un
+  // abonnement, indépendamment de ma présence à ces matchs — voir
+  // getCreditorRemainingMatchesCount (lib/stats.js).
+  const remainingMatchesCount = getCreditorRemainingMatchesCount(
+    connectedPlayer.id,
+    abonnements,
+    matches
+  );
 
   // Bloc 3 — auto-remboursement : mes propres matchs COUVERTS par ma
   // créance (je finance un terrain de la session, voir getSessionCreditorIds
@@ -156,8 +167,8 @@ export function AccountingView() {
         Ma comptabilité
       </h2>
       <p className="text-xs text-slate-500 mb-4">
-        Calculé automatiquement à partir des matchs et paiements enregistrés — aucun
-        moyen de paiement externe n'est utilisé.
+        Il vous reste {remainingMatchesCount} match{remainingMatchesCount > 1 ? "s" : ""} restant
+        {remainingMatchesCount > 1 ? "s" : ""} dans votre abonnement.
       </p>
 
       {/* 1. Bannière d'alerte / suivi des paiements */}
