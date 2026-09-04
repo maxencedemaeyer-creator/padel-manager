@@ -14,6 +14,8 @@
 // - modale "wide" avec corps déjà scrollable (voir components/ui).
 // ─────────────────────────────────────────────────────────────────────────
 import { useMemo, useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 import { cn, formatDateFR } from "../../lib/utils";
 import { Modal, EmptyState } from "../ui";
 import Icon from "../icons/Icon";
@@ -29,13 +31,49 @@ export function CreditorPaymentsModal({
   subtitle,
   payments,
   players,
+  matches,
   accent = "emerald",
   sortDir = "desc",
   onClose,
 }) {
   const [query, setQuery] = useState("");
   const [openKeys, setOpenKeys] = useState(() => new Set());
+  // Correction d'un paiement mal encodé (04/09/2026) : clé de la ligne en
+  // attente de confirmation (clic 1), puis clé de la ligne en cours
+  // d'écriture Firestore (clic 2 confirmé) — même pattern à 2 clics que
+  // "Marquer payé" dans AccountingView.jsx, pour éviter un clic accidentel
+  // sur une vraie donnée financière.
+  const [undoingKey, setUndoingKey] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
   const tone = ACCENTS[accent] || ACCENTS.emerald;
+
+  // Annule un paiement enregistré par erreur : remet le participant EXACTEMENT
+  // dans l'état d'origine ("unpaid" + creditorId null, la même valeur que
+  // CourtPanel.jsx/PickPlayerModal.jsx utilisent à la création d'un
+  // participant) — pas un nouveau statut inventé. Le match retombe alors,
+  // automatiquement et sans autre manipulation, dans "à percevoir" côté
+  // Ma comptabilité (s'il est déjà joué) ou reste simplement "en attente"
+  // (s'il est à venir) — exactement comme avant que "Marquer payé" ne soit
+  // cliqué, avec le bouton "Marquer payé" de nouveau disponible pour
+  // recommencer, au bon créancier cette fois si c'était l'erreur.
+  const undoPayment = async (item) => {
+    setSavingKey(item.key);
+    try {
+      const match = (matches || []).find((m) => m.id === item.matchId);
+      if (!match) return;
+      const updatedParticipants = (Array.isArray(match.participants) ? match.participants : []).map(
+        (p) => (p.playerId === item.playerId ? { ...p, paidStatus: "unpaid", creditorId: null } : p)
+      );
+      await updateDoc(doc(db, "matches", item.matchId), {
+        participants: updatedParticipants,
+      });
+      setUndoingKey(null);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingKey(null);
+    }
+  };
 
   const groups = useMemo(() => {
     const byPlayer = new Map();
@@ -128,22 +166,57 @@ export function CreditorPaymentsModal({
                 </button>
                 {isOpen && (
                   <div className={cn("border-t divide-y divide-slate-100", tone.border, tone.bg)}>
-                    {g.items.map((item) => (
-                      <div key={item.key} className="flex items-center gap-3 px-3.5 py-2.5">
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-xs font-semibold text-slate-600 truncate">
-                            {formatDateFR(item.date)}
-                            {item.time ? ` · ${item.time}` : ""}
-                          </span>
-                          <span className="block text-[11px] text-slate-400 truncate">
-                            {item.location}
-                          </span>
-                        </span>
-                        <span className={cn("pm-mono text-xs font-bold shrink-0", tone.text)}>
-                          +{item.fee.toLocaleString("fr-FR")} €
-                        </span>
-                      </div>
-                    ))}
+                    {g.items.map((item) => {
+                      const isUndoing = undoingKey === item.key;
+                      const isSaving = savingKey === item.key;
+                      return (
+                        <div key={item.key} className="px-3.5 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setUndoingKey(isUndoing ? null : item.key)}
+                            className="w-full flex items-center gap-3 text-left"
+                            title="Cliquer pour corriger ce paiement"
+                          >
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-xs font-semibold text-slate-600 truncate">
+                                {formatDateFR(item.date)}
+                                {item.time ? ` · ${item.time}` : ""}
+                              </span>
+                              <span className="block text-[11px] text-slate-400 truncate">
+                                {item.location}
+                              </span>
+                            </span>
+                            <span className={cn("pm-mono text-xs font-bold shrink-0", tone.text)}>
+                              +{item.fee.toLocaleString("fr-FR")} €
+                            </span>
+                            <Icon.Edit className="w-3 h-3 text-slate-300 shrink-0" />
+                          </button>
+                          {isUndoing && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200/70">
+                              <p className="flex-1 text-[11px] text-slate-500">
+                                Erreur d'encodage ? Ce match repassera "à percevoir".
+                              </p>
+                              <button
+                                type="button"
+                                disabled={isSaving}
+                                onClick={() => undoPayment(item)}
+                                className="shrink-0 px-2.5 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                              >
+                                {isSaving ? "…" : "Annuler ce paiement"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSaving}
+                                onClick={() => setUndoingKey(null)}
+                                className="shrink-0 px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
+                              >
+                                Retour
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
