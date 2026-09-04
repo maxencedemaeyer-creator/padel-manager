@@ -145,7 +145,13 @@ export function MyMatchSummary({ now }) {
 
   let owesMoney = null;
   if (myLastFinished && !connectedPlayer.isCreditor) {
-    const me = myLastFinished.participants.find((p) => p.playerId === connectedPlayer.id);
+    // Garde-fou (04/09/2026) : voir le même correctif dans PaymentModal.jsx —
+    // un "participants" absent/mal formé sur un match ancien ne doit jamais
+    // faire planter tout l'onglet Matchs pour tout le monde.
+    const lastFinishedParticipants = Array.isArray(myLastFinished.participants)
+      ? myLastFinished.participants
+      : [];
+    const me = lastFinishedParticipants.find((p) => p.playerId === connectedPlayer.id);
     if (me && me.paidStatus !== "paid") owesMoney = myLastFinished;
   }
 
