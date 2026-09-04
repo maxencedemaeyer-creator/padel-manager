@@ -176,6 +176,7 @@ export function computePlayerStats(playerId, matches) {
   const partnerCounts = new Map();
   const partnerWins = new Map();
   const opponentCounts = new Map();
+  const opponentLosses = new Map();
   const positionCounts = { Droite: 0, Gauche: 0 };
   const positionResults = { Droite: { wins: 0, losses: 0 }, Gauche: { wins: 0, losses: 0 } };
   const history = [];
@@ -219,6 +220,9 @@ export function computePlayerStats(playerId, matches) {
           }
         } else {
           opponentCounts.set(p.playerId, (opponentCounts.get(p.playerId) || 0) + 1);
+          if (result === "loss") {
+            opponentLosses.set(p.playerId, (opponentLosses.get(p.playerId) || 0) + 1);
+          }
         }
       });
     }
@@ -233,6 +237,17 @@ export function computePlayerStats(playerId, matches) {
     });
     return best;
   };
+
+  // Bête noire : l'adversaire contre qui on perd le plus (pas simplement
+  // celui qu'on affronte le plus souvent — un adversaire très fréquent mais
+  // jamais vainqueur n'a rien d'une bête noire). `null` tant qu'aucune
+  // défaite n'a été encaissée, même si des adversaires ont été affrontés.
+  let topOpponent = null;
+  opponentLosses.forEach((lossCount, id) => {
+    if (!topOpponent || lossCount > topOpponent.losses) {
+      topOpponent = { id, losses: lossCount, count: opponentCounts.get(id) || lossCount };
+    }
+  });
 
   // Duo gagnant : partenaire avec le meilleur taux de victoire (min. 2 matchs ensemble).
   let bestDuo = null;
@@ -299,7 +314,7 @@ export function computePlayerStats(playerId, matches) {
     losses,
     winRate: decided > 0 ? Math.round((wins / decided) * 100) : 0,
     topPartner: topOf(partnerCounts),
-    topOpponent: topOf(opponentCounts),
+    topOpponent,
     bestDuo,
     favoritePosition,
     positionRates: { Droite: droiteRate, Gauche: gaucheRate },
