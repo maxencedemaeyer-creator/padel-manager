@@ -17,13 +17,20 @@ import {
   SIDE_OPTIONS,
   FEDERATION_OPTIONS,
 } from "../lib/constants";
-import { computePlayerStats, getRecentForm, computeHeadToHead, getPlayerPayments } from "../lib/stats";
+import {
+  computePlayerStats,
+  getRecentForm,
+  computeHeadToHead,
+  getPlayerPayments,
+  getPlayerDebts,
+} from "../lib/stats";
 import { countMvpWins } from "../lib/mvp";
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
 import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
+import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
 
 function ProgressRing({ value, size = 110, stroke = 10, label }) {
   const radius = (size - stroke) / 2;
@@ -372,6 +379,14 @@ export function StatsView() {
   const myPaymentsMatchesCount = new Set(myPayments.payments.map((p) => p.matchId)).size;
   const [showMyPayments, setShowMyPayments] = useState(false);
 
+  // "Ce que je dois" — miroir de "Mes paiements" côté dette : matchs déjà
+  // joués où ma part n'est pas encore réglée. Réutilise le même calcul que
+  // la liste "impayés" de "Ma comptabilité" (voir getPlayerDebts, lib/
+  // stats.js) — jamais un état saisi à la main, toujours dérivé en direct.
+  // Bloc volontairement invisible si aucune dette (myDebts.total === 0).
+  const myDebts = getPlayerDebts(connectedPlayer.id, matches, players);
+  const [showMyDebts, setShowMyDebts] = useState(false);
+
   // Jeu "Homme du match" (Game Center) — nombre de fois où CE joueur a été
   // élu, toute la saison confondue. Rien n'est affiché s'il n'a jamais été
   // élu (voir lib/mvp.js → countMvpWins).
@@ -682,6 +697,43 @@ export function StatsView() {
             </p>
           )}
         </Card>
+
+        {/* Ce que je dois — matchs déjà joués pas encore réglés de mon côté.
+            N'apparaît pas du tout si je suis à jour, pour ne rien ajouter à
+            l'écran des joueurs qui n'ont aucune dette. */}
+        {myDebts.total > 0 && (
+          <>
+            <h3 className="pm-display font-bold text-lg text-white mb-3">Ce que je dois</h3>
+            <Card className="mb-6 overflow-hidden p-0">
+              <button
+                type="button"
+                onClick={() => setShowMyDebts(true)}
+                className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/40 active:bg-white/50 transition-colors"
+              >
+                <span className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                  <Icon.AlertCircle className="w-5 h-5 text-orange-600" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block pm-display font-extrabold text-2xl leading-none text-orange-600">
+                    {myDebts.total.toLocaleString("fr-FR")} €
+                  </span>
+                  <span className="block text-xs text-[var(--color-text-dim)] mt-1.5">
+                    {myDebts.debts.length} match{myDebts.debts.length > 1 ? "s" : ""} à régler
+                  </span>
+                </span>
+                <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)] shrink-0" />
+              </button>
+            </Card>
+
+            {showMyDebts && (
+              <MyDebtsModal
+                debts={myDebts.debts}
+                players={players}
+                onClose={() => setShowMyDebts(false)}
+              />
+            )}
+          </>
+        )}
 
         {/* Mes paiements — tout ce que j'ai remboursé à un créancier, quel
             que soit mon propre rôle dans l'app. Clic sur le bloc = liste
