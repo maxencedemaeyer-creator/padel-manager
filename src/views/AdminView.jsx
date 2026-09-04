@@ -6,11 +6,12 @@ import { useState } from "react";
 import { doc, deleteDoc, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming, groupMatchesBySession, getSessionCreditorIds } from "../lib/matchLogic";
+import { getMatchTiming } from "../lib/matchLogic";
 import {
   getCreditorAccounting,
   getCreditorClaims,
   getAllCreditorPlayerIds,
+  getUnpaidPastParticipations,
   participantsOf,
 } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
@@ -133,21 +134,25 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
   const [deleteTarget, setDeleteTarget] = useState(null); // info d'un abonnement, ou null
   const [busyId, setBusyId] = useState(null);
 
-  const sessionGroups = groupMatchesBySession(matches);
-  const fallbackCreditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
+  // Simplifié le 04/09/2026 : réutilise getUnpaidPastParticipations (source
+  // unique de vérité, voir lib/stats.js) plutôt que de recalculer les
+  // impayés ad hoc ici — même résultat (exemption par créancier de la
+  // session, inchangée), mais plus aucun risque que ce calcul diverge un
+  // jour de celui affiché ailleurs dans l'app (Ma comptabilité, Ce que je
+  // dois, KPI admin ci-dessous).
+  const unpaidItemsByMatchId = new Map();
+  getUnpaidPastParticipations(matches, players).forEach((item) => {
+    unpaidItemsByMatchId.set(item.matchId, (unpaidItemsByMatchId.get(item.matchId) || 0) + item.fee);
+  });
 
   const withInfo = (abonnements || []).map((a) => {
     const related = matches.filter((m) => m.abonnementId === a.id);
     const finishedMatches = related.filter((m) => getMatchTiming(m) === "finished");
     const unfinishedCount = related.length - finishedMatches.length;
-    const unpaidAmount = finishedMatches.reduce((sum, m) => {
-      const sessionCreditorIds =
-        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
-      const unpaidCount = participantsOf(m).filter(
-        (p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid"
-      ).length;
-      return sum + unpaidCount * (m.matchFeePerPlayer || 0);
-    }, 0);
+    const unpaidAmount = finishedMatches.reduce(
+      (sum, m) => sum + (unpaidItemsByMatchId.get(m.id) || 0),
+      0
+    );
     const paidAmount = related.reduce((sum, m) => {
       const paidCount = participantsOf(m).filter((p) => p.paidStatus === "paid").length;
       return sum + paidCount * (m.matchFeePerPlayer || 0);
@@ -405,34 +410,22 @@ export function AdminView() {
   // correction passe désormais uniquement par "Marquer payé" sur le match
   // concerné, depuis "Ma comptabilité" ou l'onglet Matchs.
   const creditorRawTotals = new Map(
-    creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches).totalPaidAllTime])
+    creditors.map((c) => [c.id, getCreditorAccounting(c.id, matches, players).totalPaidAllTime])
   );
   const totalBalance = [...creditorRawTotals.values()].reduce((s, v) => s + v, 0);
   const upcomingCount = matches.filter((m) => getMatchTiming(m) !== "finished").length;
   // Corrigé le 02/09/2026 (audit paiements) : ce chiffre comptait TOUS les
   // participants non "paid" de TOUS les matchs "Saison", y compris les
   // matchs pas encore joués (rien à payer avant qu'ils aient lieu) et les
-  // places couvertes par un créancier de la session (voir
-  // `getSessionCreditorIds`) — celles-ci ne passent jamais par "Marquer
-  // payé" (le bouton y est désactivé), donc `paidStatus` y reste "unpaid"
-  // pour toujours et gonflait ce compteur en continu, sans rapport avec de
-  // vrais impayés. Même filtre que le détail nominatif de "Ma comptabilité"
-  // (AccountingView.jsx → unpaidPast), pour rester cohérent avec ce que
-  // chaque créancier y voit.
-  const fallbackCreditorIds = new Set(players.filter((p) => p.isCreditor).map((p) => p.id));
-  const sessionGroups = groupMatchesBySession(matches);
-  const unpaidCount = matches
-    .filter((m) => m.type === "Saison" && getMatchTiming(m) === "finished")
-    .reduce((sum, m) => {
-      const sessionCreditorIds =
-        getSessionCreditorIds(m, matches, sessionGroups) || fallbackCreditorIds;
-      return (
-        sum +
-        participantsOf(m).filter(
-          (p) => !sessionCreditorIds.has(p.playerId) && p.paidStatus !== "paid"
-        ).length
-      );
-    }, 0);
+  // places couvertes par un créancier de la session (celles-ci ne passent
+  // jamais par "Marquer payé", le bouton y est désactivé, donc `paidStatus`
+  // y reste "unpaid" pour toujours et gonflait ce compteur en continu, sans
+  // rapport avec de vrais impayés). Simplifié le 04/09/2026 : réutilise
+  // directement `getUnpaidPastParticipations` (lib/stats.js) au lieu de
+  // dupliquer le même calcul ici — une seule source de vérité, cohérente
+  // avec le détail nominatif de "Ma comptabilité" (AccountingView.jsx →
+  // unpaidPast) et avec "Ce que je dois" (StatsView.jsx).
+  const unpaidCount = getUnpaidPastParticipations(matches, players).length;
 
   const stats = [
     { label: "Joueurs", value: players.length, icon: Icon.Users },
