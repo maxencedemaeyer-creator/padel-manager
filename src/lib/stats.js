@@ -316,6 +316,34 @@ export function getCreditorClaims(creditorId, abonnements, matches) {
   return { claims, total };
 }
 
+// Nombre de matchs à venir (comptés en MATCHS individuels — un match par
+// terrain — jamais en sessions, contrairement à d'autres compteurs de cette
+// page) pour lesquels ce créancier EST créancier d'un abonnement, qu'il y
+// joue lui-même ce jour-là ou non (indépendant de sa présence). Ajouté le
+// 04/09/2026, demande de Max, pour remplacer en haut de "Ma comptabilité" le
+// petit paragraphe générique "Calculé automatiquement..." par une phrase
+// concrète : "Il vous reste X matchs restants dans votre abonnement."
+// Basé sur `abonnement.creditors[]` + `match.abonnementId`, exactement comme
+// `getCreditorClaims` ci-dessus (même source de vérité que le nombre de
+// matchs couverts par une créance) — pas sur `match.creditorIds`, qui sert à
+// un usage différent (exemption de paiement par session, voir
+// `getSessionCreditorIds` dans matchLogic.js).
+export function getCreditorRemainingMatchesCount(creditorId, abonnements, matches) {
+  const creditorAbonnementIds = new Set(
+    (abonnements || [])
+      .filter((a) => (a.creditors || []).some((c) => c.playerId === creditorId))
+      .map((a) => a.id)
+  );
+  if (creditorAbonnementIds.size === 0) return 0;
+  return (matches || []).filter(
+    (m) =>
+      m.type === "Saison" &&
+      m.abonnementId &&
+      creditorAbonnementIds.has(m.abonnementId) &&
+      getMatchTiming(m) !== "finished"
+  ).length;
+}
+
 // Statistiques d'un joueur — uniquement sur les matchs déjà terminés.
 // Coéquipier/adversaire ne sont comptabilisés que si l'équipe (team: "A"/"B")
 // a été renseignée lors de l'assignation ; victoire/défaite uniquement si
