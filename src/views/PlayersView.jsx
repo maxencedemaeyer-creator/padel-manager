@@ -12,10 +12,21 @@ import { AddPlayerModal } from "../components/players/AddPlayerModal";
 export function PlayersView() {
   const { players, matches, isAdmin } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
+  // Joueurs occasionnels : gardent toutes leurs stats mais restent masqués
+  // par défaut de cette liste (moins de bruit visuel) — un bouton en bas
+  // permet de les charger à la demande, pour tout le monde (pas admin
+  // uniquement), voir feature "joueurs occasionnels".
+  const [showOccasional, setShowOccasional] = useState(false);
 
   // Toujours affiché par ordre alphabétique — tri manuel supprimé.
   const sorted = useMemo(() => {
-    const arr = [...players].filter((p) => isAdmin || !p.isTest);
+    const arr = [...players].filter((p) => (isAdmin || !p.isTest) && !p.isOccasional);
+    arr.sort((a, b) => a.name.localeCompare(b.name));
+    return arr;
+  }, [players, isAdmin]);
+
+  const occasionalPlayers = useMemo(() => {
+    const arr = [...players].filter((p) => (isAdmin || !p.isTest) && p.isOccasional);
     arr.sort((a, b) => a.name.localeCompare(b.name));
     return arr;
   }, [players, isAdmin]);
@@ -63,6 +74,40 @@ export function PlayersView() {
             ))}
           </div>
         </>
+      )}
+
+      {occasionalPlayers.length > 0 && (
+        <div className="mt-6">
+          {!showOccasional ? (
+            <button
+              type="button"
+              onClick={() => setShowOccasional(true)}
+              className="w-full py-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-dim)] hover:border-[var(--color-lime)]/50 active:scale-[0.98] transition-all"
+            >
+              Charger les joueurs occasionnels ({occasionalPlayers.length})
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="pm-display font-bold text-sm text-white">
+                  Joueurs occasionnels
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowOccasional(false)}
+                  className="text-xs font-semibold text-white/70 hover:text-white underline decoration-dotted"
+                >
+                  Masquer
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {occasionalPlayers.map((p) => (
+                  <PlayerRow key={p.id} player={p} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} />}
