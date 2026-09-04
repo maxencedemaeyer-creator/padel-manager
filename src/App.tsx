@@ -45,22 +45,87 @@ function MaintenanceScreen() {
 // que la première fois qu'on l'ouvre, au lieu de tout charger d'un bloc dès
 // l'arrivée sur le site. Réduit nettement le temps avant que l'app devienne
 // utilisable, surtout sur mobile / réseau lent.
-const MatchesView = lazy(() =>
+//
+// ─────────────────────────────────────────────────────────────────────────
+// Rechargement automatique après une mise à jour du site (04/09/2026).
+// Chaque fichier ci-dessous (chaque onglet) est livré dans son propre petit
+// fichier, avec un nom qui change à chaque nouvelle mise à jour du code
+// (voir vite.config.ts). Problème : quelqu'un qui a déjà l'app ouverte dans
+// son navigateur AU MOMENT où une mise à jour est mise en ligne garde les
+// anciens noms de fichiers en mémoire. S'il navigue ensuite vers un onglet
+// qu'il n'avait pas encore ouvert, son navigateur réclame l'ANCIEN fichier,
+// qui n'existe plus une fois la nouvelle version en ligne — le téléchargement
+// échoue, et jusqu'ici ça affichait l'écran "Un problème est survenu"
+// (ErrorBoundary), en demandant de recharger la page manuellement. C'est
+// exactement ce qui devient plus fréquent à mesure que le site est mis à
+// jour souvent : plus les mises à jour sont fréquentes, plus la probabilité
+// qu'un onglet soit ouvert "au mauvais moment" augmente.
+//
+// `lazyWithReload` détecte ce cas précis et recharge la page UNE SEULE FOIS,
+// automatiquement et silencieusement (sans jamais montrer l'écran d'erreur)
+// — le rechargement récupère la dernière version du site, qui fonctionne
+// normalement. `sessionStorage` sert de mémoire "déjà réessayé" par onglet,
+// pour ne jamais tomber dans une boucle de rechargements si le souci n'est
+// pas résolu par un simple rechargement (un vrai bug, par exemple) : dans ce
+// cas seulement, l'écran d'erreur habituel reprend la main, comme avant.
+function lazyWithReload(chunkName, importer) {
+  const retryFlagKey = `pm-chunk-retry-${chunkName}`;
+  return lazy(() =>
+    importer()
+      .then((module) => {
+        // Chargement réussi : on efface la mémoire d'un éventuel essai
+        // précédent, pour qu'un futur souci (après une prochaine mise à
+        // jour) puisse à nouveau déclencher un rechargement automatique.
+        try {
+          sessionStorage.removeItem(retryFlagKey);
+        } catch (e) {
+          // sessionStorage indisponible (navigation privée très
+          // restrictive) : sans conséquence, juste pas de mémoire d'essai.
+        }
+        return module;
+      })
+      .catch((error) => {
+        let alreadyRetried = false;
+        try {
+          alreadyRetried = sessionStorage.getItem(retryFlagKey) === "1";
+        } catch (e) {
+          // Idem : on considère qu'aucun essai n'a encore été fait.
+        }
+        if (!alreadyRetried) {
+          try {
+            sessionStorage.setItem(retryFlagKey, "1");
+          } catch (e) {}
+          window.location.reload();
+          // La page est sur le point de se recharger : on ne résout (ni ne
+          // rejette) jamais cette promesse, pour ne jamais laisser
+          // apparaître, même brièvement, l'écran d'erreur avant que le
+          // rechargement ait lieu.
+          return new Promise(() => {});
+        }
+        // Déjà réessayé une fois sans succès : ce n'est probablement pas ce
+        // cas précis (mise à jour pendant que l'onglet était ouvert), on
+        // laisse l'ErrorBoundary habituel prendre le relais normalement.
+        throw error;
+      })
+  );
+}
+
+const MatchesView = lazyWithReload("matches", () =>
   import("./views/MatchesView").then((m) => ({ default: m.MatchesView }))
 );
-const PlayersView = lazy(() =>
+const PlayersView = lazyWithReload("players", () =>
   import("./views/PlayersView").then((m) => ({ default: m.PlayersView }))
 );
-const StatsView = lazy(() =>
+const StatsView = lazyWithReload("stats", () =>
   import("./views/StatsView").then((m) => ({ default: m.StatsView }))
 );
-const AccountingView = lazy(() =>
+const AccountingView = lazyWithReload("accounting", () =>
   import("./views/AccountingView").then((m) => ({ default: m.AccountingView }))
 );
-const AdminView = lazy(() =>
+const AdminView = lazyWithReload("admin", () =>
   import("./views/AdminView").then((m) => ({ default: m.AdminView }))
 );
-const GameCenterView = lazy(() =>
+const GameCenterView = lazyWithReload("game-center", () =>
   import("./views/GameCenterView").then((m) => ({ default: m.GameCenterView }))
 );
 
