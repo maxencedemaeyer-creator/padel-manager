@@ -246,10 +246,21 @@ export function AuthGate({ children }) {
   // contexte) ne contient plus que les joueurs actifs.
   const players = useMemo(() => allPlayers.filter((p) => !p.archived), [allPlayers]);
   const archivedPlayers = useMemo(() => allPlayers.filter((p) => p.archived), [allPlayers]);
+  // Sous-liste des joueurs occasionnels non-test, révélée à la demande sur
+  // l'écran de connexion via le lien "Je suis un joueur occasionnel".
+  const occasionalPlayers = useMemo(
+    () => players.filter((p) => !p.isTest && p.isOccasional),
+    [players]
+  );
   const [connectedPlayer, setConnectedPlayer] = useState(null);
   const [sessionToken, setSessionToken] = useState(null);
   const [selectedForPin, setSelectedForPin] = useState(null);
   const [restoring, setRestoring] = useState(true);
+  // Joueurs occasionnels : n'apparaissent pas dans la grille principale de
+  // l'écran de connexion — un petit lien en dessous ("Je suis un joueur
+  // occasionnel") les révèle à la demande, sans jamais toucher à la grille
+  // normale (voir feature "joueurs occasionnels").
+  const [showOccasionalLogin, setShowOccasionalLogin] = useState(false);
 
   // Restauration de session (localStorage)
   useEffect(() => {
@@ -373,11 +384,31 @@ export function AuthGate({ children }) {
             </p>
             <div className="grid grid-cols-3 gap-3">
               {players
-                .filter((p) => !p.isTest)
+                .filter((p) => !p.isTest && !p.isOccasional)
                 .map((p) => (
                   <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
                 ))}
             </div>
+
+            {occasionalPlayers.length > 0 &&
+              (showOccasionalLogin ? (
+                <div className="mt-5 pt-5 border-t border-[var(--color-border)]">
+                  <p className="text-xs text-white/70 mb-3">Joueurs occasionnels</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {occasionalPlayers.map((p) => (
+                      <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowOccasionalLogin(true)}
+                  className="block mx-auto mt-5 text-xs text-white/60 hover:text-white/90 underline decoration-dotted"
+                >
+                  Je suis un joueur occasionnel
+                </button>
+              ))}
           </div>
         )}
       </div>
