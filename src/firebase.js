@@ -12,12 +12,15 @@ import {
   persistentMultipleTabManager,
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { getStorage } from "firebase/storage";
-// firebase/analytics est chargé plus bas via import() dynamique, pas en haut
-// du fichier : Analytics n'est utile qu'après coup (statistiques d'usage) et
-// n'a aucune raison de faire partie du code téléchargé et exécuté AVANT que
-// l'app puisse s'afficher. Un import statique ici l'aurait inclus dans le
-// même gros bloc de code que Firebase Auth/Firestore, chargé en premier.
+// firebase/analytics ET firebase/storage sont chargés plus bas / à la
+// demande via import() dynamique, jamais en haut du fichier : ni l'un ni
+// l'autre n'est utile pour afficher l'app elle-même (Analytics sert après
+// coup pour les statistiques d'usage, Storage ne sert que pour l'action
+// ponctuelle "changer sa photo de profil", voir lib/avatarUpload.js). Un
+// import statique ici les aurait inclus dans le même gros bloc de code que
+// Firebase Auth/Firestore, chargé en premier et exécuté AVANT que l'app
+// puisse s'afficher — pour TOUT LE MONDE, même les visites où personne n'y
+// touche.
 
 const firebaseConfig = {
   apiKey: "AIzaSyCGKon9mVdOn0FIBY3BvtVX9DPiudF6LJA",
@@ -29,7 +32,11 @@ const firebaseConfig = {
   measurementId: "G-14KPMP7L30",
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
+// Exporté (04/09/2026) uniquement pour permettre à lib/avatarUpload.js
+// d'initialiser Firebase Storage lui-même, à la demande (voir plus haut) —
+// jusqu'ici ce fichier l'initialisait pour tout le monde via `storage`
+// ci-dessous, que la fonctionnalité serve ou non à cette visite.
+export const firebaseApp = initializeApp(firebaseConfig);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Cache local persistant (IndexedDB) pour Firestore.
@@ -67,13 +74,15 @@ try {
 }
 export const db = firestoreDb;
 export const auth = getAuth(firebaseApp);
-// Stockage des photos de profil (avatars) — voir src/lib/avatarUpload.js.
+// Stockage des photos de profil (avatars) — l'initialisation de Firebase
+// Storage elle-même a déménagé dans src/lib/avatarUpload.js (04/09/2026),
+// chargée à la demande seulement quand quelqu'un change réellement sa
+// photo, au lieu de systématiquement ici pour tout le monde.
 // ⚠️ Nécessite que "Cloud Storage" soit activé dans la Console Firebase
 // (Storage > Get started) et que le projet soit sur le forfait Blaze
 // (paiement à l'usage) — obligatoire depuis septembre 2024 pour provisionner
 // le bucket, même si l'usage réel reste dans le palier gratuit vu la taille
 // des fichiers ici (photos compressées à quelques centaines de Ko).
-export const storage = getStorage(firebaseApp);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Connexion Firebase anonyme automatique.
