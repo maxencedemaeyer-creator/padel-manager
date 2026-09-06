@@ -33,12 +33,21 @@ export default defineConfig(() => {
           //    a l'autre et n'a plus qu'a retelecharger le petit fichier
           //    contenant le vrai changement, au lieu de tout retelecharger
           //    a chaque nouvelle fonctionnalite livree.
+          // "firebase/storage" n'est plus dans ce groupe (04/09/2026) :
+          // depuis que lib/avatarUpload.js le charge en import() dynamique
+          // (à la demande, seulement pour changer une photo de profil), le
+          // laisser dans "vendor-firebase" l'aurait quand même fait
+          // atterrir dans ce gros fichier chargé pour TOUT LE MONDE dès
+          // l'ouverture de l'app — regrouper manuellement un module annule
+          // le découpage automatique que Vite aurait fait pour lui tout
+          // seul à partir d'un import() dynamique. Il forme donc maintenant
+          // son propre petit fichier séparé, téléchargé uniquement quand
+          // quelqu'un change réellement sa photo.
           manualChunks: {
             'vendor-firebase': [
               'firebase/app',
               'firebase/auth',
               'firebase/firestore',
-              'firebase/storage',
             ],
             'vendor-react': ['react', 'react-dom'],
           },
