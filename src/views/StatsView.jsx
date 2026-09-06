@@ -2,7 +2,7 @@
 // Onglet "Mon profil" — en-tête, statistiques (anneau de progression),
 // forme récente, personnes marquantes, préférences (éditables), face-à-face.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -357,15 +357,30 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
 
 export function StatsView() {
   const { connectedPlayer, players, matches, sessionToken } = useAppData();
-  const myStats = computePlayerStats(connectedPlayer.id, matches);
-  const recentForm = getRecentForm(connectedPlayer.id, matches);
+  // Mémoïsé (04/09/2026) : ces calculs reparcourent TOUS les matchs (et,
+  // pour `ranked`, une fois PAR JOUEUR du club) — recalculés jusqu'ici à
+  // chaque rendu de l'onglet "Mon profil", même pour un rendu qui n'a rien
+  // à voir avec les matchs (ouvrir une préférence, changer le face-à-face).
+  // Ne sont refaits que si les matchs, les joueurs ou le joueur connecté
+  // changent réellement.
+  const myStats = useMemo(
+    () => computePlayerStats(connectedPlayer.id, matches),
+    [connectedPlayer.id, matches]
+  );
+  const recentForm = useMemo(
+    () => getRecentForm(connectedPlayer.id, matches),
+    [connectedPlayer.id, matches]
+  );
   const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
   const playerOf = (id) => players.find((p) => p.id === id);
 
   const otherPlayers = players.filter((p) => p.id !== connectedPlayer.id);
   const [h2hA, setH2hA] = useState(connectedPlayer.id);
   const [h2hB, setH2hB] = useState(otherPlayers[0]?.id || "");
-  const h2h = h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null;
+  const h2h = useMemo(
+    () => (h2hA && h2hB && h2hA !== h2hB ? computeHeadToHead(h2hA, h2hB, matches) : null),
+    [h2hA, h2hB, matches]
+  );
 
   const [editingPref, setEditingPref] = useState(null);
   const [showPinEdit, setShowPinEdit] = useState(false);
@@ -375,8 +390,14 @@ export function StatsView() {
   // donné (ex. son propre créancier de session était absent ce jour-là), ce
   // qui n'apparaît alors pas dans "Ma consommation personnelle" de sa propre
   // comptabilité créancier — voir getPlayerPayments dans lib/stats.js.
-  const myPayments = getPlayerPayments(connectedPlayer.id, matches);
-  const myPaymentsMatchesCount = new Set(myPayments.payments.map((p) => p.matchId)).size;
+  const myPayments = useMemo(
+    () => getPlayerPayments(connectedPlayer.id, matches),
+    [connectedPlayer.id, matches]
+  );
+  const myPaymentsMatchesCount = useMemo(
+    () => new Set(myPayments.payments.map((p) => p.matchId)).size,
+    [myPayments]
+  );
   const [showMyPayments, setShowMyPayments] = useState(false);
 
   // "Ce que je dois" — miroir de "Mes paiements" côté dette : matchs déjà
@@ -384,7 +405,10 @@ export function StatsView() {
   // la liste "impayés" de "Ma comptabilité" (voir getPlayerDebts, lib/
   // stats.js) — jamais un état saisi à la main, toujours dérivé en direct.
   // Bloc volontairement invisible si aucune dette (myDebts.total === 0).
-  const myDebts = getPlayerDebts(connectedPlayer.id, matches, players);
+  const myDebts = useMemo(
+    () => getPlayerDebts(connectedPlayer.id, matches, players),
+    [connectedPlayer.id, matches, players]
+  );
   const [showMyDebts, setShowMyDebts] = useState(false);
 
   // Jeu "Homme du match" (Game Center) — nombre de fois où CE joueur a été
