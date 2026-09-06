@@ -3,7 +3,7 @@
 // (les 2 prochaines dates, dans un horizon de 15 jours), reste de la saison,
 // création d'un match ponctuel (admin).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "../lib/utils";
 import {
   daysUntilMatch,
@@ -56,76 +56,111 @@ export function MatchesView() {
     setRestOfSeasonVisibleCount(REST_OF_SEASON_PAGE_SIZE);
   };
 
-  // Ajout du 02/09/2026 (soir) : un abonnement clôturé depuis Administration
-  // masque ses matchs ici, pour tout le monde (y compris l'admin) — voir
-  // excludeArchivedSeasonMatches dans lib/matchLogic.js. Rien n'est
-  // supprimé : réactiver l'abonnement les fait immédiatement réapparaître.
-  const matches = excludeArchivedSeasonMatches(allMatches, abonnements);
+  // Tout ce bloc (filtrage/tri/regroupement des matchs) est mémoïsé
+  // (04/09/2026) : ce sont des calculs qui parcourent TOUS les matchs
+  // plusieurs fois de suite (tri, plusieurs filtres, regroupement par
+  // session...), et "Matchs" est l'onglet affiché en permanence à tout le
+  // monde. Sans mémoïsation, ils étaient refaits intégralement à CHAQUE
+  // rendu du composant — y compris ceux qui n'ont rien à voir avec les
+  // matchs (l'horloge `now` qui avance chaque minute, un simple clic sur
+  // "+", une mise à jour temps réel d'une donnée sans rapport comme les
+  // clubs) — un travail inutile qui grandit avec le nombre de matchs au fil
+  // de la saison. Recalculé seulement quand une des données dont il dépend
+  // change réellement (liste ci-dessous).
+  const {
+    matches,
+    notFinished,
+    visibleTbdMatches,
+    nextGroup,
+    nextSessions,
+    lastGroup,
+    lastSessions,
+    otherSessions,
+  } = useMemo(() => {
+    // Ajout du 02/09/2026 (soir) : un abonnement clôturé depuis
+    // Administration masque ses matchs ici, pour tout le monde (y compris
+    // l'admin) — voir excludeArchivedSeasonMatches dans lib/matchLogic.js.
+    // Rien n'est supprimé : réactiver l'abonnement les fait immédiatement
+    // réapparaître.
+    const matches = excludeArchivedSeasonMatches(allMatches, abonnements);
 
-  // Matchs reportés "à une date inconnue" (voir MatchSettingsModals.jsx →
-  // "Reporter à une date inconnue") : sortis du flux chronologique habituel
-  // pour TOUT LE MONDE — leur ancienne date, gardée en base mais ignorée
-  // (voir getMatchTiming → "tbd"), ne doit plus jamais servir à les classer
-  // "à venir" / "terminé".
-  const tbdMatches = matches.filter((m) => m.dateTBD);
-  const datedMatches = matches.filter((m) => !m.dateTBD);
+    // Matchs reportés "à une date inconnue" (voir MatchSettingsModals.jsx →
+    // "Reporter à une date inconnue") : sortis du flux chronologique
+    // habituel pour TOUT LE MONDE — leur ancienne date, gardée en base mais
+    // ignorée (voir getMatchTiming → "tbd"), ne doit plus jamais servir à
+    // les classer "à venir" / "terminé".
+    const tbdMatches = matches.filter((m) => m.dateTBD);
+    const datedMatches = matches.filter((m) => !m.dateTBD);
 
-  // Affichés à part, dans leur propre section tout en bas de l'onglet (pour
-  // que "Prochains matchs" reste la première chose vue par tout le monde
-  // juste après le bloc "Bonjour") — et visibles UNIQUEMENT de l'admin et
-  // du/des créancier(s) de chaque match concerné (voir
-  // isPlayerMatchCreditor) : un joueur ordinaire n'a pas besoin de savoir
-  // qu'un match doit être reprogrammé, seuls ceux qui peuvent agir dessus le
-  // voient. Le bloc "Bonjour" (MyMatchSummary.jsx) affiche, pour ces mêmes
-  // personnes, un petit bouton d'alerte qui amène directement ici.
-  const visibleTbdMatches = tbdMatches.filter(
-    (m) => isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id)
-  );
+    // Affichés à part, dans leur propre section tout en bas de l'onglet
+    // (pour que "Prochains matchs" reste la première chose vue par tout le
+    // monde juste après le bloc "Bonjour") — et visibles UNIQUEMENT de
+    // l'admin et du/des créancier(s) de chaque match concerné (voir
+    // isPlayerMatchCreditor) : un joueur ordinaire n'a pas besoin de savoir
+    // qu'un match doit être reprogrammé, seuls ceux qui peuvent agir dessus
+    // le voient. Le bloc "Bonjour" (MyMatchSummary.jsx) affiche, pour ces
+    // mêmes personnes, un petit bouton d'alerte qui amène directement ici.
+    const visibleTbdMatches = tbdMatches.filter(
+      (m) => isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id)
+    );
 
-  const sortedByStart = [...datedMatches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
-  const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
-  const finishedDesc = sortedByStart
-    .filter((m) => getMatchTiming(m, now) === "finished")
-    .sort((a, b) => getMatchStart(b) - getMatchStart(a));
+    const sortedByStart = [...datedMatches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
+    const notFinished = sortedByStart.filter((m) => getMatchTiming(m, now) !== "finished");
+    const finishedDesc = sortedByStart
+      .filter((m) => getMatchTiming(m, now) === "finished")
+      .sort((a, b) => getMatchStart(b) - getMatchStart(a));
 
-  // Prochains matchs : les 2 prochaines dates de match à venir (que le
-  // joueur y participe ou non), en ne gardant que celles qui ont lieu dans
-  // les 15 jours suivant la date de connexion (ex. connexion le 1er
-  // septembre → matchs visibles jusqu'au 15 septembre inclus).
-  const upcomingWithinWindow = notFinished.filter(
-    (m) => daysUntilMatch(m, now) < UPCOMING_WINDOW_DAYS
-  );
-  const nextDates = [...new Set(upcomingWithinWindow.map((m) => m.date))].slice(
-    0,
-    UPCOMING_SESSIONS_COUNT
-  );
-  const nextGroup = upcomingWithinWindow.filter((m) => nextDates.includes(m.date));
+    // Prochains matchs : les 2 prochaines dates de match à venir (que le
+    // joueur y participe ou non), en ne gardant que celles qui ont lieu
+    // dans les 15 jours suivant la date de connexion (ex. connexion le 1er
+    // septembre → matchs visibles jusqu'au 15 septembre inclus).
+    const upcomingWithinWindow = notFinished.filter(
+      (m) => daysUntilMatch(m, now) < UPCOMING_WINDOW_DAYS
+    );
+    const nextDates = [...new Set(upcomingWithinWindow.map((m) => m.date))].slice(
+      0,
+      UPCOMING_SESSIONS_COUNT
+    );
+    const nextGroup = upcomingWithinWindow.filter((m) => nextDates.includes(m.date));
 
-  // Dernier match joué : uniquement si LE JOUEUR CONNECTÉ a lui-même déjà
-  // joué un match terminé, et seulement tant que ce match date de moins de
-  // 15 jours calendrier — sinon le bloc disparaît pour lui (mais reste
-  // visible pour un autre joueur ayant, lui, joué plus récemment).
-  const myFinishedDesc = finishedDesc.filter((m) =>
-    (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
-  );
-  const myLastPlayed = myFinishedDesc[0];
-  const lastDate =
-    myLastPlayed && daysUntilMatch(myLastPlayed, now) > -LAST_MATCH_WINDOW_DAYS
-      ? myLastPlayed.date
-      : null;
-  const lastGroup = lastDate ? finishedDesc.filter((m) => m.date === lastDate) : [];
+    // Dernier match joué : uniquement si LE JOUEUR CONNECTÉ a lui-même déjà
+    // joué un match terminé, et seulement tant que ce match date de moins
+    // de 15 jours calendrier — sinon le bloc disparaît pour lui (mais reste
+    // visible pour un autre joueur ayant, lui, joué plus récemment).
+    const myFinishedDesc = finishedDesc.filter((m) =>
+      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+    );
+    const myLastPlayed = myFinishedDesc[0];
+    const lastDate =
+      myLastPlayed && daysUntilMatch(myLastPlayed, now) > -LAST_MATCH_WINDOW_DAYS
+        ? myLastPlayed.date
+        : null;
+    const lastGroup = lastDate ? finishedDesc.filter((m) => m.date === lastDate) : [];
 
-  const highlightedIds = new Set([...nextGroup, ...lastGroup].map((m) => m.id));
-  const otherMatches = sortedByStart.filter((m) => !highlightedIds.has(m.id));
-  const otherFiltered = otherMatches.filter((m) =>
-    filter === "upcoming"
-      ? getMatchTiming(m, now) !== "finished"
-      : getMatchTiming(m, now) === "finished"
-  );
-  // Regroupement en sessions calculé une seule fois ici (au lieu de dans le
-  // JSX) pour pouvoir le paginer : seules les REST_OF_SEASON_PAGE_SIZE
-  // premières sessions sont réellement construites en cartes à l'écran.
-  const otherSessions = groupMatchesBySession(otherFiltered);
+    const highlightedIds = new Set([...nextGroup, ...lastGroup].map((m) => m.id));
+    const otherMatches = sortedByStart.filter((m) => !highlightedIds.has(m.id));
+    const otherFiltered = otherMatches.filter((m) =>
+      filter === "upcoming"
+        ? getMatchTiming(m, now) !== "finished"
+        : getMatchTiming(m, now) === "finished"
+    );
+    // Regroupement en sessions calculé une seule fois ici (au lieu de dans
+    // le JSX, et une seule fois pour "Prochains matchs"/"Dernier match
+    // joué" aussi) pour pouvoir le paginer plus bas : seules les
+    // REST_OF_SEASON_PAGE_SIZE premières sessions sont réellement
+    // construites en cartes à l'écran.
+    return {
+      matches,
+      notFinished,
+      visibleTbdMatches,
+      nextGroup,
+      nextSessions: groupMatchesBySession(nextGroup),
+      lastGroup,
+      lastSessions: groupMatchesBySession(lastGroup),
+      otherSessions: groupMatchesBySession(otherFiltered),
+    };
+  }, [allMatches, abonnements, isAdmin, connectedPlayer.id, players, now, filter]);
+
   const visibleOtherSessions = otherSessions.slice(0, restOfSeasonVisibleCount);
   const remainingOtherSessionsCount = otherSessions.length - visibleOtherSessions.length;
 
@@ -139,7 +174,7 @@ export function MatchesView() {
             Dernier match joué
           </h3>
           <div className="flex flex-col gap-3">
-            {groupMatchesBySession(lastGroup).map((session) => (
+            {lastSessions.map((session) => (
               <LastMatchCard
                 key={`${session[0].date}|${session[0].time}`}
                 sessionMatches={session}
@@ -155,7 +190,7 @@ export function MatchesView() {
         </h3>
         {nextGroup.length > 0 ? (
           <div className="flex flex-col gap-4">
-            {groupMatchesBySession(nextGroup).map((session) => {
+            {nextSessions.map((session) => {
               const key = `${session[0].date}|${session[0].time}`;
               // La disposition du terrain (qui joue où) ne s'affiche plus
               // automatiquement : elle reste masquée aux joueurs tant que
@@ -215,7 +250,7 @@ export function MatchesView() {
           </div>
         </div>
 
-        {otherFiltered.length === 0 ? (
+        {otherSessions.length === 0 ? (
           <EmptyState
             icon={<Icon.Calendar className="w-6 h-6" />}
             title={
