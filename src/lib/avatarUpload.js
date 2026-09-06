@@ -6,9 +6,20 @@
 // côté navigateur avant l'envoi, afin de fonctionner à partir de n'importe
 // quelle galerie (iPhone/HEIC, Android, Samsung, Google Pixel...) sans jamais
 // envoyer un fichier de plusieurs dizaines de Mo.
-// ─────────────────────────────────────────────────────────────────────────
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { storage } from "../firebase";
+//
+// "firebase/storage" est chargé en import() dynamique (04/09/2026), pas en
+// haut du fichier : ce module de Firebase n'est utile qu'au moment précis où
+// quelqu'un change réellement sa photo de profil — une action ponctuelle,
+// jamais nécessaire pour simplement ouvrir l'app. Un import statique ici
+// l'aurait inclus dans le gros bloc Firebase téléchargé et exécuté AVANT que
+// l'app puisse s'afficher, pour TOUT LE MONDE, même les 99% de visites où
+// personne ne touche à sa photo. Voir le même principe déjà appliqué à
+// "firebase/analytics" dans src/firebase.js.
+async function getStorageModule() {
+  const [{ ref, uploadBytes, getDownloadURL, deleteObject, getStorage }, { firebaseApp }] =
+    await Promise.all([import("firebase/storage"), import("../firebase")]);
+  return { ref, uploadBytes, getDownloadURL, deleteObject, storage: getStorage(firebaseApp) };
+}
 
 const MAX_DIMENSION = 512; // px — largement suffisant pour un avatar rond
 const JPEG_QUALITY = 0.85;
@@ -57,7 +68,10 @@ async function resizeImageFile(file) {
 // d'accumuler des fichiers orphelins) et retourne l'URL de téléchargement à
 // enregistrer sur la fiche joueur (champ avatarPhotoUrl).
 export async function uploadAvatarPhoto(playerId, file) {
-  const blob = await resizeImageFile(file);
+  const [blob, { ref, uploadBytes, getDownloadURL, storage }] = await Promise.all([
+    resizeImageFile(file),
+    getStorageModule(),
+  ]);
   const fileRef = ref(storage, `avatars/${playerId}.jpg`);
   await uploadBytes(fileRef, blob, { contentType: "image/jpeg" });
   return getDownloadURL(fileRef);
@@ -69,6 +83,7 @@ export async function uploadAvatarPhoto(playerId, file) {
 // séparément juste après.
 export async function deleteAvatarPhoto(playerId) {
   try {
+    const { ref, deleteObject, storage } = await getStorageModule();
     await deleteObject(ref(storage, `avatars/${playerId}.jpg`));
   } catch (e) {
     // Ignoré : le fichier n'existe peut-être déjà plus.
