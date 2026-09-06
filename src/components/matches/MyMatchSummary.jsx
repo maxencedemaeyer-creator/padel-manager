@@ -5,7 +5,7 @@
 // motivante (série/classement). Les messages sont cumulatifs : plusieurs
 // peuvent s'afficher en même temps, l'un sous l'autre.
 // ─────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { clubNameOnly, formatDateFR, formatTimeFR, getFirstName } from "../../lib/utils";
 import {
   daysUntilMatch,
@@ -157,12 +157,22 @@ export function MyMatchSummary({ now }) {
 
   // Accroche motivante — reprend les stats déjà calculées ailleurs (série,
   // classement), juste mise en avant ici pour donner envie de se connecter.
-  const myStats = computePlayerStats(connectedPlayer.id, matches);
-  const ranked = players
-    .map((p) => ({ id: p.id, stats: computePlayerStats(p.id, matches) }))
-    .filter((r) => r.stats.wins + r.stats.losses > 0)
-    .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins);
-  const myRank = ranked.findIndex((r) => r.id === connectedPlayer.id) + 1;
+  // Mémoïsé (04/09/2026) : `ranked` recalcule les statistiques complètes de
+  // TOUS les joueurs du club (pas seulement les siennes) — le calcul le
+  // plus lourd de tout l'onglet Matchs, sur le composant affiché en
+  // permanence tout en haut de cet onglet. Ne se refait que si les matchs
+  // ou les joueurs changent réellement.
+  const myStats = useMemo(
+    () => computePlayerStats(connectedPlayer.id, matches),
+    [connectedPlayer.id, matches]
+  );
+  const myRank = useMemo(() => {
+    const ranked = players
+      .map((p) => ({ id: p.id, stats: computePlayerStats(p.id, matches) }))
+      .filter((r) => r.stats.wins + r.stats.losses > 0)
+      .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins);
+    return ranked.findIndex((r) => r.id === connectedPlayer.id) + 1;
+  }, [players, matches, connectedPlayer.id]);
 
   let hook = null;
   if (myStats.streak >= 2 && myStats.streakType === "win") {
