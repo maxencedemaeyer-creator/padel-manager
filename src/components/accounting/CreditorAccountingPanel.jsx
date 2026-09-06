@@ -22,7 +22,7 @@
 // Doit payer à…, modifier une créance) — n'affecte aucun calcul, uniquement
 // l'affichage des boutons.
 // ─────────────────────────────────────────────────────────────────────────
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../../lib/utils";
@@ -55,6 +55,14 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   const [assigningKey, setAssigningKey] = useState(null);
   // Modale de détail des remboursements (bloc 4) : "past" | "upcoming" | null.
   const [paymentsModalTab, setPaymentsModalTab] = useState(null);
+  // Mémoïsé (04/09/2026) : ces 3 fonctions reparcourent TOUS les matchs de
+  // l'app (`getUnpaidPastParticipations` n'est même pas filtrée par
+  // créancier). Ce panneau est ouvert par CHAQUE créancier dans "Ma
+  // comptabilité", et par l'admin pour CHAQUE créancier depuis
+  // "Administration" — sans mémoïsation, ces calculs étaient refaits à
+  // chaque rendu, y compris pour un rendu sans rapport (ouvrir une modale
+  // de détail, par exemple). Ne sont refaits que si les matchs/joueurs/
+  // abonnements ou le créancier affiché changent réellement.
   const {
     totalPaidPastMatches,
     totalPaidUpcomingMatches,
@@ -68,12 +76,18 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
     selfPayablePastCount,
     selfPayableUpcomingCount,
     selfPayableTotal,
-  } = getCreditorAccounting(creditorId, matches, players);
+  } = useMemo(
+    () => getCreditorAccounting(creditorId, matches, players),
+    [creditorId, matches, players]
+  );
 
   // Créance(s) de départ — un créancier peut cumuler plusieurs abonnements
   // (une créance par abonnement où il figure), au lieu d'un seul montant
   // global sur sa fiche joueur.
-  const { claims, total: advanced } = getCreditorClaims(creditorId, abonnements, matches);
+  const { claims, total: advanced } = useMemo(
+    () => getCreditorClaims(creditorId, abonnements, matches),
+    [creditorId, abonnements, matches]
+  );
 
   // Bloc 3 — auto-remboursement : ses propres matchs COUVERTS par sa
   // créance (il finance un terrain de la session, voir getSessionCreditorIds
@@ -94,7 +108,10 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   // filtré par créancier (voir getUnpaidPastParticipations, lib/stats.js) —
   // c'est exactement ce que ce créancier voit lui-même dans "Ma comptabilité",
   // donc exactement ce que cette copie doit reproduire.
-  const unpaidPast = getUnpaidPastParticipations(matches, players);
+  const unpaidPast = useMemo(
+    () => getUnpaidPastParticipations(matches, players),
+    [matches, players]
+  );
   const unpaidAmount = unpaidPast.reduce((s, p) => s + p.fee, 0);
   const unpaidCount = unpaidPast.length;
   const allSettled = unpaidCount === 0;
