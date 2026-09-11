@@ -285,7 +285,7 @@ export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false, 
 // en version "compact" (encore plus petite), pour les matchs terminés de
 // "Reste de la saison".
 export function CompactMatchResult({ match, compact = false }) {
-  const { isAdmin } = useAppData();
+  const { isAdmin, players } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
   const [showEnd, setShowEnd] = useState(false);
@@ -294,8 +294,12 @@ export function CompactMatchResult({ match, compact = false }) {
   const teamA = (match.participants || []).filter((p) => p.team === "A");
   const teamB = (match.participants || []).filter((p) => p.team === "B");
   const untracked = (match.participants || []).filter((p) => p.team !== "A" && p.team !== "B");
+  // Nom affiché : celui de la fiche joueur actuelle, pas l'instantané figé
+  // dans participant.name au moment de l'assignation (sinon un renommage
+  // depuis l'onglet Équipe n'apparaît pas sur ces cartes de résultat).
+  const nameOf = (p) => players.find((pl) => pl.id === p.playerId)?.name || p.name;
   const labelOf = (list) =>
-    list.length ? list.map((p) => getFirstName(p.name)).join(" & ") : "—";
+    list.length ? list.map((p) => getFirstName(nameOf(p))).join(" & ") : "—";
   const teamALabel = labelOf(teamA.length ? teamA : untracked.slice(0, 2));
   const teamBLabel = labelOf(teamB.length ? teamB : untracked.slice(2, 4));
 
