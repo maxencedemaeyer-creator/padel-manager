@@ -86,13 +86,21 @@ export function CreditorPaymentsModal({
       g.total += p.fee;
       g.items.push(p);
     });
-    const list = [...byPlayer.values()].map((g) => ({
-      ...g,
-      player: (players || []).find((pl) => pl.id === g.playerId) || null,
-      items: [...g.items].sort((a, b) =>
-        sortDir === "asc" ? new Date(a.date) - new Date(b.date) : new Date(b.date) - new Date(a.date)
-      ),
-    }));
+    const list = [...byPlayer.values()].map((g) => {
+      const player = (players || []).find((pl) => pl.id === g.playerId) || null;
+      return {
+        ...g,
+        player,
+        // Nom affiché (et utilisé pour la recherche ci-dessous) : celui de la
+        // fiche joueur actuelle, pas l'instantané figé dans p.name au moment
+        // du paiement — sinon un renommage depuis l'onglet Équipe n'apparaît
+        // jamais ici, et une recherche par le nouveau nom ne trouve rien.
+        name: player?.name || g.name,
+        items: [...g.items].sort((a, b) =>
+          sortDir === "asc" ? new Date(a.date) - new Date(b.date) : new Date(b.date) - new Date(a.date)
+        ),
+      };
+    });
     list.sort((a, b) => b.total - a.total);
     const q = query.trim().toLowerCase();
     return q ? list.filter((g) => g.name.toLowerCase().includes(q)) : list;
