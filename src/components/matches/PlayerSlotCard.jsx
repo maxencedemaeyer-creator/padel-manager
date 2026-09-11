@@ -92,13 +92,20 @@ export function PlayerSlotCard({
       <div className="flex items-start gap-2">
         <PlayerAvatar player={playerRecord} size={36} />
         <span className="min-w-0 flex-1">
+          {/* Le nom affiché doit toujours refléter la fiche joueur actuelle
+              (playerRecord), pas l'instantané figé dans participant.name au
+              moment où il a été assigné à cette place — sinon un changement
+              de nom depuis l'onglet Équipe n'apparaît jamais ici tant que le
+              joueur n'est pas réassigné à une place. Le repli sur
+              participant.name reste utile si la fiche a depuis été
+              totalement supprimée de Firestore. */}
           <span className="block sm:hidden text-sm font-semibold truncate">
             {isWinningTeam && "🏆 "}
-            {getFirstName(participant.name)}
+            {getFirstName(playerRecord?.name || participant.name)}
           </span>
           <span className="hidden sm:block text-sm font-semibold truncate">
             {isWinningTeam && "🏆 "}
-            {participant.name}
+            {playerRecord?.name || participant.name}
           </span>
           <span className="block text-[10px] text-[var(--color-text-faint)] mb-1">
             {roleLabel}
