@@ -117,7 +117,7 @@ export function MvpVoteModal({ onClose }) {
                       >
                         <PlayerAvatar player={record} size={44} />
                         <span className="text-xs font-semibold truncate max-w-full">
-                          {getFirstName(c.name)}
+                          {getFirstName(record?.name || c.name)}
                         </span>
                       </button>
                     );
