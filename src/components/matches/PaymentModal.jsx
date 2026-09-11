@@ -107,10 +107,16 @@ export function PaymentModal({ match, participant, onClose }) {
 
   const nothingToShow = visibleSuggested.length === 0 && visibleOthers.length === 0;
 
+  // Nom affiché : celui de la fiche joueur actuelle, pas l'instantané figé
+  // dans participant.name au moment où il a été assigné à sa place sur le
+  // terrain (sinon un renommage depuis l'onglet Équipe n'apparaît pas ici).
+  const participantName =
+    players.find((p) => p.id === participant.playerId)?.name || participant.name;
+
   return (
     <Modal title="À quel créancier ce joueur a-t-il payé ?" onClose={onClose}>
       <p className="text-sm text-[var(--color-text-dim)] mb-4">
-        Paiement de <span className="font-semibold text-[var(--color-text)]">{participant.name}</span> —{" "}
+        Paiement de <span className="font-semibold text-[var(--color-text)]">{participantName}</span> —{" "}
         {(match.matchFeePerPlayer || 0).toLocaleString("fr-FR")} €
       </p>
       {nothingToShow ? (
