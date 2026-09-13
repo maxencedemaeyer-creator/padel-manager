@@ -409,6 +409,24 @@ export function AuthGate({ children }) {
                   Je suis un joueur occasionnel
                 </button>
               ))}
+
+            {/* Petit rappel discret pour récupérer son code — le numéro de
+                Max n'apparaît jamais ici ni dans le code source : le lien
+                pointe vers une fonction serveur (api/contact-max.js) qui
+                connaît seule le numéro, via une variable d'environnement
+                Vercel. */}
+            <p className="text-center text-[11px] text-white/40 mt-6 leading-snug">
+              Pas encore de code ? Code perdu ?
+              <br />
+              
+                href="/api/contact-max"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-dotted hover:text-white/70 transition-colors"
+              >
+                Envoie un petit message à Max !
+              </a>
+            </p>
           </div>
         )}
       </div>
