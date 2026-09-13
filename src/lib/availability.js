@@ -34,11 +34,40 @@ export function getSessionAvailability(sessionMatches) {
   return merged;
 }
 
+// Nombre de places total d'une session, tous terrains confondus (4 places
+// par terrain, voir COURT_SLOT_DEFS) — ex : 1 terrain = 4 places, 2 terrains
+// = 8 places. Sert à distinguer les présents "titulaires" (qui ont une
+// place) des présents "en réserve" (au-delà de la capacité, voir plus bas).
+export function getSessionCapacity(sessionMatches) {
+  return COURT_SLOT_DEFS.length * (sessionMatches || []).length;
+}
+
+// Tous les joueurs déjà assignés à une place sur l'un des terrains de la
+// session, peu importe le terrain ou l'équipe (admin ou auto-inscription).
+function getPlacedPlayerIds(sessionMatches) {
+  const placed = new Set();
+  (sessionMatches || []).forEach((m) => {
+    (m.participants || []).forEach((p) => placed.add(p.playerId));
+  });
+  return placed;
+}
+
 // Classe tous les joueurs du club à partir des réponses de la session :
 // - present / absent : ont explicitement répondu ainsi
 // - pending : n'ont pas répondu OU ont répondu "je ne sais pas encore"
 // - responded : tous ceux qui ont fait un choix (les 3 statuts confondus),
 //   avec leur statut — utile pour la liste admin "qui a répondu".
+//
+// Présents "titulaires" vs "en réserve" : `present` reprend TOUS les
+// présents (rien ne change pour les compteurs), mais on le sous-divise en
+// `presentTitulaires` (ceux qui ont effectivement une place sur un terrain
+// de la session, voir getPlacedPlayerIds ci-dessus) et `presentReserve`
+// (les présents au-delà de la capacité de la session — voir
+// getSessionCapacity — qui restent "présents" mais sans place). Comme
+// autoPlacePresentPlayer (voir plus bas) place chaque présent sur une place
+// libre dès qu'il répond et tant qu'il en reste, cette distinction reflète
+// naturellement l'ordre d'arrivée : les premiers présents obtiennent une
+// place, les suivants une fois la session complète tombent en réserve.
 //
 // Joueurs occasionnels (player.isOccasional === true) : totalement exclus de
 // ces groupes (donc des listes ET des compteurs Présent/Absent/En attente)
@@ -49,7 +78,10 @@ export function getSessionAvailability(sessionMatches) {
 // "joueurs occasionnels".
 export function getAvailabilityGroups(sessionMatches, players) {
   const availability = getSessionAvailability(sessionMatches);
+  const placedPlayerIds = getPlacedPlayerIds(sessionMatches);
   const present = [];
+  const presentTitulaires = [];
+  const presentReserve = [];
   const absent = [];
   const pending = [];
   const responded = [];
@@ -57,13 +89,25 @@ export function getAvailabilityGroups(sessionMatches, players) {
   (players || []).forEach((p) => {
     const status = availability[p.id];
     if (p.isOccasional && !status) return;
-    if (status === "present") present.push(p);
-    else if (status === "absent") absent.push(p);
+    if (status === "present") {
+      present.push(p);
+      if (placedPlayerIds.has(p.id)) presentTitulaires.push(p);
+      else presentReserve.push(p);
+    } else if (status === "absent") absent.push(p);
     else pending.push(p);
     if (status) responded.push({ player: p, status });
   });
 
-  return { availability, present, absent, pending, responded };
+  return {
+    availability,
+    present,
+    presentTitulaires,
+    presentReserve,
+    capacity: getSessionCapacity(sessionMatches),
+    absent,
+    pending,
+    responded,
+  };
 }
 
 // Retire un joueur de sa place sur le terrain pour un match donné, mais
