@@ -15,6 +15,7 @@ import { useState } from "react";
 import { cn, getFirstName } from "../../lib/utils";
 import {
   AVAILABILITY_STATUSES,
+  RESERVE_STATUS,
   getAvailabilityGroups,
   setSessionAvailability,
   resetSessionAvailability,
@@ -28,6 +29,11 @@ const STATUS_META = {
   present: { label: "Présent", dot: "bg-emerald-500" },
   absent: { label: "Absent", dot: "bg-rose-500" },
   unknown: { label: "Je ne sais pas encore", dot: "bg-amber-500" },
+  // Statut admin uniquement (voir ManagePresenceModal) — un joueur mis
+  // volontairement en réserve par l'admin, même si la session n'est pas
+  // complète. Violet pour rester bien distinct des 3 statuts que le joueur
+  // choisit lui-même.
+  [RESERVE_STATUS]: { label: "Présent (réserve)", dot: "bg-violet-500" },
 };
 
 // En-têtes de colonne teintés (fond + texte + icône) utilisés dans le
@@ -51,6 +57,7 @@ const STATUS_SOLID_CLASS = {
   present: "bg-emerald-500 text-white",
   absent: "bg-rose-500 text-white",
   unknown: "bg-amber-500 text-white",
+  [RESERVE_STATUS]: "bg-violet-500 text-white",
 };
 
 // `reservePlayers` (optionnel, uniquement pour la liste "Présents") : les
@@ -124,6 +131,12 @@ function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         Réponse actuelle : <strong>{STATUS_META[myStatus]?.label || myStatus}</strong>
       </p>
+      {myStatus === RESERVE_STATUS && (
+        <p className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2.5 py-2 mb-3">
+          L'administrateur vous a placé en réserve pour cette session. Vous
+          pouvez tout de même changer votre réponse ci-dessous.
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-2">
         {AVAILABILITY_STATUSES.map((s) => {
           const StatusIcon = statusIcon[s];
@@ -399,13 +412,17 @@ export function RespondedPlayersPanel({ sessionMatches }) {
   });
 
   // Un tableau par colonne de statut, joueurs triés alphabétiquement dans
-  // chacune.
+  // chacune. Le statut admin "reserve" (voir RESERVE_STATUS) rejoint la
+  // colonne Présents — on garde juste un marqueur `isReserve` pour l'afficher
+  // en violet, distinct des présents "normaux".
   const byStatus = { present: [], unknown: [], absent: [] };
   responded
     .slice()
     .sort((a, b) => a.player.name.localeCompare(b.player.name))
     .forEach(({ player, status }) => {
-      (byStatus[status] || byStatus.unknown).push(player);
+      const isReserve = status === RESERVE_STATUS;
+      const column = isReserve ? "present" : status;
+      (byStatus[column] || byStatus.unknown).push({ player, isReserve });
     });
 
   return (
@@ -453,18 +470,29 @@ export function RespondedPlayersPanel({ sessionMatches }) {
                     <span className="text-[10px] text-[var(--color-text-faint)] italic">—</span>
                   ) : (
                     <div className="flex flex-col gap-1">
-                      {byStatus[key].map((player) => {
+                      {byStatus[key].map(({ player, isReserve }) => {
                         const isPlaced = placedPlayerIds.has(player.id);
                         return (
                           <span
                             key={player.id}
-                            title={isPlaced ? "Déjà placé sur le terrain" : undefined}
+                            title={
+                              isReserve
+                                ? "Mis en réserve par l'admin"
+                                : isPlaced
+                                ? "Déjà placé sur le terrain"
+                                : undefined
+                            }
                             className={cn(
                               "text-xs truncate",
-                              isPlaced ? "font-bold" : "font-normal"
+                              isReserve
+                                ? "font-semibold text-violet-700"
+                                : isPlaced
+                                ? "font-bold"
+                                : "font-normal"
                             )}
                           >
                             {getFirstName(player.name)}
+                            {isReserve && " (rés.)"}
                           </span>
                         );
                       })}
@@ -480,11 +508,21 @@ export function RespondedPlayersPanel({ sessionMatches }) {
   );
 }
 
+// Boutons de statut proposés à l'admin dans ManagePresenceModal — les 3
+// statuts normaux (AVAILABILITY_STATUSES) plus, en 4e position, le statut
+// "reserve" admin uniquement (voir RESERVE_STATUS dans lib/availability.js) :
+// marque le joueur présent mais volontairement mis en réserve, même si la
+// session n'est pas complète. Jamais proposé au joueur lui-même — ni dans
+// AvailabilityButtons, ni dans ChangeMyResponseModal, qui utilisent tous les
+// deux AVAILABILITY_STATUSES directement.
+const ADMIN_STATUS_BUTTONS = [...AVAILABILITY_STATUSES, RESERVE_STATUS];
+
 // Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
 // session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
-// Présent / Absent / Je ne sais pas encore, plus un 4e bouton pour
-// réinitialiser sa réponse. Permet à l'administrateur de modifier sa propre
-// présence ou celle de n'importe quel autre joueur.
+// Présent / Absent / Je ne sais pas encore, un 4e bouton "Réserve" (présent
+// mais volontairement non placé, voir ADMIN_STATUS_BUTTONS ci-dessus), plus
+// un 5e bouton pour réinitialiser sa réponse. Permet à l'administrateur de
+// modifier sa propre présence ou celle de n'importe quel autre joueur.
 export function ManagePresenceModal({ sessionMatches, onClose }) {
   const { players, matches } = useAppData();
   const [savingId, setSavingId] = useState(null);
@@ -493,6 +531,10 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
 
   const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
+  // Le placement automatique (autoPlacePresentPlayer) ne se déclenche que
+  // pour le statut "present" — jamais pour "reserve" : c'est précisément ce
+  // qui permet à l'admin de mettre quelqu'un en réserve alors qu'il reste
+  // des places libres, sans qu'il se retrouve auto-placé dans la foulée.
   const setStatus = async (playerId, status) => {
     setSavingId(playerId);
     try {
@@ -525,17 +567,23 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
     present: Icon.Check,
     absent: Icon.X,
     unknown: Icon.Question,
+    [RESERVE_STATUS]: Icon.Users,
   };
   const statusActiveClass = {
     present: "bg-emerald-500 border-emerald-500 text-white",
     absent: "bg-rose-500 border-rose-500 text-white",
     unknown: "bg-amber-500 border-amber-500 text-white",
+    [RESERVE_STATUS]: "bg-violet-500 border-violet-500 text-white",
   };
 
   return (
     <Modal title="Gérer les présences" onClose={onClose}>
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        Modifiez la présence de n'importe quel joueur pour cette date — y compris la vôtre.
+        Modifiez la présence de n'importe quel joueur pour cette date — y
+        compris la vôtre. Le bouton{" "}
+        <Icon.Users className="inline w-3 h-3 -mt-0.5" /> met un joueur
+        présent volontairement en réserve, même si la session n'est pas
+        encore complète.
       </p>
 
       <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
@@ -563,19 +611,24 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
                   )}
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
-                  {AVAILABILITY_STATUSES.map((s) => {
+                  {ADMIN_STATUS_BUTTONS.map((s) => {
                     const StatusIcon = statusIcon[s];
                     const active = status === s;
+                    const label =
+                      s === RESERVE_STATUS
+                        ? "Mettre en réserve (présent, sans place)"
+                        : STATUS_META[s].label;
                     return (
                       <button
                         key={s}
                         type="button"
                         disabled={busy}
                         onClick={() => setStatus(p.id, s)}
-                        aria-label={STATUS_META[s].label}
-                        title={STATUS_META[s].label}
+                        aria-label={label}
+                        title={label}
                         className={cn(
                           "w-8 h-8 rounded-full flex items-center justify-center border transition-all disabled:opacity-40",
+                          s === RESERVE_STATUS && "ml-1",
                           active
                             ? statusActiveClass[s]
                             : "bg-white border-[var(--color-border)] text-[var(--color-text-faint)] hover:border-sky-300"
