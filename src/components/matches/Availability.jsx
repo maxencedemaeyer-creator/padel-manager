@@ -53,10 +53,26 @@ const STATUS_SOLID_CLASS = {
   unknown: "bg-amber-500 text-white",
 };
 
-function PlayerListModal({ title, players, onClose }) {
+// `reservePlayers` (optionnel, uniquement pour la liste "Présents") : les
+// présents au-delà de la capacité de la session (voir getSessionCapacity /
+// presentReserve dans lib/availability.js) — affichés à part, tout en bas de
+// la liste, sous un sous-titre "Réserve", pour que tout le monde voie
+// d'emblée qu'il y a plus de présents que de places, et qui est en attente
+// d'un désistement.
+function PlayerListModal({ title, players, reservePlayers, capacity, onClose }) {
+  const hasReserve = Boolean(reservePlayers && reservePlayers.length > 0);
+  const isEmpty = players.length === 0 && !hasReserve;
+
   return (
     <Modal title={title} onClose={onClose}>
-      {players.length === 0 ? (
+      {hasReserve && (
+        <p className="text-xs text-[var(--color-text-dim)] mb-3">
+          Cette session compte <strong>{capacity}</strong> place
+          {capacity > 1 ? "s" : ""} — au-delà, les présents sont mis en
+          réserve en cas de désistement.
+        </p>
+      )}
+      {isEmpty ? (
         <p className="text-sm text-[var(--color-text-faint)] italic py-2">
           Personne pour l'instant.
         </p>
@@ -71,6 +87,22 @@ function PlayerListModal({ title, players, onClose }) {
               <span className="truncate">{p.name}</span>
             </div>
           ))}
+          {hasReserve && (
+            <>
+              <p className="mt-2 mb-0.5 px-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                Réserve
+              </p>
+              {reservePlayers.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-sm font-medium"
+                >
+                  <span>{p.emoji}</span>
+                  <span className="truncate">{p.name}</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </Modal>
@@ -143,10 +175,15 @@ export function AvailabilityButtons({ sessionMatches }) {
   // connexion (AuthGate) et l'onglet Joueurs (PlayersView).
   const visiblePlayers = isAdmin ? players : players.filter((p) => !p.isTest);
 
-  const { availability, present, absent, pending } = getAvailabilityGroups(
-    sessionMatches,
-    visiblePlayers
-  );
+  const {
+    availability,
+    present,
+    presentTitulaires,
+    presentReserve,
+    capacity,
+    absent,
+    pending,
+  } = getAvailabilityGroups(sessionMatches, visiblePlayers);
   const myStatus = availability[connectedPlayer.id];
   const hasAnswered = Boolean(myStatus);
   const isSelfPlaced = (sessionMatches || []).some((m) =>
@@ -253,7 +290,15 @@ export function AvailabilityButtons({ sessionMatches }) {
                 ? "Joueurs absents"
                 : "En attente de réponse"
             }
-            players={openList === "present" ? present : openList === "absent" ? absent : pending}
+            players={
+              openList === "present"
+                ? presentTitulaires
+                : openList === "absent"
+                ? absent
+                : pending
+            }
+            reservePlayers={openList === "present" ? presentReserve : undefined}
+            capacity={capacity}
             onClose={() => setOpenList(null)}
           />
         )}
