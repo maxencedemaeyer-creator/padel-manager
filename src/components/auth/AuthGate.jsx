@@ -75,14 +75,14 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
     <div className="flex flex-col items-center pm-rise">
       <button
         onClick={onBack}
-        className="self-start flex items-center gap-1 text-sm text-white mb-4"
+        className="self-start flex items-center gap-1 text-sm text-[var(--color-text-dim)] mb-4"
       >
         <Icon.Chevron className="w-4 h-4 rotate-180" /> Retour
       </button>
 
       <PlayerAvatar player={player} size={64} className="mb-3" />
       <p className="pm-display font-bold text-lg mb-1">{player.name}</p>
-      <p className="text-xs text-white mb-6">
+      <p className="text-xs text-[var(--color-text-dim)] mb-6">
         Entrez votre code à 4 chiffres
       </p>
 
@@ -379,7 +379,7 @@ export function AuthGate({ children }) {
           />
         ) : (
           <div className="w-full max-w-sm pm-rise">
-            <p className="text-sm text-white mb-7">
+            <p className="text-sm text-[var(--color-text-dim)] mb-7">
               Sélectionnez votre profil pour vous connecter
             </p>
             <div className="grid grid-cols-3 gap-3">
@@ -393,7 +393,7 @@ export function AuthGate({ children }) {
             {occasionalPlayers.length > 0 &&
               (showOccasionalLogin ? (
                 <div className="mt-5 pt-5 border-t border-[var(--color-border)]">
-                  <p className="text-xs text-white/70 mb-3">Joueurs occasionnels</p>
+                  <p className="text-xs text-[var(--color-text-dim)] mb-3">Joueurs occasionnels</p>
                   <div className="grid grid-cols-3 gap-3">
                     {occasionalPlayers.map((p) => (
                       <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
@@ -404,7 +404,7 @@ export function AuthGate({ children }) {
                 <button
                   type="button"
                   onClick={() => setShowOccasionalLogin(true)}
-                  className="block mx-auto mt-5 text-xs text-white/60 hover:text-white/90 underline decoration-dotted"
+                  className="block mx-auto mt-5 text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text)] underline decoration-dotted"
                 >
                   Je suis un joueur occasionnel
                 </button>
@@ -415,10 +415,10 @@ export function AuthGate({ children }) {
                 pointe vers une fonction serveur (api/contact-max.js) qui
                 connaît seule le numéro, via une variable d'environnement
                 Vercel. */}
-            <p className="text-center text-[11px] text-white/40 mt-6 leading-snug">
+            <p className="text-center text-[11px] text-[var(--color-text-faint)] mt-6 leading-snug">
               Pas encore de code ? Code perdu ?
               <br />
-              <a href="/api/contact-max" target="_blank" rel="noopener noreferrer" className="underline decoration-dotted hover:text-white/70 transition-colors">
+              <a href="/api/contact-max" target="_blank" rel="noopener noreferrer" className="underline decoration-dotted hover:text-[var(--color-text-dim)] transition-colors">
                 Envoie un petit message à Max !
               </a>
             </p>
