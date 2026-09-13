@@ -418,12 +418,7 @@ export function AuthGate({ children }) {
             <p className="text-center text-[11px] text-white/40 mt-6 leading-snug">
               Pas encore de code ? Code perdu ?
               <br />
-              
-                href="/api/contact-max"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-dotted hover:text-white/70 transition-colors"
-              >
+              <a href="/api/contact-max" target="_blank" rel="noopener noreferrer" className="underline decoration-dotted hover:text-white/70 transition-colors">
                 Envoie un petit message à Max !
               </a>
             </p>
