@@ -20,6 +20,20 @@ import { normalizeSide } from "./utils";
 
 export const AVAILABILITY_STATUSES = ["present", "absent", "unknown"];
 
+// Statut supplémentaire, réservé à l'admin (voir ManagePresenceModal — jamais
+// proposé au joueur lui-même, donc volontairement absent de
+// AVAILABILITY_STATUSES) : "reserve" veut dire "présent, mais l'admin l'a
+// volontairement mis en réserve" — même si la session n'est pas encore
+// complète. Compte comme présent partout (compteur, groupe "présent"), mais
+// n'est JAMAIS auto-placé (voir autoPlacePresentPlayer, qui n'est appelé que
+// pour le statut "present") et perd sa place éventuelle comme n'importe quel
+// statut différent de "present" (voir dropSelfJoinedSlot via
+// setSessionAvailability). Un admin peut toujours le placer "à la main" sur
+// le terrain ensuite (PickPlayerModal) : il rejoint alors naturellement les
+// titulaires, puisque titulaire/réserve se déduit de la place occupée, pas du
+// statut stocké.
+export const RESERVE_STATUS = "reserve";
+
 // Fusionne les réponses de tous les terrains d'une session : un joueur ne
 // répond qu'une fois pour toute la session (même s'il y a 2 terrains ce
 // jour-là). En cas de désynchronisation entre terrains, la première réponse
@@ -59,15 +73,19 @@ function getPlacedPlayerIds(sessionMatches) {
 //   avec leur statut — utile pour la liste admin "qui a répondu".
 //
 // Présents "titulaires" vs "en réserve" : `present` reprend TOUS les
-// présents (rien ne change pour les compteurs), mais on le sous-divise en
-// `presentTitulaires` (ceux qui ont effectivement une place sur un terrain
-// de la session, voir getPlacedPlayerIds ci-dessus) et `presentReserve`
-// (les présents au-delà de la capacité de la session — voir
-// getSessionCapacity — qui restent "présents" mais sans place). Comme
-// autoPlacePresentPlayer (voir plus bas) place chaque présent sur une place
-// libre dès qu'il répond et tant qu'il en reste, cette distinction reflète
-// naturellement l'ordre d'arrivée : les premiers présents obtiennent une
-// place, les suivants une fois la session complète tombent en réserve.
+// présents, statut "present" ET statut "reserve" confondus (rien ne change
+// pour les compteurs), mais on le sous-divise en `presentTitulaires` (ceux
+// qui ont effectivement une place sur un terrain de la session, voir
+// getPlacedPlayerIds ci-dessus) et `presentReserve` (tous les autres — sans
+// place, que ce soit parce que la session est complète — voir
+// getSessionCapacity — ou parce que l'admin les a explicitement mis en
+// réserve, voir RESERVE_STATUS ci-dessus). Cette distinction se déduit
+// entièrement de la place occupée (pas du statut stocké) : comme
+// autoPlacePresentPlayer place chaque "present" sur une place libre dès qu'il
+// répond et tant qu'il en reste, ça reflète naturellement l'ordre d'arrivée
+// pour les présents "normaux", et respecte la mise en réserve volontaire de
+// l'admin (jamais auto-placée) — y compris si l'admin le place quand même à
+// la main ensuite, il rejoint alors les titulaires.
 //
 // Joueurs occasionnels (player.isOccasional === true) : totalement exclus de
 // ces groupes (donc des listes ET des compteurs Présent/Absent/En attente)
@@ -89,7 +107,7 @@ export function getAvailabilityGroups(sessionMatches, players) {
   (players || []).forEach((p) => {
     const status = availability[p.id];
     if (p.isOccasional && !status) return;
-    if (status === "present") {
+    if (status === "present" || status === RESERVE_STATUS) {
       present.push(p);
       if (placedPlayerIds.has(p.id)) presentTitulaires.push(p);
       else presentReserve.push(p);
