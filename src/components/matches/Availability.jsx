@@ -12,7 +12,8 @@
 // réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { cn, getFirstName } from "../../lib/utils";
+import { cn, formatDateFR, getFirstName } from "../../lib/utils";
+import { useNow } from "../../lib/matchLogic";
 import {
   AVAILABILITY_STATUSES,
   RESERVE_STATUS,
@@ -21,6 +22,11 @@ import {
   resetSessionAvailability,
   autoPlacePresentPlayer,
 } from "../../lib/availability";
+import {
+  getConvocationOverride,
+  getAutoOpenDate,
+  isConvocationOpen,
+} from "../../lib/convocation";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal } from "../ui";
@@ -178,10 +184,19 @@ function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
 // auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
 // conservée).
 export function AvailabilityButtons({ sessionMatches }) {
-  const { players, connectedPlayer, isAdmin, matches } = useAppData();
+  const { players, connectedPlayer, isAdmin, matches, presenceWindowDays } = useAppData();
+  const now = useNow();
   const [saving, setSaving] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
   const [showChangeModal, setShowChangeModal] = useState(false);
+  // Convocation (voir lib/convocation.js) : tant qu'elle n'est pas ouverte
+  // pour cette session (fenêtre automatique pas encore atteinte, ou
+  // fermeture forcée par l'admin), un joueur qui n'a pas encore répondu ne
+  // voit pas les 3 boutons — voir plus bas. L'admin, lui, garde toujours la
+  // main sur sa propre réponse (il contrôle la convocation, il n'a pas à en
+  // subir la fermeture) ; un joueur ayant déjà répondu garde toujours sa
+  // réponse, modifiable, quel que soit l'état de la convocation.
+  const convocationOpen = isConvocationOpen(sessionMatches, now, presenceWindowDays);
 
   // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
   // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
@@ -341,6 +356,27 @@ export function AvailabilityButtons({ sessionMatches }) {
         <p className="text-[11px] font-semibold text-[var(--color-text-dim)]">
           En tant que joueur occasionnel, c'est l'administrateur qui indique
           votre présence pour ce match.
+        </p>
+      </div>
+    );
+  }
+
+  // Convocation pas encore ouverte pour cette session (voir
+  // lib/convocation.js) : pas de boutons pour un joueur qui n'a pas encore
+  // répondu — seul l'admin garde la main (via "Gérer les présences") pour
+  // répondre à sa place si besoin avant l'ouverture.
+  if (!isAdmin && !convocationOpen) {
+    const forcedClosed = getConvocationOverride(sessionMatches) === "closed";
+    const autoOpenDate = forcedClosed
+      ? null
+      : getAutoOpenDate(sessionMatches, presenceWindowDays);
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3 text-center">
+        <Icon.Calendar className="w-4 h-4 mx-auto mb-1 text-[var(--color-text-faint)]" />
+        <p className="text-[11px] font-semibold text-[var(--color-text-dim)]">
+          {forcedClosed || !autoOpenDate
+            ? "La convocation pour ce match n'est pas encore ouverte."
+            : `La convocation ouvrira automatiquement le ${formatDateFR(autoOpenDate)}.`}
         </p>
       </div>
     );
