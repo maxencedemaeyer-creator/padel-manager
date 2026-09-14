@@ -4,8 +4,14 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
-import { hasMatchScore, getSetDisplay, getMatchTiming } from "../../lib/matchLogic";
+import { hasMatchScore, getSetDisplay, getMatchTiming, useNow } from "../../lib/matchLogic";
 import { isCompositionPublished, setCompositionPublished } from "../../lib/composition";
+import {
+  getConvocationOverride,
+  getAutoOpenDate,
+  isConvocationOpen,
+  setConvocationOverride,
+} from "../../lib/convocation";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Modal } from "../ui";
@@ -17,6 +23,137 @@ import {
   RespondedPlayersPanel,
   ManagePresenceModal,
 } from "./Availability";
+
+// Bandeau admin permettant de contrôler la convocation d'une session — qui a
+// le droit de répondre présent/absent/incertain, et depuis quand (voir
+// lib/convocation.js). Par défaut, entièrement automatique (réglage global
+// "Fenêtre de convocation" dans Administration) ; un clic sur "Gérer" permet
+// de forcer l'ouverture ou la fermeture pour CETTE session précise. Ne
+// touche jamais aux réponses déjà données par les joueurs.
+function ConvocationBar({ sessionMatches }) {
+  const { presenceWindowDays } = useAppData();
+  const now = useNow();
+  const [showModal, setShowModal] = useState(false);
+  const override = getConvocationOverride(sessionMatches);
+  const open = isConvocationOpen(sessionMatches, now, presenceWindowDays);
+  const autoOpenDate = override ? null : getAutoOpenDate(sessionMatches, presenceWindowDays);
+
+  let statusLabel;
+  if (override === "open") statusLabel = "Convocation ouverte (forcée par vous)";
+  else if (override === "closed") statusLabel = "Convocation fermée (forcée par vous)";
+  else if (open) statusLabel = "Convocation ouverte (automatique)";
+  else statusLabel = `Convocation fermée — ouvrira le ${formatDateFR(autoOpenDate)}`;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-2 mb-3 p-2.5 rounded-xl border",
+        open
+          ? "border-emerald-300 bg-emerald-50"
+          : "border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
+      )}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className={cn(
+            "w-2 h-2 rounded-full shrink-0",
+            open ? "bg-emerald-500" : "bg-amber-500"
+          )}
+        />
+        <p className="text-[11px] font-semibold text-[var(--color-text-dim)] truncate">
+          {statusLabel}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowModal(true)}
+        className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 transition-all"
+      >
+        Gérer
+      </button>
+      {showModal && (
+        <ConvocationSettingsModal
+          sessionMatches={sessionMatches}
+          currentOverride={override}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modale ouverte depuis "Gérer" ci-dessus — 3 choix mutuellement exclusifs :
+// automatique (comportement par défaut, piloté par le réglage global),
+// forcer l'ouverture (utile pour convoquer plus tôt qu'à l'accoutumée), ou
+// forcer la fermeture (utile pour un match pas encore certain). Rappelle
+// explicitement que les réponses déjà données ne sont jamais affectées.
+function ConvocationSettingsModal({ sessionMatches, currentOverride, onClose }) {
+  const [saving, setSaving] = useState(false);
+
+  const choose = async (value) => {
+    setSaving(true);
+    try {
+      await setConvocationOverride(sessionMatches, value);
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const OPTIONS = [
+    {
+      value: null,
+      label: "Automatique",
+      desc: "S'ouvre toute seule selon le réglage global (Administration).",
+    },
+    {
+      value: "open",
+      label: "Forcer l'ouverture",
+      desc: "Les joueurs peuvent répondre dès maintenant, même hors fenêtre.",
+    },
+    {
+      value: "closed",
+      label: "Forcer la fermeture",
+      desc: "Personne (sauf vous) ne peut répondre, même dans la fenêtre.",
+    },
+  ];
+
+  return (
+    <Modal title="Gérer la convocation" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Ne change jamais les réponses déjà données par les joueurs — contrôle
+        uniquement qui peut encore répondre à partir de maintenant.
+      </p>
+      <div className="flex flex-col gap-2">
+        {OPTIONS.map((opt) => {
+          const active = (currentOverride || null) === opt.value;
+          return (
+            <button
+              key={opt.label}
+              type="button"
+              disabled={saving}
+              onClick={() => choose(opt.value)}
+              className={cn(
+                "text-left p-3 rounded-xl border transition-all disabled:opacity-50",
+                active
+                  ? "border-sky-400 bg-sky-50"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-sky-300"
+              )}
+            >
+              <p className="text-sm font-bold flex items-center gap-1.5">
+                {active && <Icon.Check className="w-3.5 h-3.5 text-sky-600" />}
+                {opt.label}
+              </p>
+              <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">{opt.desc}</p>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
 
 // Bandeau admin permettant de publier/dépublier la composition d'une
 // session (tous les terrains de la date à la fois) — tant qu'elle n'est pas
@@ -143,6 +280,8 @@ export function SessionCard({ sessionMatches, now }) {
 
       {isAdmin && prepExpanded && (
         <>
+          <ConvocationBar sessionMatches={sessionMatches} />
+
           <PublishCompositionBar sessionMatches={sessionMatches} />
 
           <div className="flex items-center justify-end mb-1">
