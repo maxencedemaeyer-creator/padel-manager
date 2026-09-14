@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
+import { DEFAULT_PRESENCE_WINDOW_DAYS } from "../lib/constants";
 
 export function usePlayers() {
   const [players, setPlayers] = useState([]);
@@ -176,6 +177,7 @@ export function useAppSettings() {
   const [settings, setSettings] = useState({
     gameCenterEnabled: false,
     maintenanceEnabled: false,
+    presenceWindowDays: DEFAULT_PRESENCE_WINDOW_DAYS,
   });
   const [loading, setLoading] = useState(true);
 
@@ -189,6 +191,10 @@ export function useAppSettings() {
           setSettings({
             gameCenterEnabled: data.gameCenterEnabled === true,
             maintenanceEnabled: data.maintenanceEnabled === true,
+            presenceWindowDays:
+              typeof data.presenceWindowDays === "number" && data.presenceWindowDays > 0
+                ? data.presenceWindowDays
+                : DEFAULT_PRESENCE_WINDOW_DAYS,
           });
           setLoading(false);
         },
