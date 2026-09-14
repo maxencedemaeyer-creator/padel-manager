@@ -180,6 +180,7 @@ function MainApp() {
       matches: matchesHook.matches,
       gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
       maintenanceEnabled: settingsHook.settings.maintenanceEnabled,
+      presenceWindowDays: settingsHook.settings.presenceWindowDays,
       abonnements: abonnementsHook.abonnements,
       clubs: clubsHook.clubs,
     }),
@@ -188,6 +189,7 @@ function MainApp() {
       matchesHook.matches,
       settingsHook.settings.gameCenterEnabled,
       settingsHook.settings.maintenanceEnabled,
+      settingsHook.settings.presenceWindowDays,
       abonnementsHook.abonnements,
       clubsHook.clubs,
     ]
