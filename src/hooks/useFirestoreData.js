@@ -69,6 +69,38 @@ export function useMatches() {
   return { matches, loading };
 }
 
+// Votes "Homme du match" (voir lib/mvp.js) — un document par match dans la
+// collection "mvpVotes", champ "votes" = { voterId: candidateId }. Lecture
+// temps réel de TOUTE la collection, utilisée pour compter le nombre de
+// fois où chaque joueur a été élu (voir stats affichées dans "Équipe").
+export function useMvpVotes() {
+  const [mvpVotes, setMvpVotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(
+        collection(db, "mvpVotes"),
+        (snap) => {
+          setMvpVotes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+        },
+        (error) => {
+          console.error(error);
+          setLoading(false);
+        }
+      );
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+    return () => unsub();
+  }, []);
+
+  return { mvpVotes, loading };
+}
+
 // Abonnements (ex-"saisons") — un document par lot généré depuis "Créer un
 // abonnement" (voir CreateSeasonModal.jsx) : club, terrain(s), période,
 // récurrence, tarif, et la liste des créanciers + leur créance de départ
