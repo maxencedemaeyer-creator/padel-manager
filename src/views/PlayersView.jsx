@@ -3,6 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
+import { useMvpVotes } from "../hooks/useFirestoreData";
+import { computeMvpWinner } from "../lib/mvp";
 import Icon from "../components/icons/Icon";
 import { Button, EmptyState } from "../components/ui";
 import { ClubRankingBanner } from "../components/players/ClubRankingBanner";
@@ -12,6 +14,21 @@ import { AddPlayerModal } from "../components/players/AddPlayerModal";
 export function PlayersView() {
   const { players, matches, isAdmin } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
+  // Nombre de fois où chaque joueur a été élu "homme du match" (voir jeu du
+  // Fun Center, lib/mvp.js) — calculé une seule fois ici à partir du flux
+  // temps réel de la collection "mvpVotes", puis distribué à chaque ligne
+  // via la prop `mvpCount` (évite une lecture Firestore par joueur).
+  const { mvpVotes } = useMvpVotes();
+  const mvpCounts = useMemo(() => {
+    const counts = {};
+    mvpVotes.forEach((voteDoc) => {
+      const { winnerIds } = computeMvpWinner(voteDoc.votes || {});
+      winnerIds.forEach((playerId) => {
+        counts[playerId] = (counts[playerId] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [mvpVotes]);
   // Joueurs occasionnels : gardent toutes leurs stats mais restent masqués
   // par défaut de cette liste (moins de bruit visuel) — un bouton en bas
   // permet de les charger à la demande, pour tout le monde (pas admin
@@ -70,7 +87,7 @@ export function PlayersView() {
           </div>
           <div className="flex flex-col gap-2">
             {sorted.map((p) => (
-              <PlayerRow key={p.id} player={p} />
+              <PlayerRow key={p.id} player={p} mvpCount={mvpCounts[p.id] || 0} />
             ))}
           </div>
         </>
@@ -102,7 +119,7 @@ export function PlayersView() {
               </div>
               <div className="flex flex-col gap-2">
                 {occasionalPlayers.map((p) => (
-                  <PlayerRow key={p.id} player={p} />
+                  <PlayerRow key={p.id} player={p} mvpCount={mvpCounts[p.id] || 0} />
                 ))}
               </div>
             </>
