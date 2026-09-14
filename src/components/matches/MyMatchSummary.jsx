@@ -15,6 +15,7 @@ import {
   isPlayerMatchCreditor,
 } from "../../lib/matchLogic";
 import { getSessionAvailability } from "../../lib/availability";
+import { isConvocationOpen } from "../../lib/convocation";
 import { computePlayerStats } from "../../lib/stats";
 import { findRecentMvpWin } from "../../lib/mvp";
 import { useAppData } from "../../context/AppContext";
@@ -27,7 +28,7 @@ const UPCOMING_WINDOW_DAYS = 15;
 const UPCOMING_SESSIONS_COUNT = 2;
 
 export function MyMatchSummary({ now }) {
-  const { connectedPlayer, players, matches, isAdmin } = useAppData();
+  const { connectedPlayer, players, matches, isAdmin, presenceWindowDays } = useAppData();
 
   // Matchs "à une date inconnue" (voir MatchSettingsModals.jsx → "Reporter
   // à une date inconnue") que CE joueur a le droit de gérer — admin, ou
@@ -127,11 +128,18 @@ export function MyMatchSummary({ now }) {
   // l'admin ne l'a pas fait pour lui (voir Availability.jsx) — lui afficher
   // ce rappel serait donc trompeur, puisqu'il n'a aucun bouton pour agir
   // dessus. On ne le lui montre jamais.
+  //
+  // Ajout convocation (voir lib/convocation.js) : ne relance jamais pour une
+  // session dont la convocation n'est pas encore ouverte — même raison que
+  // le filtre `dateTBD` ci-dessus (voir fix-rappel-presence-faux-positif-
+  // matchs-tbd.md) : le joueur n'a alors aucun bouton pour répondre, un
+  // rappel serait donc trompeur.
   const needsPresenceReminder =
     !connectedPlayer.isOccasional &&
     nextSessions.some((session) => {
       const availability = getSessionAvailability(session);
-      return availability[connectedPlayer.id] === undefined;
+      if (availability[connectedPlayer.id] !== undefined) return false;
+      return isConvocationOpen(session, now, presenceWindowDays);
     });
 
   const myLastFinished = [...matches]
