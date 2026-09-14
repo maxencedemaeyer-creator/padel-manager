@@ -78,6 +78,17 @@ export const BRICK_BREAKER_HIGH_SCORES_COUNT = 5;
 //   plus de fois" (parties jouées, toute la saison).
 export const BRICK_BREAKER_TOP_ATTEMPTS_COUNT = 3;
 
+// Convocation (présence) — voir lib/convocation.js : nombre de jours avant
+// le match à partir duquel les joueurs peuvent répondre présent / absent /
+// je ne sais pas encore, quand aucun réglage n'a encore été défini par
+// l'admin depuis Administration (settings/appConfig → presenceWindowDays)
+// et qu'aucune dérogation n'est active sur la session (voir
+// convocationOverride). Valeur volontairement énorme : tant que Max ne
+// resserre pas ce réglage lui-même, la convocation reste ouverte pour tous
+// les matchs, exactement comme avant l'introduction de cette fonctionnalité
+// — aucune régression sur une saison déjà en cours.
+export const DEFAULT_PRESENCE_WINDOW_DAYS = 999;
+
 // Game Center — jeu "Homme du match" (voir src/lib/mvp.js) :
 // - le vote s'ouvre ce nombre d'heures après le DÉBUT du match (le vote
 //   reste ensuite ouvert jusqu'à 23h59 le lendemain de la date du match,
