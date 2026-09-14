@@ -14,7 +14,7 @@ import { Card, Badge } from "../ui";
 import { EditPlayerModal } from "./EditPlayerModal";
 import { PlayerAvatar } from "./PlayerAvatar";
 
-export function PlayerRow({ player }) {
+export function PlayerRow({ player, mvpCount = 0 }) {
   const { isAdmin, matches } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
@@ -22,6 +22,9 @@ export function PlayerRow({ player }) {
   // modifie désormais son propre code PIN depuis "Mon profil".
   const canEdit = isAdmin;
   const playerStats = computePlayerStats(player.id, matches);
+  // "Nx homme du match" — nombre de fois élu (voir jeu du Fun Center,
+  // lib/mvp.js), compté une fois par PlayersView et transmis en prop.
+  const mvpSuffix = mvpCount > 0 ? ` · ${mvpCount}x homme du match` : "";
 
   return (
     <>
@@ -59,9 +62,11 @@ export function PlayerRow({ player }) {
               )}
             </div>
             <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5 truncate">
-              {playerStats.played === 0
+              {playerStats.played === 0 && mvpCount === 0
                 ? "Aucune statistique"
-                : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V-${playerStats.losses}D · ${playerStats.winRate}%`}
+                : playerStats.played === 0
+                ? `Aucune statistique${mvpSuffix}`
+                : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V-${playerStats.losses}D · ${playerStats.winRate}%${mvpSuffix}`}
             </p>
           </div>
 
