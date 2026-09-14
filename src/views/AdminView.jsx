@@ -208,9 +208,16 @@ function PresenceWindowSettingCard({ value }) {
 //   compris) — pour corriger un abonnement généré par erreur. Avertit
 //   explicitement et exige une confirmation supplémentaire si de l'argent
 //   réel (paiements déjà confirmés) est en jeu.
+// - "Terrain" (ajouté le 14/09/2026) : renomme le(s) numéro(s) de terrain
+//   d'un abonnement EN COURS, sans rien casser d'autre (créanciers, créance,
+//   dates, récurrence inchangés). Ne touche jamais les matchs déjà joués —
+//   seuls les matchs pas encore terminés changent de terrain, exactement
+//   comme un vrai changement de terrain physique décidé à partir d'une
+//   certaine date (voir RenameCourtsModal ci-dessous).
 function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
   const [tab, setTab] = useState("active"); // "active" | "archived"
   const [deleteTarget, setDeleteTarget] = useState(null); // info d'un abonnement, ou null
+  const [renameTarget, setRenameTarget] = useState(null); // info d'un abonnement, ou null
   const [busyId, setBusyId] = useState(null);
 
   // Simplifié le 04/09/2026 : réutilise getUnpaidPastParticipations (source
@@ -375,6 +382,18 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
                   >
                     Supprimer
                   </Button>
+                  {tab === "active" && (
+                    <Button
+                      variant="secondary"
+                      className="!py-1.5 !px-3 !text-xs ml-auto"
+                      disabled={busy}
+                      onClick={() => setRenameTarget(info)}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Icon.Edit className="w-3.5 h-3.5" /> Terrain
+                      </span>
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
@@ -384,6 +403,14 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
 
       {deleteTarget && (
         <DeleteAbonnementConfirmModal info={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      )}
+      {renameTarget && (
+        <RenameCourtsModal
+          abonnement={renameTarget.abonnement}
+          matches={matches}
+          club={renameTarget.club}
+          onClose={() => setRenameTarget(null)}
+        />
       )}
     </>
   );
@@ -463,6 +490,143 @@ function DeleteAbonnementConfirmModal({ info, onClose }) {
             <span>Je comprends que ces paiements confirmés seront définitivement effacés.</span>
           </label>
         </div>
+      )}
+    </Modal>
+  );
+}
+
+// Renommage du/des terrain(s) d'un abonnement EN COURS (ajouté le
+// 14/09/2026, ex. "on passe du terrain 1 au terrain 2 à partir de
+// janvier"). Contrairement à Clôturer/Supprimer, cette action ne touche
+// JAMAIS l'historique : seuls les matchs PAS ENCORE terminés
+// (`getMatchTiming(m) !== "finished"`, même critère que le reste de cette
+// section) sont mis à jour. Les matchs déjà joués gardent leur ancien
+// numéro de terrain pour toujours, puisque c'était réellement le cas ce
+// jour-là — on ne réécrit jamais le passé. Créanciers, créance de départ,
+// dates, récurrence et tarif de l'abonnement restent identiques : seuls
+// `abonnement.courts` et, sur les matchs futurs concernés, `match.court`
+// ET `match.location` (qui contient le texte "Terrain X" réellement
+// affiché à l'écran, voir clubNameOnly/lib/utils.js) sont modifiés.
+//
+// La correspondance ancien → nouveau numéro se fait par position dans le
+// tableau `courts` (même ordre que celui utilisé à la génération des
+// matchs dans CreateSeasonModal.jsx) — on ne permet pas ici de changer le
+// NOMBRE de terrains (ça resterait ambigu : quels matchs rattacher à un
+// terrain ajouté/retiré ?), uniquement leurs numéros/noms.
+function RenameCourtsModal({ abonnement, matches, club, onClose }) {
+  const initialCourts =
+    abonnement.courts && abonnement.courts.length > 0 ? abonnement.courts : ["1"];
+  const [courtNumbers, setCourtNumbers] = useState(initialCourts);
+  const [saving, setSaving] = useState(false);
+
+  const setCourtNumberAt = (index, value) => {
+    setCourtNumbers((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const trimmedCourts = courtNumbers.map((c) => c.trim());
+  const hasChange = trimmedCourts.some((c, i) => c !== initialCourts[i]);
+  const canSubmit = trimmedCourts.every((c) => c.length > 0) && hasChange;
+
+  const relatedMatches = matches.filter((m) => m.abonnementId === abonnement.id);
+  const futureMatches = relatedMatches.filter((m) => getMatchTiming(m) !== "finished");
+  const pastCount = relatedMatches.length - futureMatches.length;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      const courtMap = new Map();
+      initialCourts.forEach((oldCourt, i) => {
+        const newCourt = trimmedCourts[i];
+        if (newCourt && newCourt !== oldCourt) courtMap.set(String(oldCourt), newCourt);
+      });
+
+      const clubName = club?.name || "";
+      const toUpdate = futureMatches.filter(
+        (m) => m.court != null && courtMap.has(String(m.court))
+      );
+
+      for (let i = 0; i < toUpdate.length; i += 450) {
+        const chunk = toUpdate.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach((m) => {
+          const newCourt = courtMap.get(String(m.court));
+          batch.update(doc(db, "matches", m.id), {
+            court: newCourt,
+            location: `${clubName} — Terrain ${newCourt}`,
+          });
+        });
+        await batch.commit();
+      }
+
+      await updateDoc(doc(db, "abonnements", abonnement.id), { courts: trimmedCourts });
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Modifier le(s) terrain(s)"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || saving}>
+            {saving ? "Application..." : "Enregistrer"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-[var(--color-text-dim)] mb-3">
+        Seuls les matchs pas encore joués changeront de terrain
+        {futureMatches.length > 0
+          ? ` (${futureMatches.length} match${futureMatches.length > 1 ? "s" : ""})`
+          : ""}
+        .{" "}
+        {pastCount > 0 && (
+          <>
+            Les {pastCount} match{pastCount > 1 ? "s" : ""} déjà joué
+            {pastCount > 1 ? "s" : ""} garde{pastCount > 1 ? "nt" : ""} son ancien terrain, comme
+            c'était réellement le cas.{" "}
+          </>
+        )}
+        Créanciers, créance de départ et règles de cet abonnement restent inchangés.
+      </p>
+
+      <Field
+        label={`Numéro${courtNumbers.length > 1 ? "s" : ""} de terrain (${courtNumbers.length} case${courtNumbers.length > 1 ? "s" : ""})`}
+      >
+        <div className="grid grid-cols-3 gap-2">
+          {courtNumbers.map((val, i) => (
+            <input
+              key={i}
+              className={cn(inputClass, "text-center")}
+              value={val}
+              onChange={(e) => setCourtNumberAt(i, e.target.value)}
+              placeholder={`Terrain ${i + 1}`}
+            />
+          ))}
+        </div>
+        <p className="text-[11px] text-[var(--color-text-faint)] mt-1.5">
+          Pour changer le nombre de terrains de cet abonnement, passez plutôt par « Clôturer » puis
+          « Créer un abonnement ».
+        </p>
+      </Field>
+
+      {futureMatches.length === 0 && (
+        <p className="text-[11px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+          Aucun match à venir sur cet abonnement : seul son intitulé (« Gestion des abonnements »
+          ci-dessus) sera mis à jour, aucun match ne sera modifié.
+        </p>
       )}
     </Modal>
   );
