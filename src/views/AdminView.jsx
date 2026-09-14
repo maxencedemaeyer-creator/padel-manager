@@ -2,11 +2,12 @@
 // Onglet "Administration" — KPIs du club, soldes des créanciers (éditables),
 // gestion des clubs, génération d'abonnements.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { doc, deleteDoc, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
+import { DEFAULT_PRESENCE_WINDOW_DAYS } from "../lib/constants";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -16,7 +17,7 @@ import {
 } from "../lib/stats";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
-import { Card, Button, EmptyState, Switch, Modal } from "../components/ui";
+import { Card, Button, EmptyState, Switch, Modal, inputClass } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { CreditorAccountingModal } from "../components/accounting/CreditorAccountingModal";
@@ -108,6 +109,83 @@ function MaintenanceSettingCard({ enabled }) {
         </p>
       </div>
       <Switch checked={enabled} onChange={toggle} disabled={saving} />
+    </Card>
+  );
+}
+
+// Carte "Fenêtre de convocation" — réglage global du nombre de jours avant
+// un match à partir duquel les joueurs peuvent répondre présent / absent /
+// je ne sais pas encore (voir lib/convocation.js). Écrit directement dans
+// settings/appConfig, comme Game Center / Maintenance ci-dessus, répercuté
+// en temps réel partout via useAppSettings. Une dérogation ponctuelle par
+// session (forcer l'ouverture ou la fermeture d'UN match précis) reste
+// possible depuis l'onglet Matchs, indépendamment de ce réglage global.
+function PresenceWindowSettingCard({ value }) {
+  const [days, setDays] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Garde le champ synchronisé si la valeur change ailleurs (autre session
+  // admin, ou simplement après l'enregistrement ci-dessous).
+  useEffect(() => {
+    setDays(String(value));
+  }, [value]);
+
+  const isUnrestricted = value >= DEFAULT_PRESENCE_WINDOW_DAYS;
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const n = parseInt(days, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "settings", "appConfig"), { presenceWindowDays: n }, { merge: true });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5 mb-6">
+      <h3 className="font-semibold text-sm mb-1">Fenêtre de convocation</h3>
+      <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
+        Nombre de jours avant un match à partir duquel les joueurs peuvent
+        indiquer leur présence.{" "}
+        {isUnrestricted
+          ? "Actuellement : toujours ouverte (réglage jamais modifié)."
+          : `Actuellement : ${value} jour${value > 1 ? "s" : ""} avant chaque match.`}{" "}
+        Vous gardez la main pour forcer l'ouverture ou la fermeture d'une
+        session précise depuis l'onglet Matchs.
+      </p>
+
+      <form onSubmit={handleSave} className="flex items-center gap-3 max-w-sm">
+        <div className="relative flex-1">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className={inputClass}
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--color-text-faint)]">
+            jour{Number(days) > 1 ? "s" : ""}
+          </span>
+        </div>
+        <Button type="submit" disabled={saving} className="!py-2.5 !px-4 shrink-0">
+          {saving ? "..." : "Enregistrer"}
+        </Button>
+      </form>
+
+      {saveSuccess && (
+        <p className="text-xs font-semibold text-emerald-600 mt-2 flex items-center gap-1">
+          <Icon.CheckCircle className="w-4 h-4" /> Réglage mis à jour !
+        </p>
+      )}
     </Card>
   );
 }
@@ -391,8 +469,15 @@ function DeleteAbonnementConfirmModal({ info, onClose }) {
 }
 
 export function AdminView() {
-  const { players, matches, abonnements, clubs, gameCenterEnabled, maintenanceEnabled } =
-    useAppData();
+  const {
+    players,
+    matches,
+    abonnements,
+    clubs,
+    gameCenterEnabled,
+    maintenanceEnabled,
+    presenceWindowDays,
+  } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const [showManageClubs, setShowManageClubs] = useState(false);
   // Créance en cours d'édition — { creditorId, creditorName, abonnement }.
@@ -468,6 +553,7 @@ export function AdminView() {
 
       <MaintenanceSettingCard enabled={maintenanceEnabled} />
       <GameCenterSettingCard enabled={gameCenterEnabled} />
+      <PresenceWindowSettingCard value={presenceWindowDays} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {stats.map((s) => (
