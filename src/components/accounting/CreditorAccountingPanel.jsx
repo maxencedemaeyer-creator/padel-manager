@@ -23,17 +23,19 @@
 // l'affichage des boutons.
 // ─────────────────────────────────────────────────────────────────────────
 import { useMemo, useRef, useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, formatDateFR, formatClaimPeriodLabel } from "../../lib/utils";
 import {
   getCreditorAccounting,
   getCreditorClaims,
   getUnpaidPastParticipations,
+  groupDebtsByDebtor,
   participantsOf,
 } from "../../lib/stats";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
+import { PlayerAvatar } from "../players/PlayerAvatar";
 import { ClaimSettingsModal } from "./ClaimSettingsModal";
 import { CreditorPaymentsModal } from "./CreditorPaymentsModal";
 import { AssignCreditorModal } from "./AssignCreditorModal";
@@ -53,6 +55,13 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   // laquelle AssignCreditorModal est ouverte (assignation ou réassignation
   // d'un impayé à un créancier précis, sans le marquer payé).
   const [assigningKey, setAssigningKey] = useState(null);
+  // Chantier "recap cumulé" du 18/09/2026 : clés des cartes de groupe
+  // (paire joueur/créancier assigné) actuellement dépliées, puis le même
+  // pattern de confirmation en 2 clics que "Marquer payé" mais au niveau du
+  // groupe entier ("Marquer tout payé").
+  const [openGroupKeys, setOpenGroupKeys] = useState(() => new Set());
+  const [confirmingGroupKey, setConfirmingGroupKey] = useState(null);
+  const [savingGroupKey, setSavingGroupKey] = useState(null);
   // Modale de détail des remboursements (bloc 4) : "past" | "upcoming" | null.
   const [paymentsModalTab, setPaymentsModalTab] = useState(null);
   // Mémoïsé (04/09/2026) : ces 3 fonctions reparcourent TOUS les matchs de
@@ -119,6 +128,17 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   // bloc "Remboursements" plus bas.
   const unpaidListRef = useRef(null);
 
+  // Recap cumulé (18/09/2026) : parmi TOUS les impayés de l'app (calcul
+  // global, non filtré par créancier — voir commentaire ci-dessus), on
+  // regroupe ceux déjà explicitement assignés ("Doit payer à…") par paire
+  // (joueur, créancier) — voir groupDebtsByDebtor, lib/stats.js. Les impayés
+  // pas encore assignés restent dans `ungroupedDebts`, affichés à l'unité
+  // exactement comme avant ce chantier.
+  const { groups: debtGroups, ungrouped: ungroupedDebts } = useMemo(
+    () => groupDebtsByDebtor(unpaidPast),
+    [unpaidPast]
+  );
+
   // Bloc 4 — remboursements par les autres joueurs.
   const totalReceivedAll = totalPaidPastMatches + totalPaidUpcomingMatches;
   const pastSessionsReceivedCount = new Set(paymentsReceived.map((p) => p.sessionKey)).size;
@@ -159,6 +179,51 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   // Item actuellement ouvert dans AssignCreditorModal (ou null).
   const assigningItem = unpaidPast.find((i) => i.key === assigningKey) || null;
 
+  const toggleGroup = (groupKey) => {
+    setOpenGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+
+  // "Marquer tout payé" au niveau d'un groupe (18/09/2026) : règle en une
+  // seule écriture Firestore tous les matchs cumulés d'une paire (joueur,
+  // créancier assigné) — évite de cliquer "Marquer payé" une fois par match
+  // quand un joueur règle tout d'un coup (ex. plusieurs semaines en liquide
+  // le même jour). Un groupe peut couvrir plusieurs matchs différents (donc
+  // plusieurs documents Firestore) : on utilise un writeBatch pour que tout
+  // parte en une seule opération atomique, et on regroupe d'abord par
+  // matchId pour n'écrire qu'une fois par match même si, cas limite, deux
+  // participants de la même dette concernaient le même document.
+  const markGroupAsPaid = async (group) => {
+    setSavingGroupKey(group.groupKey);
+    try {
+      const matchIds = [...new Set(group.items.map((item) => item.matchId))];
+      const batch = writeBatch(db);
+      matchIds.forEach((matchId) => {
+        const match = matches.find((m) => m.id === matchId);
+        if (!match) return;
+        const playerIdsSettled = new Set(
+          group.items.filter((item) => item.matchId === matchId).map((item) => item.playerId)
+        );
+        const updatedParticipants = participantsOf(match).map((p) =>
+          playerIdsSettled.has(p.playerId)
+            ? { ...p, paidStatus: "paid", creditorId: group.creditorId }
+            : p
+        );
+        batch.update(doc(db, "matches", matchId), { participants: updatedParticipants });
+      });
+      await batch.commit();
+      setConfirmingGroupKey(null);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingGroupKey(null);
+    }
+  };
+
   return (
     <>
       {/* 1. Bannière d'alerte / suivi des paiements */}
@@ -181,84 +246,154 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
       </div>
 
       {/* 1bis. Détail nominatif des impayés — qui doit quoi, pour quel match.
-          Boutons d'action masqués en lecture seule (mode admin). */}
+          Boutons d'action masqués en lecture seule (mode admin).
+          Chantier du 18/09/2026 : les dettes explicitement assignées ("Doit
+          payer à…") sont désormais regroupées par paire (joueur, créancier)
+          en une carte cumulée ("Untel doit encore payer : N matchs · X €"),
+          repliable pour retrouver le détail match par match. Les dettes pas
+          encore assignées restent affichées à l'unité en dessous, sous "En
+          attente d'attribution" — voir groupDebtsByDebtor, lib/stats.js. */}
       {!allSettled && (
         <div ref={unpaidListRef} className="flex flex-col gap-2 mb-5">
-          {unpaidPast.map((item) => {
-            const isConfirming = confirmingKey === item.key;
-            const isSaving = savingKey === item.key;
-            const owedToPlayer = item.owedTo
-              ? players.find((p) => p.id === item.owedTo) || null
-              : null;
+          {debtGroups.map((group) => {
+            const isGroupOpen = openGroupKeys.has(group.groupKey);
+            const isConfirmingGroup = confirmingGroupKey === group.groupKey;
+            const isSavingGroup = savingGroupKey === group.groupKey;
+            const debtor = players.find((p) => p.id === group.playerId) || null;
+            const creditorName =
+              group.creditorId === effectiveViewerId
+                ? "moi"
+                : players.find((p) => p.id === group.creditorId)?.name || "quelqu'un";
             return (
               <div
-                key={item.key}
-                className="bg-white border border-orange-200/70 rounded-2xl p-3.5 flex flex-col gap-2"
+                key={group.groupKey}
+                className="bg-white border border-orange-200/70 rounded-2xl overflow-hidden"
               >
-                <div className="flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
-                    <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold truncate">{item.name}</span>
-                    <span className="block text-xs text-slate-400 truncate">
-                      {formatDateFR(item.date)} · {item.location}
-                    </span>
-                    {owedToPlayer && (
-                      <span className="block text-[11px] font-medium text-sky-700 mt-0.5 truncate">
-                        → Doit payer à{" "}
-                        {owedToPlayer.id === effectiveViewerId ? "moi" : owedToPlayer.name}
+                <div className="flex items-center gap-3 p-3.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.groupKey)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  >
+                    {debtor ? (
+                      <PlayerAvatar player={debtor} size={36} />
+                    ) : (
+                      <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                        <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
                       </span>
                     )}
-                  </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold truncate">
+                        {group.playerName}
+                      </span>
+                      <span className="block text-[11px] font-medium text-sky-700 truncate">
+                        → Doit payer à {creditorName}
+                      </span>
+                      <span className="block text-xs text-slate-400 mt-0.5">
+                        {group.count} match{group.count > 1 ? "s" : ""} non réglé
+                        {group.count > 1 ? "s" : ""}
+                      </span>
+                    </span>
+                  </button>
                   <span className="pm-mono font-bold text-orange-600 text-sm shrink-0">
-                    {item.fee.toLocaleString("fr-FR")} €
+                    {group.total.toLocaleString("fr-FR")} €
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.groupKey)}
+                    className="shrink-0 p-1 -m-1 text-slate-300 hover:text-slate-500"
+                    title={isGroupOpen ? "Replier" : "Voir le détail des matchs"}
+                  >
+                    <Icon.Chevron
+                      className={cn("w-4 h-4 transition-transform", isGroupOpen && "rotate-90")}
+                    />
+                  </button>
                 </div>
-                {!readOnly && (
-                  <div className="flex items-center gap-1.5 flex-wrap pl-12">
-                    {isConfirming ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={isSaving}
-                          onClick={() => markAsPaid(item)}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                        >
-                          {isSaving ? "…" : "Confirmer"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSaving}
-                          onClick={() => setConfirmingKey(null)}
-                          className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
-                        >
-                          Annuler
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingKey(item.key)}
-                          className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                        >
-                          Marquer payé
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAssigningKey(item.key)}
-                          className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
-                        >
-                          {owedToPlayer ? "Changer de créancier" : "Doit payer à…"}
-                        </button>
-                      </>
+                {isGroupOpen && (
+                  <div className="border-t border-orange-100 bg-orange-50/40">
+                    {!readOnly && (
+                      <div className="flex items-center gap-1.5 flex-wrap px-3.5 py-2.5 border-b border-orange-100/70">
+                        {isConfirmingGroup ? (
+                          <>
+                            <span className="text-xs text-slate-500 mr-1">
+                              Confirmer le règlement des {group.count} matchs ?
+                            </span>
+                            <button
+                              type="button"
+                              disabled={isSavingGroup}
+                              onClick={() => markGroupAsPaid(group)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                            >
+                              {isSavingGroup ? "…" : "Confirmer"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSavingGroup}
+                              onClick={() => setConfirmingGroupKey(null)}
+                              className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
+                            >
+                              Annuler
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingGroupKey(group.groupKey)}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                          >
+                            Marquer tout payé ({group.count} match{group.count > 1 ? "s" : ""})
+                          </button>
+                        )}
+                      </div>
                     )}
+                    <div className="divide-y divide-orange-100/70">
+                      {group.items.map((item) => (
+                        <DebtItemRow
+                          key={item.key}
+                          item={item}
+                          players={players}
+                          effectiveViewerId={effectiveViewerId}
+                          readOnly={readOnly}
+                          isConfirming={confirmingKey === item.key}
+                          isSaving={savingKey === item.key}
+                          onConfirmStart={() => setConfirmingKey(item.key)}
+                          onConfirmCancel={() => setConfirmingKey(null)}
+                          onMarkAsPaid={() => markAsPaid(item)}
+                          onAssign={() => setAssigningKey(item.key)}
+                          compact
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             );
           })}
+
+          {ungroupedDebts.length > 0 && (
+            <>
+              {debtGroups.length > 0 && (
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-2 mb-0.5 px-1">
+                  En attente d'attribution
+                </p>
+              )}
+              {ungroupedDebts.map((item) => (
+                <DebtItemRow
+                  key={item.key}
+                  item={item}
+                  players={players}
+                  effectiveViewerId={effectiveViewerId}
+                  readOnly={readOnly}
+                  isConfirming={confirmingKey === item.key}
+                  isSaving={savingKey === item.key}
+                  onConfirmStart={() => setConfirmingKey(item.key)}
+                  onConfirmCancel={() => setConfirmingKey(null)}
+                  onMarkAsPaid={() => markAsPaid(item)}
+                  onAssign={() => setAssigningKey(item.key)}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
 
@@ -617,5 +752,110 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
         </>
       )}
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Une ligne "un impayé, un match" — extraite le 18/09/2026 pour être
+// réutilisée à la fois par les impayés pas encore assignés (rendu complet :
+// avatar, nom du joueur, date/lieu, et la ligne "→ Doit payer à…" si jamais
+// assigné) et par le détail déplié d'une carte de groupe (`compact` :
+// avatar/nom/owedTo déjà affichés une fois dans l'en-tête du groupe, cette
+// ligne ne montre alors que la date/lieu/montant + les mêmes actions).
+// ─────────────────────────────────────────────────────────────────────────
+function DebtItemRow({
+  item,
+  players,
+  effectiveViewerId,
+  readOnly,
+  isConfirming,
+  isSaving,
+  onConfirmStart,
+  onConfirmCancel,
+  onMarkAsPaid,
+  onAssign,
+  compact = false,
+}) {
+  const owedToPlayer = item.owedTo
+    ? (players || []).find((p) => p.id === item.owedTo) || null
+    : null;
+
+  return (
+    <div
+      className={
+        compact
+          ? "px-3.5 py-2.5 flex flex-col gap-1.5"
+          : "bg-white border border-orange-200/70 rounded-2xl p-3.5 flex flex-col gap-2"
+      }
+    >
+      <div className="flex items-center gap-3">
+        {!compact && (
+          <span className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+            <Icon.AlertCircle className="w-4 h-4 text-orange-500" />
+          </span>
+        )}
+        <span className="flex-1 min-w-0">
+          {!compact && <span className="block text-sm font-semibold truncate">{item.name}</span>}
+          <span
+            className={cn(
+              "block truncate",
+              compact ? "text-xs font-semibold text-slate-600" : "text-xs text-slate-400"
+            )}
+          >
+            {formatDateFR(item.date)}
+            {item.time ? ` · ${item.time}` : ""} · {item.location}
+          </span>
+          {!compact && owedToPlayer && (
+            <span className="block text-[11px] font-medium text-sky-700 mt-0.5 truncate">
+              → Doit payer à {owedToPlayer.id === effectiveViewerId ? "moi" : owedToPlayer.name}
+            </span>
+          )}
+        </span>
+        <span className="pm-mono font-bold text-orange-600 text-sm shrink-0">
+          {item.fee.toLocaleString("fr-FR")} €
+        </span>
+      </div>
+      {!readOnly && (
+        <div className={cn("flex items-center gap-1.5 flex-wrap", !compact && "pl-12")}>
+          {isConfirming ? (
+            <>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={onMarkAsPaid}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              >
+                {isSaving ? "…" : "Confirmer"}
+              </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={onConfirmCancel}
+                className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-xs font-medium disabled:opacity-50"
+              >
+                Annuler
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onConfirmStart}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+              >
+                Marquer payé
+              </button>
+              <button
+                type="button"
+                onClick={onAssign}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
+              >
+                {owedToPlayer ? "Changer de créancier" : "Doit payer à…"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
