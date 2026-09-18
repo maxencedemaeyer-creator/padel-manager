@@ -7,6 +7,7 @@ import {
   getMatchTiming,
   groupMatchesBySession,
   getSessionCreditorIds,
+  isDraw,
 } from "./matchLogic";
 
 // Petit garde-fou : un très ancien match (créé avant que le format actuel
@@ -353,6 +354,9 @@ export function computePlayerStats(playerId, matches) {
   let played = 0;
   let wins = 0;
   let losses = 0;
+  let draws = 0; // Matchs nuls (vrai score encodé, sets à égalité) — comptent
+  // comme joués avec un résultat, mais ne sont ni une victoire ni une
+  // défaite. Distincts des matchs sans score (amicaux), voir isDraw().
   const partnerCounts = new Map();
   const partnerWins = new Map();
   const opponentCounts = new Map();
@@ -377,11 +381,20 @@ export function computePlayerStats(playerId, matches) {
       return;
     }
 
-    let result = null; // "win" | "loss" | null (non renseigné)
+    let result = null; // "win" | "loss" | "draw" | null (non renseigné)
     if (me.team && m.winningTeam) {
       result = me.team === m.winningTeam ? "win" : "loss";
       if (result === "win") wins += 1;
       else losses += 1;
+    } else if (me.team && isDraw(m)) {
+      // Match nul : un vrai score existe, mais aucune équipe n'a gagné plus
+      // de sets que l'autre. Compté à part (ni victoire ni défaite), mais
+      // doit tout de même peser sur le pourcentage de victoires ci-dessous
+      // (`decided`) puisque c'est un match joué avec un résultat réel — à ne
+      // pas confondre avec un match sans score du tout (amical), qui lui
+      // reste totalement hors du calcul du pourcentage.
+      result = "draw";
+      draws += 1;
     }
 
     if (me.courtSide === "Droite" || me.courtSide === "Gauche") {
@@ -487,11 +500,15 @@ export function computePlayerStats(playerId, matches) {
           : { side: "Gauche", rate: gaucheRate };
   }
 
-  const decided = wins + losses;
+  // Un match nul compte dans le dénominateur du pourcentage de victoires
+  // (c'est un match joué avec un vrai résultat, pas une victoire) mais
+  // jamais au numérateur — voir la demande de Max du 18/09/2026.
+  const decided = wins + losses + draws;
   return {
     played,
     wins,
     losses,
+    draws,
     winRate: decided > 0 ? Math.round((wins / decided) * 100) : 0,
     topPartner: topOf(partnerCounts),
     topOpponent,
@@ -506,8 +523,9 @@ export function computePlayerStats(playerId, matches) {
 }
 
 // Série des 10 derniers matchs (du plus ancien au plus récent) — V (victoire),
-// R (revers/défaite), ou X (match sans résultat exploitable : pas de score,
-// ou équipes changées en cours de match).
+// D (défaite), N (match nul : vrai score encodé, sets à égalité), ou X (match
+// sans résultat exploitable : pas de score du tout, ou équipes changées en
+// cours de match).
 export function getRecentForm(playerId, matches, limit = 10) {
   const relevant = matches
     .filter(
@@ -522,6 +540,8 @@ export function getRecentForm(playerId, matches, limit = 10) {
     let result = "X";
     if (!m.teamsUnreliable && me?.team && m.winningTeam) {
       result = me.team === m.winningTeam ? "V" : "D";
+    } else if (!m.teamsUnreliable && me?.team && isDraw(m)) {
+      result = "N";
     }
     return { id: m.id, date: m.date, result };
   });
