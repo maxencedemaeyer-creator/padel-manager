@@ -183,6 +183,16 @@ const Icon = {
       <circle cx="18" cy="13.3" r="0.9" fill="currentColor" stroke="none" />
     </svg>
   ),
+  // Ajouté le 18/09/2026 pour le Ranking (voir
+  // claude/feature-ranking-padel-manager.md §6) — icône "historique" réservée
+  // à l'admin, à côté du ranking de chaque joueur dans le volet Équipe.
+  History: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
+      <path d="M3 12a9 9 0 1 0 2.6-6.3" />
+      <path d="M3 4.5V9h4.5" />
+      <path d="M12 8v4l3 2" />
+    </svg>
+  ),
 };
 
 
