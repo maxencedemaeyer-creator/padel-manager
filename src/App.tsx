@@ -181,8 +181,16 @@ function MainApp() {
       gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
       maintenanceEnabled: settingsHook.settings.maintenanceEnabled,
       presenceWindowDays: settingsHook.settings.presenceWindowDays,
+      // Ranking (voir claude/feature-ranking-padel-manager.md §6) — même
+      // principe que gameCenterEnabled ci-dessus.
+      rankingEnabled: settingsHook.settings.rankingEnabled,
       abonnements: abonnementsHook.abonnements,
       clubs: clubsHook.clubs,
+      // Exposé (18/09/2026) pour le lien "Voir mon ranking →" de
+      // MyMatchSummary.jsx, qui doit pouvoir naviguer vers l'onglet "Mon
+      // profil" sans que `view`/`setView` (état local à MainApp) aient
+      // besoin d'être passés en props à travers MatchesView.jsx.
+      setView,
     }),
     [
       appData,
@@ -190,8 +198,10 @@ function MainApp() {
       settingsHook.settings.gameCenterEnabled,
       settingsHook.settings.maintenanceEnabled,
       settingsHook.settings.presenceWindowDays,
+      settingsHook.settings.rankingEnabled,
       abonnementsHook.abonnements,
       clubsHook.clubs,
+      setView,
     ]
   );
 
