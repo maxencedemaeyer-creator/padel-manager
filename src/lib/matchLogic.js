@@ -72,6 +72,20 @@ export function hasMatchScore(match) {
   return Boolean(getSetDisplay(s.set1) || getSetDisplay(s.set2) || getSetDisplay(s.set3));
 }
 
+// Un match "nul" : un vrai score a été encodé (au moins un set joué), les
+// équipes sont fiables (pas de changement en cours de match), mais aucune
+// des deux équipes n'a remporté plus de sets que l'autre (ex. 1 set partout)
+// — computeWinnerFromSets renvoie alors `null`, exactement comme pour un
+// match sans aucun score ("Pas de score"/amical). Cette fonction sert à
+// distinguer explicitement les deux cas : un vrai match nul a bien un score
+// à afficher et doit compter comme un match joué (pas une victoire) dans les
+// statistiques, contrairement à un match sans score qui n'a aucun résultat
+// exploitable (voir lib/stats.js et SessionCard.jsx/StatsView.jsx pour son
+// affichage : pastille "N" plutôt que "Sans score").
+export function isDraw(match) {
+  return hasMatchScore(match) && !match.teamsUnreliable && !match.winningTeam;
+}
+
 export function useNow(intervalMs = 60000) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
