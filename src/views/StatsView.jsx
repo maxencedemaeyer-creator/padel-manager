@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Onglet "Mon profil" — en-tête, statistiques (ranking + anneau de
-// progression), forme récente, personnes marquantes, préférences (éditables).
+// progression), forme récente, personnes marquantes, préférences. Le PIN de
+// connexion et les préférences de jeu se modifient tous les deux depuis un
+// seul endroit : le bouton réglages (engrenage) en haut de l'écran.
 // Le face-à-face est volontairement masqué (voir SHOW_HEAD_TO_HEAD plus bas)
 // mais son code est conservé pour une réactivation future.
 // ─────────────────────────────────────────────────────────────────────────
@@ -168,80 +170,28 @@ function PreferenceRow({ emoji, label, value, onEdit }) {
   );
 }
 
-// Petite fenêtre de modification d'une préférence — s'ouvre au clic sur le
-// crayon d'une zone. Propose la liste de choix, "Valider" écrit directement
-// sur Firebase (collection players) et referme la fenêtre.
-function EditPreferenceModal({ player, field, title, options, onClose }) {
-  const initial =
-    field === "level"
-      ? player.level || "Pas de niveau"
-      : field === "preferredSide"
-      ? normalizeSide(player.preferredSide) || "Polyvalent"
-      : field === "federation"
-      ? player.federation || "Aucune"
-      : player.dominantHand || "Droitier";
-
-  const [value, setValue] = useState(initial);
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      const updates = { [field]: value };
-      if (field === "level") {
-        const levelInfo = LEVELS.find((l) => l.label === value);
-        updates.levelSortValue = levelInfo ? levelInfo.value : 0;
-      }
-      await updateDoc(doc(db, "players", player.id), updates);
-      onClose();
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal
-      title={`Modifier : ${title}`}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
-            Annuler
-          </Button>
-          <Button onClick={submit} disabled={saving}>
-            {saving ? "Enregistrement..." : "Valider"}
-          </Button>
-        </>
-      }
-    >
-      <Field label={title}>
-        <select className={inputClass} value={value} onChange={(e) => setValue(e.target.value)}>
-          {options.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      </Field>
-    </Modal>
-  );
-}
-
-// Petite fenêtre dédiée au changement du code PIN de connexion — ouverte via
-// le bouton réglages sur l'en-tête de "Mon profil". Écrit directement sur
-// Firebase (collection players) et referme la fenêtre.
-function EditPinModal({ player, players, sessionToken, onClose }) {
+// Fenêtre unique "Paramètres" — regroupe le code PIN de connexion ET les 4
+// préférences de jeu (main, position, niveau, fédération), ouverte via le
+// bouton réglages sur l'en-tête de "Mon profil". Le PIN reste optionnel :
+// laissé vide, il n'est pas modifié (le code actuel n'est de toute façon
+// jamais lisible depuis le navigateur, voir firestore.rules) et passe par le
+// serveur (api/manage-pin.js, seul à avoir accès à la collection verrouillée
+// player_credentials) ; les préférences s'écrivent directement sur Firebase
+// (collection players), en un seul "Enregistrer".
+function SettingsModal({ player, players, sessionToken, onClose }) {
   const [accessCode, setAccessCode] = useState("");
-  const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [duplicateOwner, setDuplicateOwner] = useState(null);
 
-  // Le code actuel n'est plus jamais lisible depuis le navigateur (voir
-  // firestore.rules) : ce champ part vide, et la vérification de doublon se
-  // fait via le serveur (api/manage-pin.js), seul à avoir accès à la
-  // collection verrouillée player_credentials.
+  const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
+  const [preferredSide, setPreferredSide] = useState(
+    normalizeSide(player.preferredSide) || "Polyvalent"
+  );
+  const [federation, setFederation] = useState(player.federation || "Aucune");
+  const [level, setLevel] = useState(player.level || "Pas de niveau");
+
+  const [saving, setSaving] = useState(false);
+
   useEffect(() => {
     if (accessCode.length !== 4) {
       setDuplicateOwner(null);
@@ -295,24 +245,39 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
     }
   };
 
-  const canSubmit = accessCode.length === 4 && !duplicateOwner;
+  // Champ PIN optionnel : vide = inchangé. Rempli, il doit faire 4 chiffres
+  // et ne pas être déjà pris par quelqu'un d'autre.
+  const pinValid = accessCode.length === 0 || (accessCode.length === 4 && !duplicateOwner);
+  const canSubmit = pinValid;
 
   const submit = async () => {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      const response = await fetch("/api/manage-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "set",
-          playerId: player.id,
-          accessCode,
-          actingToken: sessionToken,
-        }),
+      if (accessCode.length === 4) {
+        const response = await fetch("/api/manage-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set",
+            playerId: player.id,
+            accessCode,
+            actingToken: sessionToken,
+          }),
+        });
+        const data = await response.json();
+        if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+      }
+
+      const levelInfo = LEVELS.find((l) => l.label === level);
+      await updateDoc(doc(db, "players", player.id), {
+        dominantHand,
+        preferredSide,
+        federation,
+        level,
+        levelSortValue: levelInfo ? levelInfo.value : 0,
       });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+
       onClose();
     } catch (error) {
       alert("Erreur : " + error.message);
@@ -323,7 +288,7 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
 
   return (
     <Modal
-      title="Modifier mon code PIN"
+      title="Paramètres de mon profil"
       onClose={onClose}
       footer={
         <>
@@ -336,15 +301,16 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
         </>
       }
     >
-      <p className="text-xs text-[var(--color-text-dim)] mb-4">
-        Ce code à 4 chiffres vous sert à vous connecter depuis l'écran d'accueil.
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-2">
+        Connexion
       </p>
-      <Field label="Code PIN de connexion (4 chiffres)">
+      <Field label="Nouveau code PIN (laisser vide pour ne pas le changer)">
         <div className="flex gap-2">
           <input
             className={cn(inputClass, "pm-mono tracking-[0.3em] text-center")}
             value={accessCode}
             maxLength={4}
+            placeholder="••••"
             onChange={(e) =>
               setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))
             }
@@ -363,6 +329,56 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
             choisir un autre.
           </p>
         )}
+      </Field>
+
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-2 mt-5">
+        Préférences de jeu
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Main dominante">
+          <select
+            className={inputClass}
+            value={dominantHand}
+            onChange={(e) => setDominantHand(e.target.value)}
+          >
+            {HAND_OPTIONS.map((h) => (
+              <option key={h}>{h}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Position sur le court">
+          <select
+            className={inputClass}
+            value={preferredSide}
+            onChange={(e) => setPreferredSide(e.target.value)}
+          >
+            {SIDE_OPTIONS.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Niveau estimé">
+        <select className={inputClass} value={level} onChange={(e) => setLevel(e.target.value)}>
+          {LEVELS.map((l) => (
+            <option key={l.label} value={l.label}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Fédération">
+        <select
+          className={inputClass}
+          value={federation}
+          onChange={(e) => setFederation(e.target.value)}
+        >
+          {FEDERATION_OPTIONS.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </select>
       </Field>
     </Modal>
   );
@@ -479,8 +495,7 @@ export function StatsView() {
     [h2hA, h2hB, matches]
   );
 
-  const [editingPref, setEditingPref] = useState(null);
-  const [showPinEdit, setShowPinEdit] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showRankingInfo, setShowRankingInfo] = useState(false);
   const [showFormInfo, setShowFormInfo] = useState(false);
 
@@ -570,15 +585,11 @@ export function StatsView() {
       emoji: "👋",
       label: "Main dominante",
       value: connectedPlayer.dominantHand || "Non renseigné",
-      field: "dominantHand",
-      options: HAND_OPTIONS,
     },
     {
       emoji: "📍",
       label: "Position sur le court",
       value: normalizeSide(connectedPlayer.preferredSide) || "Non renseigné",
-      field: "preferredSide",
-      options: SIDE_OPTIONS,
     },
     {
       emoji: "🎖️",
@@ -587,8 +598,6 @@ export function StatsView() {
         (LEVELS.find((l) => l.value === connectedPlayer.levelSortValue)?.label) ||
         connectedPlayer.level ||
         "Non renseigné",
-      field: "level",
-      options: LEVELS.map((l) => l.label),
     },
     {
       emoji: "🏛️",
@@ -597,8 +606,6 @@ export function StatsView() {
         connectedPlayer.federation && connectedPlayer.federation !== "Aucune"
           ? connectedPlayer.federation
           : "Non renseignée",
-      field: "federation",
-      options: FEDERATION_OPTIONS,
     },
   ];
 
@@ -625,9 +632,9 @@ export function StatsView() {
           </div>
           <button
             type="button"
-            onClick={() => setShowPinEdit(true)}
-            aria-label="Modifier mon code PIN"
-            title="Modifier mon code PIN"
+            onClick={() => setShowSettings(true)}
+            aria-label="Paramètres de mon profil"
+            title="Paramètres"
             className="p-2.5 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all shrink-0"
           >
             <Icon.Settings className="w-4 h-4" />
@@ -635,12 +642,12 @@ export function StatsView() {
         </div>
       </div>
 
-      {showPinEdit && (
-        <EditPinModal
+      {showSettings && (
+        <SettingsModal
           player={connectedPlayer}
           players={players}
           sessionToken={sessionToken}
-          onClose={() => setShowPinEdit(false)}
+          onClose={() => setShowSettings(false)}
         />
       )}
 
@@ -823,30 +830,15 @@ export function StatsView() {
           </>
         )}
 
-        {/* Préférences du joueur — une seule carte subdivisée en 4 parties,
-            chacune modifiable via le crayon situé à droite de sa ligne */}
+        {/* Préférences du joueur — carte en lecture seule ; se modifient
+            désormais depuis le bouton Paramètres (engrenage) en haut de
+            l'écran, avec le code PIN. */}
         <h3 className="pm-display font-bold text-lg text-white mb-3">Préférences du joueur</h3>
         <Card className="p-4 mb-6 divide-y divide-[var(--color-border)]">
           {preferences.map((p) => (
-            <PreferenceRow
-              key={p.label}
-              emoji={p.emoji}
-              label={p.label}
-              value={p.value}
-              onEdit={() => setEditingPref(p)}
-            />
+            <PreferenceRow key={p.label} emoji={p.emoji} label={p.label} value={p.value} />
           ))}
         </Card>
-
-        {editingPref && (
-          <EditPreferenceModal
-            player={connectedPlayer}
-            field={editingPref.field}
-            title={editingPref.label}
-            options={editingPref.options}
-            onClose={() => setEditingPref(null)}
-          />
-        )}
 
         {/* Face-à-face — masqué pour l'instant (voir SHOW_HEAD_TO_HEAD en
             haut de fichier), code conservé pour réactivation future */}
