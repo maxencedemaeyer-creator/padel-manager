@@ -6,8 +6,8 @@ import { useState, useEffect } from "react";
 import { doc, deleteDoc, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming } from "../lib/matchLogic";
-import { DEFAULT_PRESENCE_WINDOW_DAYS } from "../lib/constants";
+import { getMatchTiming, computeWinnerFromSets, hasMatchScore, getMatchStart } from "../lib/matchLogic";
+import { DEFAULT_PRESENCE_WINDOW_DAYS, LEVELS } from "../lib/constants";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -15,6 +15,12 @@ import {
   getUnpaidPastParticipations,
   participantsOf,
 } from "../lib/stats";
+import {
+  getPlayerRatingState,
+  computeFreshRankingForMatch,
+  getDivergence,
+  suggestLevelForScore,
+} from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState, Switch, Modal, inputClass } from "../components/ui";
@@ -56,6 +62,259 @@ function GameCenterSettingCard({ enabled }) {
         </p>
       </div>
       <Switch checked={enabled} onChange={toggle} disabled={saving} />
+    </Card>
+  );
+}
+
+// Carte "Ranking" — interrupteur pour rendre le Ranking visible par tous
+// les joueurs (par défaut, réservé à l'admin, voir §6 de
+// claude/feature-ranking-padel-manager.md). Même mécanique exacte que
+// GameCenterSettingCard ci-dessus : écrit `rankingEnabled` dans
+// settings/appConfig, répercuté en temps réel via useAppSettings. Ne
+// contrôle QUE l'affichage aux joueurs non-admin — le moteur de calcul
+// tourne dans tous les cas dès le déploiement du code (§2).
+function RankingSettingCard({ enabled }) {
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async (next) => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "settings", "appConfig"), { rankingEnabled: next }, { merge: true });
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 flex items-center gap-3 mb-6">
+      <span className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--color-lime)]/15 text-[var(--color-lime)] shrink-0">
+        <Icon.Chart className="w-5 h-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm">Ranking</p>
+        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+          {enabled
+            ? "Visible par tous les joueurs."
+            : "Réservé à l'administrateur pour le moment — le calcul tourne déjà en arrière-plan."}
+        </p>
+      </div>
+      <Switch checked={enabled} onChange={toggle} disabled={saving} />
+    </Card>
+  );
+}
+
+// Outils de mise en place du Ranking (§4.9/§7.4/§8 de
+// claude/feature-ranking-padel-manager.md) — DEUX scripts ponctuels, à
+// lancer une seule fois au déploiement de cette feature, DANS L'ORDRE
+// (Étape 1 puis Étape 2). Les deux sont idempotents : les relancer par
+// erreur, ou plus tard sans rien à traiter, ne fait rien de mal (voir le
+// détail de chaque fonction ci-dessous). Card volontairement peu
+// "définitive" dans son style — ce n'est pas un réglage permanent comme les
+// cartes ci-dessus, juste un outil à utiliser une fois puis à ignorer.
+function RankingSetupToolsCard({ players, matches }) {
+  const [levelsBusy, setLevelsBusy] = useState(false);
+  const [levelsResult, setLevelsResult] = useState(null);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
+
+  // Étape 1 — corrige `levelSortValue` sur tous les joueurs existants à
+  // partir de leur `level` (label) actuel et de la grille LEVELS corrigée
+  // (voir §7.4). Recalcule TOUJOURS à partir du label (jamais de l'ancienne
+  // valeur numérique) : relancer ce bouton plusieurs fois ne fait que
+  // ré-écrire la même valeur correcte, sans effet de bord.
+  const runLevelsFix = async () => {
+    const sure = window.confirm(
+      "Corriger le niveau (levelSortValue) de tous les joueurs existants à partir de la grille LEVELS corrigée ? À faire UNE FOIS, avant de lancer le backfill du Ranking ci-dessous."
+    );
+    if (!sure) return;
+    setLevelsBusy(true);
+    try {
+      const toFix = players.filter((p) => {
+        const levelInfo = LEVELS.find((l) => l.label === (p.level || "Pas de niveau"));
+        const correctValue = levelInfo ? levelInfo.value : 0;
+        return p.levelSortValue !== correctValue;
+      });
+      for (let i = 0; i < toFix.length; i += 450) {
+        const chunk = toFix.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach((p) => {
+          const levelInfo = LEVELS.find((l) => l.label === (p.level || "Pas de niveau"));
+          batch.update(doc(db, "players", p.id), {
+            levelSortValue: levelInfo ? levelInfo.value : 0,
+          });
+        });
+        await batch.commit();
+      }
+      setLevelsResult(`${toFix.length} joueur${toFix.length !== 1 ? "s" : ""} corrigé${toFix.length !== 1 ? "s" : ""} (sur ${players.length}).`);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setLevelsBusy(false);
+    }
+  };
+
+  // Étape 2 — rejeu chronologique de l'historique existant (§4.9, option B).
+  // Idempotent via le filtre `!m.levelDeltas` : un match déjà traité (par un
+  // run précédent de ce bouton, ou par un vrai match live entre-temps)
+  // n'est jamais rejoué une deuxième fois. L'état de chaque joueur est
+  // maintenu EN MÉMOIRE au fil du rejeu (pas de relecture Firestore à
+  // chaque match) pour un vrai rejeu chronologique cohérent — voir
+  // computeFreshRankingForMatch dans src/lib/levelRating.js.
+  const runBackfill = async () => {
+    const sure = window.confirm(
+      "Lancer le backfill du Ranking ? Ceci rejoue chronologiquement tous les matchs Officiels déjà notés qui n'ont pas encore de levelDeltas. Assurez-vous d'avoir déjà lancé l'Étape 1 ci-dessus au moins une fois."
+    );
+    if (!sure) return;
+    setBackfillBusy(true);
+    try {
+      const targets = matches
+        .filter((m) => m.matchType === "Officiel" && hasMatchScore(m) && !m.levelDeltas)
+        .sort((a, b) => {
+          const diff = getMatchStart(a) - getMatchStart(b);
+          return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+        });
+
+      const statesById = {};
+      players.forEach((p) => {
+        statesById[p.id] = getPlayerRatingState(p);
+      });
+
+      const matchWrites = [];
+      const touchedPlayerIds = new Set();
+      let skippedIncomplete = 0;
+
+      targets.forEach((m) => {
+        const teamAIds = (m.participants || []).filter((p) => p.team === "A").map((p) => p.playerId);
+        const teamBIds = (m.participants || []).filter((p) => p.team === "B").map((p) => p.playerId);
+        const winningTeam = computeWinnerFromSets(m.scores || {});
+        const fresh = computeFreshRankingForMatch({
+          teamAIds,
+          teamBIds,
+          statesById,
+          sets: m.scores || {},
+          winningTeam,
+        });
+        if (!fresh) {
+          skippedIncomplete += 1;
+          return;
+        }
+        matchWrites.push({ matchId: m.id, levelDeltas: fresh.levelDeltas });
+        Object.entries(fresh.newStates).forEach(([id, state]) => {
+          statesById[id] = state;
+          touchedPlayerIds.add(id);
+        });
+      });
+
+      const allOps = [
+        ...matchWrites.map((w) => ({
+          ref: doc(db, "matches", w.matchId),
+          data: { levelDeltas: w.levelDeltas },
+        })),
+        ...[...touchedPlayerIds].map((id) => ({
+          ref: doc(db, "players", id),
+          data: {
+            internalScore: statesById[id].score,
+            internalScoreReliability: statesById[id].reliability,
+          },
+        })),
+      ];
+      for (let i = 0; i < allOps.length; i += 450) {
+        const chunk = allOps.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach((op) => batch.update(op.ref, op.data));
+        await batch.commit();
+      }
+
+      setBackfillResult(
+        `${matchWrites.length} match${matchWrites.length !== 1 ? "s" : ""} rejoué${matchWrites.length !== 1 ? "s" : ""}, ${touchedPlayerIds.size} joueur${touchedPlayerIds.size !== 1 ? "s" : ""} mis à jour${
+          skippedIncomplete > 0 ? ` (${skippedIncomplete} match${skippedIncomplete !== 1 ? "s" : ""} ignoré${skippedIncomplete !== 1 ? "s" : ""}, composition incomplète)` : ""
+        }.`
+      );
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBackfillBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5 mb-6">
+      <h3 className="font-semibold text-sm mb-1">Mise en place du Ranking</h3>
+      <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
+        Deux actions ponctuelles à lancer UNE FOIS, dans l'ordre, au déploiement de cette
+        fonctionnalité — sans effet si relancées par erreur (idempotentes).
+      </p>
+      <div className="flex flex-col gap-2 mb-2">
+        <Button variant="secondary" className="!py-2.5 !text-xs w-full" onClick={runLevelsFix} disabled={levelsBusy}>
+          {levelsBusy ? "Correction en cours..." : "Étape 1 — Corriger le niveau des joueurs existants"}
+        </Button>
+        {levelsResult && (
+          <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+            <Icon.CheckCircle className="w-3.5 h-3.5" /> {levelsResult}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <Button variant="secondary" className="!py-2.5 !text-xs w-full" onClick={runBackfill} disabled={backfillBusy}>
+          {backfillBusy ? "Backfill en cours..." : "Étape 2 — Lancer le backfill du Ranking"}
+        </Button>
+        {backfillResult && (
+          <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+            <Icon.CheckCircle className="w-3.5 h-3.5" /> {backfillResult}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// Carte "Écarts de ranking" (§13) — liste uniquement les joueurs dont le
+// signal de divergence est actif. Pas de mécanisme de masquage/snooze :
+// apparaît/disparaît automatiquement selon la condition de déclenchement —
+// donc invisible dès qu'aucun joueur n'est concerné (comme les autres
+// bandeaux d'alerte de l'app).
+function RankingDivergenceCard({ players }) {
+  const flagged = players
+    .map((player) => ({ player, divergence: getDivergence(player) }))
+    .filter((x) => x.divergence && x.divergence.active)
+    .sort((a, b) => Math.abs(b.divergence.divergence) - Math.abs(a.divergence.divergence));
+
+  if (flagged.length === 0) return null;
+
+  return (
+    <Card className="p-4 sm:p-5 mb-6 border-amber-200 bg-amber-50/70">
+      <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+        <Icon.AlertCircle className="w-4 h-4 text-amber-600" /> Écarts de ranking
+      </h3>
+      <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
+        Ce n'est pas une preuve d'erreur de déclaration — juste une observation interne au club,
+        à interpréter au cas par cas. Ne changez le niveau officiel que sur une preuve externe
+        réelle (tournoi, reclassement fédéral).
+      </p>
+      <div className="flex flex-col gap-2">
+        {flagged.map(({ player, divergence }) => {
+          const suggestion = suggestLevelForScore(divergence.score);
+          const goingUp = divergence.divergence > 0;
+          return (
+            <div key={player.id} className="p-3 rounded-xl bg-white/70 border border-amber-200/60">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="font-semibold text-sm">{player.name}</span>
+                <span className="pm-mono text-xs font-bold shrink-0">
+                  {divergence.score.toFixed(1).replace(".", ",")} vs {divergence.scoreBase.toFixed(1).replace(".", ",")}{" "}
+                  ({player.level})
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--color-text-dim)]">
+                {goingUp
+                  ? `Ce joueur performe nettement au-dessus de son niveau déclaré. Si son niveau réel a changé, envisager de le monter (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa force au sein du club.`
+                  : `Ce joueur performe nettement en dessous de son niveau déclaré. Si son niveau réel a changé, envisager de le descendre (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa position au sein du club.`}
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }
@@ -204,7 +463,7 @@ function PresenceWindowSettingCard({ value }) {
 //   revanche : un message d'avertissement s'affiche mais n'empêche pas de
 //   clôturer quand même (choix de Max, cas du joueur qui ne réglera jamais).
 // - "Supprimer" : suppression DÉFINITIVE et en cascade de l'abonnement ET de
-//   TOUS ses matchs (joueurs assignés, scores, présences, paiements
+//   TOUS ses matchs (joueurs assignés, scores, présences et paiements
 //   compris) — pour corriger un abonnement généré par erreur. Avertit
 //   explicitement et exige une confirmation supplémentaire si de l'argent
 //   réel (paiements déjà confirmés) est en jeu.
@@ -641,6 +900,7 @@ export function AdminView() {
     gameCenterEnabled,
     maintenanceEnabled,
     presenceWindowDays,
+    rankingEnabled,
   } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const [showManageClubs, setShowManageClubs] = useState(false);
@@ -715,9 +975,13 @@ export function AdminView() {
         </div>
       </div>
 
+      <RankingDivergenceCard players={players} />
+
       <MaintenanceSettingCard enabled={maintenanceEnabled} />
       <GameCenterSettingCard enabled={gameCenterEnabled} />
+      <RankingSettingCard enabled={rankingEnabled} />
       <PresenceWindowSettingCard value={presenceWindowDays} />
+      <RankingSetupToolsCard players={players} matches={matches} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {stats.map((s) => (
