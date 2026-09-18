@@ -125,3 +125,5 @@ export const PLAYER_SORT_OPTIONS = [
   { id: "level-asc", label: "Niveau (faible → fort)" },
   { id: "balance-asc", label: "Solde (débiteur → créditeur)" },
 ];
+
+
