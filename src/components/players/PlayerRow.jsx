@@ -141,13 +141,13 @@ export function PlayerRow({ player, mvpCount = 0 }) {
   // badge "Non classé") — pas de placeholder.
   const showRanking = isAdmin || rankingEnabled;
   const rankingState = getPlayerRatingState(player);
-  // Historique de ranking (icône admin) : décision explicite de Max — tant
-  // que le Ranking n'est pas activé pour le club (`rankingEnabled`), cette
-  // icône reste masquée même pour l'admin, pour ne pas garder un 4e
-  // emplacement (2x2) dont personne ne se sert avant l'activation. Une fois
-  // activé, se comporte comme avant (icône admin uniquement, si le joueur a
-  // déjà un ranking).
-  const showHistoryCell = isAdmin && rankingEnabled && rankingState.hasRanking;
+  // Historique de ranking (icône admin) : reste visible pour l'admin dès
+  // qu'un joueur a un ranking, quel que soit l'état du switch
+  // `rankingEnabled` — confirmé explicitement par Max (19/09/2026), même
+  // comportement que l'ancienne version. Ce switch ne contrôle que la
+  // visibilité du Ranking pour les autres joueurs (badge dans la ligne 1),
+  // jamais l'accès admin à l'historique.
+  const showHistoryCell = isAdmin && rankingState.hasRanking;
 
   const levelLabel = levelInfo && levelInfo.value > 0 ? levelInfo.label : "/";
   const statsLine =
