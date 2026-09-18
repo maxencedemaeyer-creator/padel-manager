@@ -35,7 +35,7 @@ export const FEDERATION_OPTIONS = ["Aucune", "AFP", "AFT", "AFP + AFT"];
 
 export const EMOJI_CHOICES = [
   "🎾", "🏆", "🔥", "⚡️", "😎", "🐐", "🚀", "✈️", "💪", "🦁", "🎯",
-  "🥇", "🐯", "🦅", "🐺", "🌪️", "⭐", "🐸", "🦈", "🥷",
+  "🥇", "🐯", "🦅", "🐺", "🌪️", "⭐", "🐸", "🦈", "🥷", "☀️",
 ];
 export const AVATAR_COLOR_CHOICES = [
   "#F4EFE7", // beige (défaut)
