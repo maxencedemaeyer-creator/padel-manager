@@ -8,6 +8,7 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, normalizeSide } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
+import { getScoreBase, getPlayerRatingState, computeLevelChangeRecalibration } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
@@ -48,6 +49,25 @@ export function EditPlayerModal({ player, onClose }) {
   const [duplicateOwner, setDuplicateOwner] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Ranking (voir claude/feature-ranking-padel-manager.md §4.6) — distingue
+  // "le joueur modifie sa PROPRE fiche" de "l'admin modifie la fiche d'un
+  // AUTRE joueur" par comparaison d'id, PAS juste `isAdmin` : un admin qui
+  // édite SA PROPRE fiche doit suivre la règle "joueur" (voir §10,
+  // vigilance). `isAdminEditingOther` détermine quelle réduction de
+  // fiabilité s'applique (§4.6) ; défini ici (avant `submit`) pour être
+  // réutilisé aussi dans le JSX plus bas (zone de danger).
+  const isSelf = connectedPlayer && player.id === connectedPlayer.id;
+  const isAdminEditingOther = isAdmin && !isSelf;
+  const oldLevelInfo = LEVELS.find((l) => l.label === (player.level || "Pas de niveau"));
+  const newLevelInfo = LEVELS.find((l) => l.label === level);
+  const levelActuallyChanged = level !== (player.level || "Pas de niveau");
+  const oldScoreBase = oldLevelInfo ? getScoreBase(oldLevelInfo.value) : null;
+  const newScoreBase = newLevelInfo ? getScoreBase(newLevelInfo.value) : null;
+  // Avertissement informatif (non bloquant, voir §4.6/§9) : uniquement si le
+  // joueur a déjà un niveau officiel RÉELLEMENT déclaré (sinon rien à
+  // recentrer, voir §3/§4.7) et que la sélection a changé.
+  const showLevelChangeWarning = oldScoreBase != null && levelActuallyChanged;
 
   // Vérification de doublon via le serveur (api/manage-pin.js) : seul lui a
   // accès aux codes réels (collection verrouillée player_credentials).
@@ -131,6 +151,25 @@ export function EditPlayerModal({ player, onClose }) {
         isTest,
         isOccasional,
       };
+
+      // Ranking — recalibrage §4.6 : uniquement si le niveau officiel change
+      // RÉELLEMENT, et seulement entre deux niveaux RÉELLEMENT déclarés (le
+      // cas "Pas de niveau" → niveau déclaré n'est jamais couvert ici, voir
+      // §4.7/§3 — rien à recentrer, le joueur obtient simplement son
+      // score_base au prochain affichage).
+      if (levelActuallyChanged && oldScoreBase != null && newScoreBase != null) {
+        const currentState = getPlayerRatingState(player);
+        const { newScore, newReliability } = computeLevelChangeRecalibration({
+          currentScore: currentState.score ?? oldScoreBase,
+          currentReliability: currentState.reliability,
+          oldScoreBase,
+          newScoreBase,
+          isAdminEditingOther,
+        });
+        payload.internalScore = newScore;
+        payload.internalScoreReliability = newReliability;
+      }
+
       await updateDoc(doc(db, "players", player.id), payload);
 
       // Codes PIN : uniquement si un changement a été explicitement demandé
@@ -187,8 +226,6 @@ export function EditPlayerModal({ player, onClose }) {
       setDeleting(false);
     }
   };
-
-  const isSelf = connectedPlayer && player.id === connectedPlayer.id;
 
   return (
     <Modal
@@ -311,6 +348,12 @@ export function EditPlayerModal({ player, onClose }) {
             </option>
           ))}
         </select>
+        {showLevelChangeWarning && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+            ⚠️ Modifier {isSelf ? "votre" : "son"} niveau officiel peut recalibrer et réduire la
+            fiabilité {isSelf ? "de votre" : "de son"} ranking — à éviter si {isSelf ? "vous le changez" : "ce changement est fait"} juste pour tester.
+          </p>
+        )}
       </Field>
 
       {isAdmin && (
