@@ -196,10 +196,11 @@ function compareByCourtNumber(a, b) {
 //      aucune place de son côté n'est libre, on retombe sur n'importe quelle
 //      place libre plutôt que de faire attendre le joueur.
 //   3. Le niveau du joueur (player.levelSortValue, 100 = meilleur niveau
-//      "P50", 0 = "Pas de niveau") face au numéro de terrain : meilleur
-//      niveau → terrain le plus petit numéro (1), moins bon niveau →
-//      terrain le plus grand numéro de la session — parmi les places encore
-//      possibles après le filtre de côté ci-dessus.
+//      "P1000", 0 = "Pas de niveau" — grille LEVELS corrigée le 18/09/2026,
+//      voir claude/feature-ranking-padel-manager.md §7.4) face au numéro de
+//      terrain : meilleur niveau → terrain le plus petit numéro (1), moins
+//      bon niveau → terrain le plus grand numéro de la session — parmi les
+//      places encore possibles après le filtre de côté ci-dessus.
 //
 // Contrainte absolue : on ne choisit JAMAIS qu'une place réellement libre —
 // on ne déplace ni ne remplace jamais un joueur déjà placé, même pour
@@ -272,7 +273,8 @@ export async function autoPlacePresentPlayer(sessionMatches, matches, player) {
 
   // Préférence n°3 : niveau → numéro de terrain. On calcule le terrain
   // "idéal" du joueur en répartissant l'échelle de niveau (0 à 100, voir
-  // LEVELS dans constants.js) linéairement sur le nombre de terrains de la
+  // LEVELS dans constants.js — 100 = P1000, le plus fort, depuis la
+  // correction du 18/09/2026) linéairement sur le nombre de terrains de la
   // session, puis on choisit, parmi les places encore possibles, celle dont
   // le terrain est le plus proche de cet idéal (à égalité, le plus petit
   // numéro l'emporte).
