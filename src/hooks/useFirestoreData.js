@@ -178,6 +178,11 @@ export function useAppSettings() {
     gameCenterEnabled: false,
     maintenanceEnabled: false,
     presenceWindowDays: DEFAULT_PRESENCE_WINDOW_DAYS,
+    // Ranking (voir claude/feature-ranking-padel-manager.md §6) — même
+    // principe que gameCenterEnabled : par défaut (document absent ou champ
+    // absent), le Ranking reste invisible pour les joueurs non-admin, le
+    // temps pour l'admin de le valider sur les vrais matchs du club.
+    rankingEnabled: false,
   });
   const [loading, setLoading] = useState(true);
 
@@ -195,6 +200,7 @@ export function useAppSettings() {
               typeof data.presenceWindowDays === "number" && data.presenceWindowDays > 0
                 ? data.presenceWindowDays
                 : DEFAULT_PRESENCE_WINDOW_DAYS,
+            rankingEnabled: data.rankingEnabled === true,
           });
           setLoading(false);
         },
