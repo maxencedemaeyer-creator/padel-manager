@@ -25,6 +25,7 @@ import {
   getPlayerDebts,
 } from "../lib/stats";
 import { countMvpWins } from "../lib/mvp";
+import { getPlayerRatingState, getRecentLevelDeltaHistory, RANKING_SCALE_MIN, RANKING_SCALE_MAX } from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
@@ -355,8 +356,128 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
   );
 }
 
+// Ranking (voir claude/feature-ranking-padel-manager.md §6) — carte
+// "feature principale" en haut de "Mon profil". Popup d'explication, courte
+// et à la demande seulement (bouton "?").
+function RankingInfoModal({ onClose }) {
+  return (
+    <Modal
+      title="Qu'est-ce que le Ranking ?"
+      onClose={onClose}
+      footer={<Button onClick={onClose}>Compris</Button>}
+    >
+      <p className="text-sm text-[var(--color-text-dim)]">
+        Ce ranking reflète votre niveau interne au club. Il évolue automatiquement selon vos
+        résultats en matchs officiels (victoire, défaite ou match nul, en tenant compte de l'écart
+        de jeux), et se recale si vous changez votre niveau officiel dans votre profil.
+      </p>
+    </Modal>
+  );
+}
+
+// Mini-sparkline épurée — sans axe, sans chiffres, sans interaction : juste
+// la forme de la tendance sur les derniers matchs officiels notés.
+function RankingSparkline({ values }) {
+  if (!values || values.length < 2) return null;
+  const width = 180;
+  const height = 36;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * width;
+      const y = height - ((v - min) / range) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="var(--color-lime)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RankingCard({ player, matches }) {
+  const [showInfo, setShowInfo] = useState(false);
+  const state = getPlayerRatingState(player);
+  const history = getRecentLevelDeltaHistory(player.id, matches, 10);
+  const sparklineValues = history.map(({ entry }) => entry.apres);
+  const lastEntry = history[history.length - 1] || null;
+  const gaugePercent = state.hasRanking
+    ? clamp01(((state.score - RANKING_SCALE_MIN) / (RANKING_SCALE_MAX - RANKING_SCALE_MIN)) * 100)
+    : 0;
+
+  return (
+    <>
+      <Card className="p-5 mb-6 relative">
+        <button
+          type="button"
+          onClick={() => setShowInfo(true)}
+          aria-label="En savoir plus sur le Ranking"
+          title="En savoir plus"
+          className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)]"
+        >
+          <Icon.Question className="w-3.5 h-3.5" />
+        </button>
+        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
+          Ranking
+        </p>
+        {state.hasRanking ? (
+          <>
+            <p className="pm-display font-extrabold text-4xl leading-none mb-3">
+              {state.score.toFixed(1).replace(".", ",")}
+            </p>
+            <div className="h-2 rounded-full bg-[var(--color-surface-2)] overflow-hidden mb-3 max-w-xs">
+              <div
+                className="h-full rounded-full bg-[var(--color-lime)]"
+                style={{ width: `${gaugePercent}%` }}
+              />
+            </div>
+            <RankingSparkline values={sparklineValues} />
+            {lastEntry && (
+              <p className="text-xs text-[var(--color-text-dim)] mt-2">
+                Dernier match :{" "}
+                <span
+                  className={
+                    lastEntry.entry.delta >= 0
+                      ? "text-emerald-600 font-semibold"
+                      : "text-rose-600 font-semibold"
+                  }
+                >
+                  {lastEntry.entry.delta >= 0 ? "▲" : "▼"}{" "}
+                  {lastEntry.entry.delta >= 0 ? "+" : ""}
+                  {lastEntry.entry.delta.toFixed(1).replace(".", ",")}
+                </span>
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-[var(--color-text-dim)] mt-1">
+            Pas encore de ranking — jouez un match officiel pour le démarrer !
+          </p>
+        )}
+      </Card>
+      {showInfo && <RankingInfoModal onClose={() => setShowInfo(false)} />}
+    </>
+  );
+}
+
+function clamp01(v) {
+  return Math.min(100, Math.max(0, v));
+}
+
 export function StatsView() {
-  const { connectedPlayer, players, matches, sessionToken } = useAppData();
+  const { connectedPlayer, players, matches, sessionToken, isAdmin, rankingEnabled } = useAppData();
+  // Ranking — même condition d'affichage que PlayerRow.jsx/MyMatchSummary.jsx.
+  const showRanking = isAdmin || rankingEnabled;
   // Mémoïsé (04/09/2026) : ces calculs reparcourent TOUS les matchs (et,
   // pour `ranked`, une fois PAR JOUEUR du club) — recalculés jusqu'ici à
   // chaque rendu de l'onglet "Mon profil", même pour un rendu qui n'a rien
@@ -546,6 +667,8 @@ export function StatsView() {
       )}
 
       <div className="px-4">
+        {showRanking && <RankingCard player={connectedPlayer} matches={matches} />}
+
         {mvpWins > 0 && (
           <Card className="p-4 mb-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-amber-100/80 border-amber-200/70">
             <span className="text-3xl leading-none">🥇</span>
