@@ -5,16 +5,27 @@ export const RECURRENCE_OPTIONS = [
   { label: "Tous les mois", days: 28 },
 ];
 
+// Corrigé le 18/09/2026 (voir claude/feature-ranking-padel-manager.md §7.4) :
+// ces valeurs étaient inversées depuis toujours par rapport à la réalité
+// (P50 = niveau le plus FAIBLE, P1000 = le plus FORT — confirmé via les
+// grilles réelles FFT/AFPadel). L'ancienne version traitait P50 comme le
+// meilleur niveau (value: 100) et P1000 comme le pire (value: 20), ce qui
+// faussait silencieusement le placement automatique sur les terrains
+// (src/lib/availability.js) et le tri des joueurs (orderBy("levelSortValue",
+// "desc") dans src/hooks/useFirestoreData.js). Corriger cette seule
+// constante ne suffit pas : voir la migration ponctuelle de
+// `levelSortValue` sur les joueurs déjà existants, à lancer une fois depuis
+// l'onglet Administration (carte "Mise en place du Ranking").
 export const LEVELS = [
-  { label: "P50", value: 100 },
-  { label: "P100", value: 90 },
-  { label: "P200", value: 80 },
-  { label: "P300", value: 70 },
+  { label: "P50", value: 20 },
+  { label: "P100", value: 30 },
+  { label: "P200", value: 40 },
+  { label: "P300", value: 50 },
   { label: "P400", value: 60 },
-  { label: "P500", value: 50 },
-  { label: "P600", value: 40 },
-  { label: "P700", value: 30 },
-  { label: "P1000", value: 20 },
+  { label: "P500", value: 70 },
+  { label: "P600", value: 80 },
+  { label: "P700", value: 90 },
+  { label: "P1000", value: 100 },
   { label: "Pas de niveau", value: 0 },
 ];
 
