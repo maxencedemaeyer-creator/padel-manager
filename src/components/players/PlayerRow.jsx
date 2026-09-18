@@ -66,7 +66,7 @@ export function PlayerRow({ player, mvpCount = 0 }) {
                 ? "Aucune statistique"
                 : playerStats.played === 0
                 ? `Aucune statistique${mvpSuffix}`
-                : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V-${playerStats.losses}D · ${playerStats.winRate}%${mvpSuffix}`}
+                : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V${playerStats.draws > 0 ? `-${playerStats.draws}N` : ""}-${playerStats.losses}D · ${playerStats.winRate}%${mvpSuffix}`}
             </p>
           </div>
 
