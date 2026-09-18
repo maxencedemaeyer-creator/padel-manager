@@ -3,17 +3,21 @@
 // Absent / Je ne sais pas encore, remplacés une fois qu'on a répondu par un
 // rectangle plein (angles droits, couleur pleine, sans contour) affichant
 // clairement la réponse du joueur — cliquable pour rouvrir une petite
-// fenêtre de changement de réponse — accompagné de 3 mini-compteurs (pastille
-// de couleur + chiffre) poussés à droite, avec pop-up listant les joueurs
-// par statut. Côté admin : le panneau "qui a répondu" à côté de la date
-// (aperçu, non cliquable), ainsi qu'une modale "Gérer les présences"
-// permettant à l'admin de modifier sa propre présence ou celle de n'importe
-// quel autre joueur (même s'il n'a pas encore répondu), avec possibilité de
-// réinitialiser une réponse.
+// fenêtre de changement de réponse, UNIQUEMENT tant que le match n'a pas
+// commencé (voir isLocked dans AvailabilityButtons : passé ce cap, le
+// rectangle devient un simple affichage, non cliquable, pour un joueur —
+// jamais pour l'admin — afin de ne pas fausser la compta, qui se base sur
+// `participants`) — accompagné de 3 mini-compteurs (pastille de couleur +
+// chiffre) poussés à droite, avec pop-up listant les joueurs par statut.
+// Côté admin : le panneau "qui a répondu" à côté de la date (aperçu, non
+// cliquable), ainsi qu'une modale "Gérer les présences" permettant à
+// l'admin de modifier sa propre présence ou celle de n'importe quel autre
+// joueur (même s'il n'a pas encore répondu, et même après le match), avec
+// possibilité de réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, formatDateFR, getFirstName } from "../../lib/utils";
-import { useNow } from "../../lib/matchLogic";
+import { useNow, getMatchTiming } from "../../lib/matchLogic";
 import {
   AVAILABILITY_STATUSES,
   RESERVE_STATUS,
@@ -194,9 +198,23 @@ export function AvailabilityButtons({ sessionMatches }) {
   // fermeture forcée par l'admin), un joueur qui n'a pas encore répondu ne
   // voit pas les 3 boutons — voir plus bas. L'admin, lui, garde toujours la
   // main sur sa propre réponse (il contrôle la convocation, il n'a pas à en
-  // subir la fermeture) ; un joueur ayant déjà répondu garde toujours sa
-  // réponse, modifiable, quel que soit l'état de la convocation.
+  // subir la fermeture) ; un joueur ayant déjà répondu garde sa réponse
+  // modifiable quel que soit l'état de la convocation, mais seulement tant
+  // que le match n'a pas commencé — voir isLocked ci-dessous.
   const convocationOpen = isConvocationOpen(sessionMatches, now, presenceWindowDays);
+
+  // Verrouillage post-match (hors admin) : une fois le match commencé, un
+  // joueur ne peut plus changer sa réponse — sinon il pourrait, par ex.,
+  // basculer sur "absent" après avoir joué et se retirer ainsi de
+  // `participants` (voir dropSelfJoinedSlot dans lib/availability.js), ce
+  // qui fausserait la compta (qui se base sur les participants du match) et
+  // les stats. L'admin, lui, garde toujours la main sur sa propre réponse
+  // (comme pour n'importe quel joueur, via ManagePresenceModal). Un match
+  // reporté "à une date inconnue" (statut "tbd") n'est jamais verrouillé ici
+  // puisqu'on ne sait pas s'il a eu lieu.
+  const sessionTiming = getMatchTiming(sessionMatches?.[0] || {}, now);
+  const isLocked =
+    !isAdmin && (sessionTiming === "ongoing" || sessionTiming === "finished");
 
   // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
   // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
@@ -257,17 +275,29 @@ export function AvailabilityButtons({ sessionMatches }) {
     return (
       <div>
         <div className="flex items-stretch gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => setShowChangeModal(true)}
-            className={cn(
-              "flex-1 flex items-center justify-center px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide active:scale-[0.98] transition-transform disabled:opacity-50",
-              STATUS_SOLID_CLASS[myStatus]
-            )}
-          >
-            {myMeta?.label || myStatus}
-          </button>
+          {isLocked ? (
+            <div
+              title="Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
+              className={cn(
+                "flex-1 flex items-center justify-center px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide cursor-default",
+                STATUS_SOLID_CLASS[myStatus]
+              )}
+            >
+              {myMeta?.label || myStatus}
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setShowChangeModal(true)}
+              className={cn(
+                "flex-1 flex items-center justify-center px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide active:scale-[0.98] transition-transform disabled:opacity-50",
+                STATUS_SOLID_CLASS[myStatus]
+              )}
+            >
+              {myMeta?.label || myStatus}
+            </button>
+          )}
 
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -331,7 +361,7 @@ export function AvailabilityButtons({ sessionMatches }) {
           />
         )}
 
-        {showChangeModal && (
+        {showChangeModal && !isLocked && (
           <ChangeMyResponseModal
             myStatus={myStatus}
             saving={saving}
