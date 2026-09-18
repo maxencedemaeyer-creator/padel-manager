@@ -618,7 +618,7 @@ export function StatsView() {
       value:
         connectedPlayer.federation && connectedPlayer.federation !== "Aucune"
           ? connectedPlayer.federation
-          : "Non renseignée",
+          : "Aucune",
     },
   ];
 
