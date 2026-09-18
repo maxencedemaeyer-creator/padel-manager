@@ -428,6 +428,7 @@ export function StatsView() {
   const formStyle = {
     V: "bg-emerald-500 text-white",
     D: "bg-rose-500 text-white",
+    N: "bg-amber-500 text-white",
     X: "bg-amber-500",
   };
 
@@ -597,6 +598,13 @@ export function StatsView() {
                 </div>
                 <ProgressRing value={last10Rate} label="Efficacité 10 derniers" />
               </div>
+              {myStats.draws > 0 && (
+                <p className="text-xs text-amber-700 mt-3 pt-3 border-t border-[var(--color-border)]">
+                  🤝 Dont {myStats.draws} match{myStats.draws > 1 ? "s" : ""} nul
+                  {myStats.draws > 1 ? "s" : ""} (compté{myStats.draws > 1 ? "s" : ""} dans le %
+                  de victoires, sans être une victoire)
+                </p>
+              )}
             </Card>
 
             {/* Bandeau forme (10 pastilles V/R/X) */}
@@ -619,8 +627,8 @@ export function StatsView() {
                 ))}
               </div>
               <p className="text-[10px] text-[var(--color-text-faint)] mt-2">
-                Du plus ancien au plus récent · V vert (victoire), D rouge (défaite), pastille
-                orange (sans score)
+                Du plus ancien au plus récent · V vert (victoire), D rouge (défaite), N orange
+                (match nul), pastille orange vide (sans score)
               </p>
             </Card>
 
