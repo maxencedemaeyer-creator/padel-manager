@@ -7,8 +7,16 @@ import { PlayerAvatar } from "./PlayerAvatar";
 
 export function ClubRankingBanner({ players, matches }) {
   const ranked = players
+    // Les joueurs occasionnels gardent toutes leurs statistiques (visibles
+    // sur leur propre fiche), mais restent hors de ce classement par défaut
+    // — même logique que sur la liste "Équipe" (voir PlayersView.jsx), pour
+    // ne pas polluer un classement censé refléter le noyau régulier du club.
+    .filter((p) => !p.isOccasional)
     .map((p) => ({ player: p, stats: computePlayerStats(p.id, matches) }))
-    .filter((r) => r.stats.wins + r.stats.losses > 0)
+    // Un match nul compte désormais comme un match "décidé" (voir
+    // lib/stats.js) : un joueur qui n'a que des matchs nuls doit donc
+    // apparaître ici aussi, pas seulement ceux qui ont gagné/perdu.
+    .filter((r) => r.stats.wins + r.stats.losses + r.stats.draws > 0)
     .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins)
     .slice(0, 5);
 
@@ -33,7 +41,7 @@ export function ClubRankingBanner({ players, matches }) {
               {r.player.name}
             </span>
             <span className="text-xs text-white/70 shrink-0">
-              {r.stats.wins}V-{r.stats.losses}D
+              {r.stats.wins}V{r.stats.draws > 0 ? `-${r.stats.draws}N` : ""}-{r.stats.losses}D
             </span>
             <span className="pm-mono font-bold text-sm shrink-0 w-11 text-right">
               {r.stats.winRate}%
