@@ -143,12 +143,13 @@ function NoNemesisCard() {
 
 // Ligne de préférence — icône ronde à gauche, libellé fin, valeur en gras.
 // Conçue pour vivre à l'intérieur d'une carte commune (voir "Préférences du
-// joueur" plus bas) : pas de fond/bordure propres, juste un padding vertical
-// et un séparateur géré par le parent (divide-y). Si `onEdit` est fourni, un
-// petit bouton crayon apparaît à droite pour modifier cette préférence.
+// joueur" plus bas), affichée en tuile (grille 2x2) : bordure et coins
+// arrondis propres à la tuile, plus de séparateur géré par le parent. Si
+// `onEdit` est fourni, un petit bouton crayon apparaît à droite pour
+// modifier cette préférence.
 function PreferenceRow({ emoji, label, value, onEdit }) {
   return (
-    <div className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+    <div className="flex items-center gap-2.5 p-3 rounded-xl border border-[var(--color-border)]">
       <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
         {emoji}
       </span>
@@ -834,10 +835,12 @@ export function StatsView() {
             désormais depuis le bouton Paramètres (engrenage) en haut de
             l'écran, avec le code PIN. */}
         <h3 className="pm-display font-bold text-lg text-white mb-3">Préférences du joueur</h3>
-        <Card className="p-4 mb-6 divide-y divide-[var(--color-border)]">
-          {preferences.map((p) => (
-            <PreferenceRow key={p.label} emoji={p.emoji} label={p.label} value={p.value} />
-          ))}
+        <Card className="p-4 mb-6">
+          <div className="grid grid-cols-2 gap-2.5">
+            {preferences.map((p) => (
+              <PreferenceRow key={p.label} emoji={p.emoji} label={p.label} value={p.value} />
+            ))}
+          </div>
         </Card>
 
         {/* Face-à-face — masqué pour l'instant (voir SHOW_HEAD_TO_HEAD en
@@ -978,5 +981,3 @@ export function StatsView() {
     </div>
   );
 }
-
-
