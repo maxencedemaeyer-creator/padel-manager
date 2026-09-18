@@ -23,7 +23,7 @@ import {
 } from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
-import { Card, Button, EmptyState, Switch, Modal, inputClass } from "../components/ui";
+import { Card, Button, EmptyState, Switch, Modal, Field, inputClass } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { CreditorAccountingModal } from "../components/accounting/CreditorAccountingModal";
