@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Mon profil" — en-tête, statistiques (anneau de progression),
-// forme récente, personnes marquantes, préférences (éditables), face-à-face.
+// Onglet "Mon profil" — en-tête, statistiques (ranking + anneau de
+// progression), forme récente, personnes marquantes, préférences (éditables).
+// Le face-à-face est volontairement masqué (voir SHOW_HEAD_TO_HEAD plus bas)
+// mais son code est conservé pour une réactivation future.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo } from "react";
 import { doc, updateDoc } from "firebase/firestore";
@@ -9,6 +11,7 @@ import {
   cn,
   formatDateFR,
   getInitials,
+  getFirstName,
   normalizeSide,
 } from "../lib/utils";
 import {
@@ -25,13 +28,18 @@ import {
   getPlayerDebts,
 } from "../lib/stats";
 import { countMvpWins } from "../lib/mvp";
-import { getPlayerRatingState, getRecentLevelDeltaHistory, RANKING_SCALE_MIN, RANKING_SCALE_MAX } from "../lib/levelRating";
+import { getPlayerRatingState, getRecentLevelDeltaHistory } from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
 import { Card, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
 import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
 import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
+
+// Le face-à-face n'est plus affiché (carte jugée peu prioritaire face à la
+// densité de l'écran "Mon profil") — le code reste en place, prêt à être
+// réactivé en repassant cette constante à `true`.
+const SHOW_HEAD_TO_HEAD = false;
 
 function ProgressRing({ value, size = 110, stroke = 10, label }) {
   const radius = (size - stroke) / 2;
@@ -73,8 +81,9 @@ function ProgressRing({ value, size = 110, stroke = 10, label }) {
   );
 }
 
-// Carte "personne mise en avant" style carrousel — avatar coloré en haut sur
-// une bande sombre, nom + info dessous. Pour coéquipier / duo / bête noire.
+// Carte "personne mise en avant" — avatar rond (photo, émoji ou initiales,
+// sur un fond coloré selon la catégorie) au-dessus du nom + info. Le rond
+// imite l'affichage des avatars utilisé partout ailleurs dans l'app.
 function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
   const accent = {
     dark: "bg-slate-900",
@@ -82,27 +91,30 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
     rose: "bg-rose-500",
   }[accentTone];
   return (
-    <div className="w-40 shrink-0 rounded-2xl overflow-hidden border border-[var(--color-border)] bg-white shadow-sm">
-      <div className={cn("h-24 flex items-center justify-center", accent)}>
+    <div className="w-36 shrink-0 rounded-2xl border border-[var(--color-border)] bg-white shadow-sm p-4 flex flex-col items-center text-center">
+      <div
+        className={cn(
+          "w-16 h-16 rounded-full flex items-center justify-center overflow-hidden shrink-0 mb-3",
+          accent
+        )}
+      >
         {player.avatarPhotoUrl ? (
           <img src={player.avatarPhotoUrl} alt="" className="w-full h-full object-cover" />
         ) : player.emoji ? (
-          <span className="text-4xl">{player.emoji}</span>
+          <span className="text-2xl">{player.emoji}</span>
         ) : (
-          <span className="text-white pm-display font-extrabold text-3xl">
+          <span className="text-white pm-display font-extrabold text-lg">
             {getInitials(player.name)}
           </span>
         )}
       </div>
-      <div className="p-3">
-        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
-          {title}
-        </p>
-        <p className="text-sm font-bold truncate">{player.name}</p>
-        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5 truncate">
-          {subtitle}
-        </p>
-      </div>
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
+        {title}
+      </p>
+      <p className="text-sm font-bold truncate w-full">{player.name}</p>
+      <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5 truncate w-full">
+        {subtitle}
+      </p>
     </div>
   );
 }
@@ -112,30 +124,30 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
 // highlightPeople plus bas) — pas d'adversaire à mettre en avant dans ce cas.
 function NoNemesisCard() {
   return (
-    <div className="w-40 shrink-0 rounded-2xl overflow-hidden border border-[var(--color-border)] bg-white shadow-sm">
-      <div className="h-24 flex items-center justify-center bg-emerald-600">
-        <span className="text-4xl">🏆</span>
+    <div className="w-36 shrink-0 rounded-2xl border border-[var(--color-border)] bg-white shadow-sm p-4 flex flex-col items-center text-center">
+      <div className="w-16 h-16 rounded-full flex items-center justify-center bg-emerald-600 mb-3">
+        <span className="text-2xl">🏆</span>
       </div>
-      <div className="p-3">
-        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
-          Bête noire
-        </p>
-        <p className="text-sm font-bold">Aucune</p>
-        <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
-          Tu as tout gagné pour l'instant
-        </p>
-      </div>
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
+        Bête noire
+      </p>
+      <p className="text-sm font-bold">Aucune</p>
+      <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
+        Tu as tout gagné pour l'instant
+      </p>
     </div>
   );
 }
 
 // Ligne de préférence — icône ronde à gauche, libellé fin, valeur en gras.
-// Si `onEdit` est fourni, un petit bouton crayon apparaît en haut à droite
-// de la zone pour permettre de modifier cette préférence.
+// Conçue pour vivre à l'intérieur d'une carte commune (voir "Préférences du
+// joueur" plus bas) : pas de fond/bordure propres, juste un padding vertical
+// et un séparateur géré par le parent (divide-y). Si `onEdit` est fourni, un
+// petit bouton crayon apparaît à droite pour modifier cette préférence.
 function PreferenceRow({ emoji, label, value, onEdit }) {
   return (
-    <div className="relative flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-[var(--color-border)]">
-      <span className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-lg shrink-0">
+    <div className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+      <span className="w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-base shrink-0">
         {emoji}
       </span>
       <div className="min-w-0 flex-1">
@@ -147,7 +159,7 @@ function PreferenceRow({ emoji, label, value, onEdit }) {
           type="button"
           onClick={onEdit}
           aria-label={`Modifier : ${label}`}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
+          className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300 shrink-0"
         >
           <Icon.Edit className="w-3 h-3" />
         </button>
@@ -356,8 +368,9 @@ function EditPinModal({ player, players, sessionToken, onClose }) {
   );
 }
 
-// Ranking (voir claude/feature-ranking-padel-manager.md §6) — carte
-// "feature principale" en haut de "Mon profil". Popup d'explication, courte
+// Ranking (voir claude/feature-ranking-padel-manager.md §6) — désormais
+// incorporé directement dans la carte "Statistiques" (nombre en grand dans
+// un rond, avec le libellé "Ranking" au-dessus). Popup d'explication, courte
 // et à la demande seulement (bouton "?").
 function RankingInfoModal({ onClose }) {
   return (
@@ -375,12 +388,32 @@ function RankingInfoModal({ onClose }) {
   );
 }
 
-// Mini-sparkline épurée — sans axe, sans chiffres, sans interaction : juste
-// la forme de la tendance sur les derniers matchs officiels notés.
+// Popup d'explication du code couleur de la "Série récente" — masqué par
+// défaut derrière un bouton "?" discret pour ne pas alourdir la carte.
+function RecentFormInfoModal({ onClose }) {
+  return (
+    <Modal
+      title="Comment lire cette série ?"
+      onClose={onClose}
+      footer={<Button onClick={onClose}>Compris</Button>}
+    >
+      <p className="text-sm text-[var(--color-text-dim)]">
+        Du plus ancien au plus récent · <span className="font-semibold text-emerald-600">V</span> vert
+        (victoire), <span className="font-semibold text-rose-600">D</span> rouge (défaite),{" "}
+        <span className="font-semibold text-amber-600">N</span> orange (match nul), pastille orange
+        vide (sans score).
+      </p>
+    </Modal>
+  );
+}
+
+// Mini-sparkline épurée et minimaliste — sans axe, sans chiffres, sans
+// interaction : juste un trait fin donnant la tendance sur les derniers
+// matchs officiels notés.
 function RankingSparkline({ values }) {
   if (!values || values.length < 2) return null;
-  const width = 180;
-  const height = 36;
+  const width = 150;
+  const height = 28;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
@@ -397,81 +430,12 @@ function RankingSparkline({ values }) {
         points={points}
         fill="none"
         stroke="var(--color-lime)"
-        strokeWidth="2.5"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
   );
-}
-
-function RankingCard({ player, matches }) {
-  const [showInfo, setShowInfo] = useState(false);
-  const state = getPlayerRatingState(player);
-  const history = getRecentLevelDeltaHistory(player.id, matches, 10);
-  const sparklineValues = history.map(({ entry }) => entry.apres);
-  const lastEntry = history[history.length - 1] || null;
-  const gaugePercent = state.hasRanking
-    ? clamp01(((state.score - RANKING_SCALE_MIN) / (RANKING_SCALE_MAX - RANKING_SCALE_MIN)) * 100)
-    : 0;
-
-  return (
-    <>
-      <Card className="p-5 mb-6 relative">
-        <button
-          type="button"
-          onClick={() => setShowInfo(true)}
-          aria-label="En savoir plus sur le Ranking"
-          title="En savoir plus"
-          className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)]"
-        >
-          <Icon.Question className="w-3.5 h-3.5" />
-        </button>
-        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
-          Ranking
-        </p>
-        {state.hasRanking ? (
-          <>
-            <p className="pm-display font-extrabold text-4xl leading-none mb-3">
-              {state.score.toFixed(1).replace(".", ",")}
-            </p>
-            <div className="h-2 rounded-full bg-[var(--color-surface-2)] overflow-hidden mb-3 max-w-xs">
-              <div
-                className="h-full rounded-full bg-[var(--color-lime)]"
-                style={{ width: `${gaugePercent}%` }}
-              />
-            </div>
-            <RankingSparkline values={sparklineValues} />
-            {lastEntry && (
-              <p className="text-xs text-[var(--color-text-dim)] mt-2">
-                Dernier match :{" "}
-                <span
-                  className={
-                    lastEntry.entry.delta >= 0
-                      ? "text-emerald-600 font-semibold"
-                      : "text-rose-600 font-semibold"
-                  }
-                >
-                  {lastEntry.entry.delta >= 0 ? "▲" : "▼"}{" "}
-                  {lastEntry.entry.delta >= 0 ? "+" : ""}
-                  {lastEntry.entry.delta.toFixed(1).replace(".", ",")}
-                </span>
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-[var(--color-text-dim)] mt-1">
-            Pas encore de ranking — jouez un match officiel pour le démarrer !
-          </p>
-        )}
-      </Card>
-      {showInfo && <RankingInfoModal onClose={() => setShowInfo(false)} />}
-    </>
-  );
-}
-
-function clamp01(v) {
-  return Math.min(100, Math.max(0, v));
 }
 
 export function StatsView() {
@@ -492,6 +456,18 @@ export function StatsView() {
     () => getRecentForm(connectedPlayer.id, matches),
     [connectedPlayer.id, matches]
   );
+  // Ranking — état + historique du joueur connecté, utilisés dans la carte
+  // "Statistiques" (voir RankingSparkline plus haut).
+  const rankingState = useMemo(
+    () => getPlayerRatingState(connectedPlayer),
+    [connectedPlayer]
+  );
+  const rankingHistory = useMemo(
+    () => getRecentLevelDeltaHistory(connectedPlayer.id, matches, 10),
+    [connectedPlayer.id, matches]
+  );
+  const rankingSparklineValues = rankingHistory.map(({ entry }) => entry.apres);
+  const rankingLastEntry = rankingHistory[rankingHistory.length - 1] || null;
   const nameOf = (id) => players.find((p) => p.id === id)?.name || "Joueur inconnu";
   const playerOf = (id) => players.find((p) => p.id === id);
 
@@ -505,6 +481,8 @@ export function StatsView() {
 
   const [editingPref, setEditingPref] = useState(null);
   const [showPinEdit, setShowPinEdit] = useState(false);
+  const [showRankingInfo, setShowRankingInfo] = useState(false);
+  const [showFormInfo, setShowFormInfo] = useState(false);
 
   // "Mes paiements" — visible pour TOUT joueur (normal, créancier ou admin) :
   // même un créancier peut avoir remboursé un AUTRE créancier pour un match
@@ -524,8 +502,7 @@ export function StatsView() {
   // "Ce que je dois" — miroir de "Mes paiements" côté dette : matchs déjà
   // joués où ma part n'est pas encore réglée. Réutilise le même calcul que
   // la liste "impayés" de "Ma comptabilité" (voir getPlayerDebts, lib/
-  // stats.js) — jamais un état saisi à la main, toujours dérivé en direct.
-  // Bloc volontairement invisible si aucune dette (myDebts.total === 0).
+  // stats.js). Bloc volontairement invisible si aucune dette (myDebts.total === 0).
   const myDebts = useMemo(
     () => getPlayerDebts(connectedPlayer.id, matches, players),
     [connectedPlayer.id, matches, players]
@@ -627,14 +604,15 @@ export function StatsView() {
 
   return (
     <div className="pb-28">
-      {/* En-tête profil — grand avatar, nom, contexte */}
+      {/* En-tête profil — grand avatar, prénom (nom de famille masqué, trop
+          de place sur mobile), contexte */}
       <div className="px-4 pt-2 pb-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <AvatarSelfEditor player={connectedPlayer} size={80} />
             <div className="min-w-0">
               <p className="pm-display font-extrabold text-2xl text-white leading-tight truncate">
-                {connectedPlayer.name}
+                {getFirstName(connectedPlayer.name)}
               </p>
               <p className="text-sm text-white/80 mt-1">
                 {connectedPlayer.isCreditor
@@ -667,8 +645,6 @@ export function StatsView() {
       )}
 
       <div className="px-4">
-        {showRanking && <RankingCard player={connectedPlayer} matches={matches} />}
-
         {mvpWins > 0 && (
           <Card className="p-4 mb-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-amber-100/80 border-amber-200/70">
             <span className="text-3xl leading-none">🥇</span>
@@ -681,60 +657,136 @@ export function StatsView() {
           </Card>
         )}
 
-        {myStats.played === 0 ? (
-          <Card className="p-5 mb-6">
-            <p className="text-sm text-[var(--color-text-dim)] text-center">
-              Aucune statistique disponible pour le moment.
-            </p>
-          </Card>
-        ) : (
+        {/* Bloc "Statistiques" — le Ranking (rond avec le score en grand) est
+            désormais incorporé en tête de cette même carte plutôt que dans
+            une carte séparée, avec un bouton "?" unique pour l'explication. */}
+        {(showRanking || myStats.played > 0) && (
           <>
-            {/* Bloc "Statistiques" — chiffres à gauche + anneau à droite */}
             <h3 className="pm-display font-bold text-lg text-white mb-3">Statistiques</h3>
-            <Card className="p-5 mb-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1">
-                  <div>
-                    <p className="pm-display font-extrabold text-3xl leading-none">
-                      {myStats.played}
+            <Card className="p-5 mb-6 relative">
+              {showRanking && (
+                <button
+                  type="button"
+                  onClick={() => setShowRankingInfo(true)}
+                  aria-label="En savoir plus sur le Ranking"
+                  title="En savoir plus"
+                  className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)]"
+                >
+                  <Icon.Question className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {showRanking && (
+                <div
+                  className={cn(
+                    "flex items-center gap-4",
+                    myStats.played > 0 && "mb-4 pb-4 border-b border-[var(--color-border)]"
+                  )}
+                >
+                  <div className="flex flex-col items-center shrink-0">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
+                      Ranking
                     </p>
-                    <p className="text-xs text-[var(--color-text-dim)] mt-1">Total</p>
+                    <div className="w-20 h-20 rounded-full border-4 border-[var(--color-lime)] flex items-center justify-center shrink-0">
+                      {rankingState.hasRanking ? (
+                        <span className="pm-display font-extrabold text-xl leading-none">
+                          {rankingState.score.toFixed(1).replace(".", ",")}
+                        </span>
+                      ) : (
+                        <span className="text-xl text-[var(--color-text-faint)]">—</span>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
-                      {myStats.wins}
-                    </p>
-                    <p className="text-xs text-emerald-600 mt-1">Remportés</p>
-                  </div>
-                  <div>
-                    <p className="pm-display font-extrabold text-3xl leading-none">
-                      {last10.length}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-dim)] mt-1">10 derniers</p>
-                  </div>
-                  <div>
-                    <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
-                      {last10Wins}
-                    </p>
-                    <p className="text-xs text-emerald-600 mt-1">Remportés</p>
+                  <div className="flex-1 min-w-0 pr-8">
+                    {rankingState.hasRanking && rankingSparklineValues.length >= 2 ? (
+                      <>
+                        <RankingSparkline values={rankingSparklineValues} />
+                        {rankingLastEntry && (
+                          <p className="text-xs text-[var(--color-text-dim)] mt-1.5">
+                            Dernier match :{" "}
+                            <span
+                              className={
+                                rankingLastEntry.entry.delta >= 0
+                                  ? "text-emerald-600 font-semibold"
+                                  : "text-rose-600 font-semibold"
+                              }
+                            >
+                              {rankingLastEntry.entry.delta >= 0 ? "▲" : "▼"}{" "}
+                              {rankingLastEntry.entry.delta >= 0 ? "+" : ""}
+                              {rankingLastEntry.entry.delta.toFixed(1).replace(".", ",")}
+                            </span>
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-[var(--color-text-dim)]">
+                        Pas encore de ranking — jouez un match officiel pour le démarrer !
+                      </p>
+                    )}
                   </div>
                 </div>
-                <ProgressRing value={last10Rate} label="Efficacité 10 derniers" />
-              </div>
-              {myStats.draws > 0 && (
-                <p className="text-xs text-amber-700 mt-3 pt-3 border-t border-[var(--color-border)]">
-                  🤝 Dont {myStats.draws} match{myStats.draws > 1 ? "s" : ""} nul
-                  {myStats.draws > 1 ? "s" : ""} (compté{myStats.draws > 1 ? "s" : ""} dans le %
-                  de victoires, sans être une victoire)
+              )}
+
+              {myStats.played > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1">
+                    <div>
+                      <p className="pm-display font-extrabold text-3xl leading-none">
+                        {myStats.played}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-dim)] mt-1">Total</p>
+                    </div>
+                    <div>
+                      <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
+                        {myStats.wins}
+                      </p>
+                      <p className="text-xs text-emerald-600 mt-1">Remportés</p>
+                    </div>
+                    <div>
+                      <p className="pm-display font-extrabold text-3xl leading-none">
+                        {last10.length}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-dim)] mt-1">10 derniers</p>
+                    </div>
+                    <div>
+                      <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
+                        {last10Wins}
+                      </p>
+                      <p className="text-xs text-emerald-600 mt-1">Remportés</p>
+                    </div>
+                  </div>
+                  <ProgressRing value={last10Rate} label="Efficacité 10 derniers" />
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--color-text-dim)] text-center">
+                  Aucune statistique disponible pour le moment.
                 </p>
               )}
             </Card>
+          </>
+        )}
 
-            {/* Bandeau forme (10 pastilles V/R/X) */}
-            <Card className="p-4 mb-6">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-2">
-                Série récente
-              </p>
+        {showRankingInfo && <RankingInfoModal onClose={() => setShowRankingInfo(false)} />}
+
+        {myStats.played > 0 && (
+          <>
+            {/* Bandeau forme (10 pastilles V/R/X) — légende disponible via le
+                bouton "?" plutôt qu'affichée en permanence */}
+            <Card className="p-4 mb-6 relative">
+              <div className="flex items-center justify-between mb-2 pr-6">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold">
+                  Série récente
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFormInfo(true)}
+                aria-label="Comment lire cette série ?"
+                title="Comment lire cette série ?"
+                className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)]"
+              >
+                <Icon.Question className="w-3.5 h-3.5" />
+              </button>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {recentForm.map((f, i) => (
                   <span
@@ -749,11 +801,9 @@ export function StatsView() {
                   </span>
                 ))}
               </div>
-              <p className="text-[10px] text-[var(--color-text-faint)] mt-2">
-                Du plus ancien au plus récent · V vert (victoire), D rouge (défaite), N orange
-                (match nul), pastille orange vide (sans score)
-              </p>
             </Card>
+
+            {showFormInfo && <RecentFormInfoModal onClose={() => setShowFormInfo(false)} />}
 
             {/* Carrousel de personnes fétiches / rivales */}
             {highlightPeople.length > 0 && (
@@ -773,10 +823,10 @@ export function StatsView() {
           </>
         )}
 
-        {/* Préférences du joueur — modifiables via le crayon en haut à droite
-            de chaque zone */}
+        {/* Préférences du joueur — une seule carte subdivisée en 4 parties,
+            chacune modifiable via le crayon situé à droite de sa ligne */}
         <h3 className="pm-display font-bold text-lg text-white mb-3">Préférences du joueur</h3>
-        <div className="flex flex-col gap-2 mb-6">
+        <Card className="p-4 mb-6 divide-y divide-[var(--color-border)]">
           {preferences.map((p) => (
             <PreferenceRow
               key={p.label}
@@ -786,7 +836,7 @@ export function StatsView() {
               onEdit={() => setEditingPref(p)}
             />
           ))}
-        </div>
+        </Card>
 
         {editingPref && (
           <EditPreferenceModal
@@ -798,60 +848,65 @@ export function StatsView() {
           />
         )}
 
-        {/* Face-à-face — restylé plus léger */}
-        <h3 className="pm-display font-bold text-lg text-white mb-3">Face-à-face</h3>
-        <Card className="p-4 mb-6">
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <Field label="Joueur 1">
-              <select className={inputClass} value={h2hA} onChange={(e) => setH2hA(e.target.value)}>
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Joueur 2">
-              <select className={inputClass} value={h2hB} onChange={(e) => setH2hB(e.target.value)}>
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          {h2hA === h2hB ? (
-            <p className="text-xs text-[var(--color-text-faint)] italic">
-              Choisissez deux joueurs différents pour voir leur face-à-face.
-            </p>
-          ) : h2h && (h2h.asOpponents > 0 || h2h.asPartners > 0) ? (
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="p-3 rounded-xl bg-[var(--color-surface-2)]">
-                <p className="pm-display font-extrabold text-xl">{h2h.asOpponents}</p>
-                <p className="text-[10px] text-[var(--color-text-dim)] mt-1">Adversaires</p>
+        {/* Face-à-face — masqué pour l'instant (voir SHOW_HEAD_TO_HEAD en
+            haut de fichier), code conservé pour réactivation future */}
+        {SHOW_HEAD_TO_HEAD && (
+          <>
+            <h3 className="pm-display font-bold text-lg text-white mb-3">Face-à-face</h3>
+            <Card className="p-4 mb-6">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <Field label="Joueur 1">
+                  <select className={inputClass} value={h2hA} onChange={(e) => setH2hA(e.target.value)}>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Joueur 2">
+                  <select className={inputClass} value={h2hB} onChange={(e) => setH2hB(e.target.value)}>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
-              <div className="p-3 rounded-xl bg-emerald-50">
-                <p className="pm-display font-extrabold text-xl text-emerald-700">
-                  {h2h.winsA}-{h2h.winsB}
+              {h2hA === h2hB ? (
+                <p className="text-xs text-[var(--color-text-faint)] italic">
+                  Choisissez deux joueurs différents pour voir leur face-à-face.
                 </p>
-                <p className="text-[10px] text-emerald-700 mt-1">
-                  Balance V ({nameOf(h2hA).split(" ")[0]} vs {nameOf(h2hB).split(" ")[0]})
+              ) : h2h && (h2h.asOpponents > 0 || h2h.asPartners > 0) ? (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-3 rounded-xl bg-[var(--color-surface-2)]">
+                    <p className="pm-display font-extrabold text-xl">{h2h.asOpponents}</p>
+                    <p className="text-[10px] text-[var(--color-text-dim)] mt-1">Adversaires</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-50">
+                    <p className="pm-display font-extrabold text-xl text-emerald-700">
+                      {h2h.winsA}-{h2h.winsB}
+                    </p>
+                    <p className="text-[10px] text-emerald-700 mt-1">
+                      Balance V ({nameOf(h2hA).split(" ")[0]} vs {nameOf(h2hB).split(" ")[0]})
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-sky-50">
+                    <p className="pm-display font-extrabold text-xl text-sky-700">
+                      {h2h.asPartners}
+                    </p>
+                    <p className="text-[10px] text-sky-700 mt-1">Coéquipiers</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--color-text-faint)] italic">
+                  Aucun match commun trouvé entre {nameOf(h2hA)} et {nameOf(h2hB)}.
                 </p>
-              </div>
-              <div className="p-3 rounded-xl bg-sky-50">
-                <p className="pm-display font-extrabold text-xl text-sky-700">
-                  {h2h.asPartners}
-                </p>
-                <p className="text-[10px] text-sky-700 mt-1">Coéquipiers</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--color-text-faint)] italic">
-              Aucun match commun trouvé entre {nameOf(h2hA)} et {nameOf(h2hB)}.
-            </p>
-          )}
-        </Card>
+              )}
+            </Card>
+          </>
+        )}
 
         {/* Ce que je dois — matchs déjà joués pas encore réglés de mon côté.
             N'apparaît pas du tout si je suis à jour, pour ne rien ajouter à
