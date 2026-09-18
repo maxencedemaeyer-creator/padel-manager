@@ -71,20 +71,10 @@ export function PlayersView() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-[36px_1fr_44px_24px_24px_auto] items-center gap-2.5 px-3 mb-1.5">
-            <span />
-            <span />
-            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
-              Niv.
-            </span>
-            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
-              Main
-            </span>
-            <span className="text-[9px] font-bold uppercase tracking-wide text-white/70 text-center">
-              Côté
-            </span>
-            <span />
-          </div>
+          {/* En-têtes de colonnes supprimés le 19/09/2026 : la carte
+              PlayerRow n'utilise plus une grille CSS à colonnes fixes (voir
+              PlayerRow.jsx), ces libellés ("Niv. Main Côté") n'avaient donc
+              plus rien à quoi s'aligner sur mobile. */}
           <div className="flex flex-col gap-2">
             {sorted.map((p) => (
               <PlayerRow key={p.id} player={p} mvpCount={mvpCounts[p.id] || 0} />
