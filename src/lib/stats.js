@@ -267,6 +267,84 @@ export function getPlayerDebts(playerId, matches, players) {
   return { debts, total };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Cumul par créancier — chantier du 18/09/2026, demande de Max : quand un
+// joueur accumule plusieurs matchs impayés envers le MÊME créancier, les
+// deux côtés doivent voir un total ("je dois 75 € à Untel pour 5 matchs"),
+// pas 5 lignes séparées à 15 € chacune.
+//
+// Décision validée avec Max : seules les dettes DÉJÀ assignées explicitement
+// à un créancier précis (`owedTo`, voir AssignCreditorModal.jsx / "Doit
+// payer à…") entrent dans un cumul. Une dette pas encore assignée peut en
+// théorie être réglée à N'IMPORTE QUEL créancier éligible de la session
+// (remboursement croisé, voir accounting-module-notes.md) — l'additionner à
+// un nom précis serait trompeur tant que ce choix n'a pas été fait. Ces
+// dettes-là restent donc à l'unité, dans `ungrouped`, exactement comme avant
+// ce chantier. C'est aussi une incitation naturelle à assigner : une dette
+// n'entre dans le recap cumulé qu'une fois "Doit payer à…" cliqué dessus.
+//
+// Aucun nouveau champ Firestore : purement une étape d'agrégation en mémoire
+// au-dessus de `getUnpaidPastParticipations`/`getPlayerDebts`, qui restent
+// la seule source de vérité des impayés.
+function groupAssignedDebts(items, keyOf, buildGroup) {
+  const groups = new Map();
+  const ungrouped = [];
+  (items || []).forEach((item) => {
+    if (!item.owedTo) {
+      ungrouped.push(item);
+      return;
+    }
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, buildGroup(key, item));
+    const group = groups.get(key);
+    group.items.push(item);
+    group.total += item.fee;
+  });
+  const groupList = [...groups.values()]
+    .map((g) => ({
+      ...g,
+      count: g.items.length,
+      // Plus ancien en premier dans le détail déplié — cohérent avec l'ordre
+      // de getUnpaidPastParticipations.
+      items: g.items.sort((a, b) => new Date(a.date) - new Date(b.date)),
+    }))
+    // Plus gros montant cumulé en premier — utile pour prioriser qui relancer.
+    .sort((a, b) => b.total - a.total);
+  return { groups: groupList, ungrouped };
+}
+
+// Regroupe les dettes d'UN SEUL joueur (résultat de `getPlayerDebts`) par
+// créancier assigné. Utilisé par MyDebtsModal.jsx ("Ce que je dois", côté
+// débiteur) — playerId est déjà fixé, seul le créancier varie d'une dette à
+// l'autre.
+export function groupDebtsByCreditor(items) {
+  return groupAssignedDebts(
+    items,
+    (item) => item.owedTo,
+    (key) => ({ groupKey: key, creditorId: key, items: [], total: 0 })
+  );
+}
+
+// Regroupe une liste d'impayés couvrant PLUSIEURS joueurs (résultat de
+// `getUnpaidPastParticipations`) par paire (joueur, créancier assigné).
+// Utilisé par CreditorAccountingPanel.jsx (détail nominatif des impayés,
+// vue créancier) : contrairement à MyDebtsModal, playerId varie aussi d'une
+// dette à l'autre, donc la clé de regroupement doit inclure les deux.
+export function groupDebtsByDebtor(items) {
+  return groupAssignedDebts(
+    items,
+    (item) => `${item.playerId}|${item.owedTo}`,
+    (key, item) => ({
+      groupKey: key,
+      playerId: item.playerId,
+      playerName: item.name,
+      creditorId: item.owedTo,
+      items: [],
+      total: 0,
+    })
+  );
+}
+
 // Tous les joueurs à traiter comme "créancier" pour l'affichage/l'attribution
 // de paiement — pas seulement ceux ACTUELLEMENT cochés "Créancier" sur leur
 // fiche (`player.isCreditor`), mais aussi ceux qui ont financé un abonnement
