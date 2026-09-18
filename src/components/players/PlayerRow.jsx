@@ -5,18 +5,68 @@
 // l'onglet "Ma comptabilité" / "Administration".
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { isPlayerAdmin, handAbbrev, sideAbbrev, normalizeSide } from "../../lib/utils";
+import { isPlayerAdmin, handAbbrev, sideAbbrev, normalizeSide, formatDateFR } from "../../lib/utils";
 import { LEVELS } from "../../lib/constants";
 import { computePlayerStats } from "../../lib/stats";
+import { getPlayerRatingState, getRecentLevelDeltaHistory } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Card, Badge } from "../ui";
+import { Card, Badge, Modal } from "../ui";
 import { EditPlayerModal } from "./EditPlayerModal";
 import { PlayerAvatar } from "./PlayerAvatar";
 
+// Modale "Historique de ranking — [nom]" — réservée à l'admin (voir §6 de
+// claude/feature-ranking-padel-manager.md). Liste du plus récent au plus
+// ancien, avec la fiabilité actuelle du joueur en en-tête pour donner le
+// contexte (un joueur récent ou récemment recalibré varie plus fort).
+function RankingHistoryModal({ player, matches, onClose }) {
+  const state = getPlayerRatingState(player);
+  const history = getRecentLevelDeltaHistory(player.id, matches, 200).slice().reverse();
+
+  return (
+    <Modal title={`Historique de ranking — ${player.name}`} onClose={onClose} wide>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Fiabilité actuelle : <span className="font-semibold">{state.reliability.toFixed(1)}</span>
+      </p>
+      {history.length === 0 ? (
+        <p className="text-sm text-[var(--color-text-faint)] italic">
+          Aucun ajustement de ranking enregistré pour ce joueur.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {history.map(({ match, entry }) => (
+            <div
+              key={match.id}
+              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--color-surface-2)]"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate">{formatDateFR(match.date)}</p>
+                <p className="text-[10px] text-[var(--color-text-faint)]">
+                  {entry.wasBootstrap
+                    ? "Amorçage (1er match noté)"
+                    : `Avant ${entry.avant.toFixed(2)} · Attendu ${entry.attendu.toFixed(2)} · Marge ×${entry.facteurMarge.toFixed(2)}`}
+                </p>
+              </div>
+              <span
+                className={`pm-mono text-sm font-bold shrink-0 ${
+                  entry.delta > 0 ? "text-emerald-600" : entry.delta < 0 ? "text-rose-600" : "text-[var(--color-text-dim)]"
+                }`}
+              >
+                {entry.delta > 0 ? "+" : ""}
+                {entry.delta.toFixed(2)} → {entry.apres.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function PlayerRow({ player, mvpCount = 0 }) {
-  const { isAdmin, matches } = useAppData();
+  const { isAdmin, matches, rankingEnabled } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
+  const [showRankingHistory, setShowRankingHistory] = useState(false);
   const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
   // Seul l'admin peut ouvrir la fiche complète depuis "Équipe" — un joueur
   // modifie désormais son propre code PIN depuis "Mon profil".
@@ -25,6 +75,14 @@ export function PlayerRow({ player, mvpCount = 0 }) {
   // "Nx homme du match" — nombre de fois élu (voir jeu du Fun Center,
   // lib/mvp.js), compté une fois par PlayersView et transmis en prop.
   const mvpSuffix = mvpCount > 0 ? ` · ${mvpCount}x homme du match` : "";
+
+  // Ranking (voir claude/feature-ranking-padel-manager.md §6) — visible par
+  // tous les joueurs une fois le switch admin activé (`rankingEnabled`), et
+  // toujours visible pour l'admin quel que soit l'état du switch. Quand la
+  // condition est fausse, l'emplacement disparaît entièrement (y compris le
+  // badge "Non classé") — pas de placeholder.
+  const showRanking = isAdmin || rankingEnabled;
+  const rankingState = getPlayerRatingState(player);
 
   return (
     <>
@@ -60,6 +118,13 @@ export function PlayerRow({ player, mvpCount = 0 }) {
                   {player.federation}
                 </span>
               )}
+              {showRanking && (
+                <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[9px]">
+                  {rankingState.hasRanking
+                    ? `🎾 ${rankingState.score.toFixed(1).replace(".", ",")}`
+                    : "Non classé"}
+                </Badge>
+              )}
             </div>
             <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5 truncate">
               {playerStats.played === 0 && mvpCount === 0
@@ -90,6 +155,16 @@ export function PlayerRow({ player, mvpCount = 0 }) {
           </span>
 
           <div className="flex items-center gap-1.5 justify-end">
+            {isAdmin && rankingState.hasRanking && (
+              <button
+                onClick={() => setShowRankingHistory(true)}
+                aria-label="Historique de ranking"
+                title="Historique de ranking"
+                className="p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50 shrink-0"
+              >
+                <Icon.History className="w-3.5 h-3.5" />
+              </button>
+            )}
             {canEdit && (
               <button
                 onClick={() => setShowEdit(true)}
@@ -103,6 +178,13 @@ export function PlayerRow({ player, mvpCount = 0 }) {
         </div>
       </Card>
       {showEdit && <EditPlayerModal player={player} onClose={() => setShowEdit(false)} />}
+      {showRankingHistory && (
+        <RankingHistoryModal
+          player={player}
+          matches={matches}
+          onClose={() => setShowRankingHistory(false)}
+        />
+      )}
     </>
   );
 }
