@@ -3,6 +3,7 @@
 // tous, en tête de l'onglet Équipe.
 // ─────────────────────────────────────────────────────────────────────────
 import { computePlayerStats } from "../../lib/stats";
+import { getFirstName } from "../../lib/utils";
 import { PlayerAvatar } from "./PlayerAvatar";
 
 export function ClubRankingBanner({ players, matches }) {
@@ -37,8 +38,12 @@ export function ClubRankingBanner({ players, matches }) {
               {i + 1}
             </span>
             <PlayerAvatar player={r.player} size={32} />
-            <span className="flex-1 min-w-0 text-sm font-semibold truncate">
-              {r.player.name}
+            {/* Prénom seul (plus de place ici qu'un nom complet) — voir
+                `getFirstName` dans lib/utils.js, déjà utilisé ailleurs sur
+                mobile. La police est agrandie d'un cran (text-sm → text-base)
+                puisque le prénom seul laisse de la marge. */}
+            <span className="flex-1 min-w-0 text-base font-semibold truncate">
+              {getFirstName(r.player.name)}
             </span>
             <span className="text-xs text-white/70 shrink-0">
               {r.stats.wins}V{r.stats.draws > 0 ? `-${r.stats.draws}N` : ""}-{r.stats.losses}D
