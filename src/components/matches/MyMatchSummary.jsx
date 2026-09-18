@@ -175,9 +175,14 @@ export function MyMatchSummary({ now }) {
     [connectedPlayer.id, matches]
   );
   const myRank = useMemo(() => {
+    // Même règle que ClubRankingBanner.jsx : occasionnels exclus par défaut,
+    // et un match nul compte comme un match "décidé" (voir lib/stats.js), le
+    // classement doit donc rester cohérent avec celui affiché dans l'onglet
+    // Équipe.
     const ranked = players
+      .filter((p) => !p.isOccasional)
       .map((p) => ({ id: p.id, stats: computePlayerStats(p.id, matches) }))
-      .filter((r) => r.stats.wins + r.stats.losses > 0)
+      .filter((r) => r.stats.wins + r.stats.losses + r.stats.draws > 0)
       .sort((a, b) => b.stats.winRate - a.stats.winRate || b.stats.wins - a.stats.wins);
     return ranked.findIndex((r) => r.id === connectedPlayer.id) + 1;
   }, [players, matches, connectedPlayer.id]);
