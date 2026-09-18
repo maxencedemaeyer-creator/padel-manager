@@ -43,7 +43,14 @@ import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
 // réactivé en repassant cette constante à `true`.
 const SHOW_HEAD_TO_HEAD = false;
 
-function ProgressRing({ value, size = 110, stroke = 10, label }) {
+function ProgressRing({
+  value,
+  size = 110,
+  stroke = 10,
+  label,
+  valueClassName = "text-2xl",
+  labelClassName = "text-[10px]",
+}) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, value));
@@ -72,9 +79,16 @@ function ProgressRing({ value, size = 110, stroke = 10, label }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="pm-display font-extrabold text-2xl leading-none">{clamped}%</span>
+        <span className={cn("pm-display font-extrabold leading-none", valueClassName)}>
+          {clamped}%
+        </span>
         {label && (
-          <span className="text-[10px] text-[var(--color-text-dim)] mt-0.5 leading-tight px-2">
+          <span
+            className={cn(
+              "text-[var(--color-text-dim)] mt-0.5 leading-tight px-1",
+              labelClassName
+            )}
+          >
             {label}
           </span>
         )}
@@ -427,10 +441,8 @@ function RecentFormInfoModal({ onClose }) {
 // Mini-sparkline épurée et minimaliste — sans axe, sans chiffres, sans
 // interaction : juste un trait fin donnant la tendance sur les derniers
 // matchs officiels notés.
-function RankingSparkline({ values }) {
+function RankingSparkline({ values, width = 150, height = 28 }) {
   if (!values || values.length < 2) return null;
-  const width = 150;
-  const height = 28;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
@@ -665,9 +677,11 @@ export function StatsView() {
           </Card>
         )}
 
-        {/* Bloc "Statistiques" — le Ranking (rond avec le score en grand) est
-            désormais incorporé en tête de cette même carte plutôt que dans
-            une carte séparée, avec un bouton "?" unique pour l'explication. */}
+        {/* Bloc "Statistiques" — tout tient désormais sur une seule ligne :
+            à gauche la colonne Ranking (rond, puis la tendance en petit,
+            puis le delta du dernier match encore plus petit, du plus au
+            moins important visuellement), à droite les totaux + le rond
+            d'efficacité, réduits pour respirer sur la même hauteur. */}
         {(showRanking || myStats.played > 0) && (
           <>
             <h3 className="pm-display font-bold text-lg text-white mb-3">Statistiques</h3>
@@ -684,34 +698,34 @@ export function StatsView() {
                 </button>
               )}
 
-              {showRanking && (
-                <div
-                  className={cn(
-                    "flex items-center gap-4",
-                    myStats.played > 0 && "mb-4 pb-4 border-b border-[var(--color-border)]"
-                  )}
-                >
-                  <div className="flex flex-col items-center shrink-0">
-                    <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
+              <div className="flex items-center gap-4">
+                {showRanking && (
+                  <div
+                    className={cn(
+                      "flex flex-col items-center shrink-0 text-center",
+                      myStats.played > 0 && "pr-4 border-r border-[var(--color-border)]"
+                    )}
+                  >
+                    <p className="text-[9px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
                       Ranking
                     </p>
-                    <div className="w-20 h-20 rounded-full border-4 border-[var(--color-lime)] flex items-center justify-center shrink-0">
+                    <div className="w-16 h-16 rounded-full border-4 border-[var(--color-lime)] flex items-center justify-center shrink-0">
                       {rankingState.hasRanking ? (
-                        <span className="pm-display font-extrabold text-xl leading-none">
+                        <span className="pm-display font-extrabold text-lg leading-none">
                           {rankingState.score.toFixed(1).replace(".", ",")}
                         </span>
                       ) : (
-                        <span className="text-xl text-[var(--color-text-faint)]">—</span>
+                        <span className="text-lg text-[var(--color-text-faint)]">—</span>
                       )}
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0 pr-8">
                     {rankingState.hasRanking && rankingSparklineValues.length >= 2 ? (
                       <>
-                        <RankingSparkline values={rankingSparklineValues} />
+                        <div className="mt-1.5">
+                          <RankingSparkline values={rankingSparklineValues} width={72} height={16} />
+                        </div>
                         {rankingLastEntry && (
-                          <p className="text-xs text-[var(--color-text-dim)] mt-1.5">
-                            Dernier match :{" "}
+                          <p className="text-[9px] text-[var(--color-text-dim)] mt-1 leading-none whitespace-nowrap">
+                            Dernier :{" "}
                             <span
                               className={
                                 rankingLastEntry.entry.delta >= 0
@@ -727,49 +741,58 @@ export function StatsView() {
                         )}
                       </>
                     ) : (
-                      <p className="text-xs text-[var(--color-text-dim)]">
-                        Pas encore de ranking — jouez un match officiel pour le démarrer !
+                      <p className="text-[9px] text-[var(--color-text-dim)] mt-1.5 leading-tight max-w-[76px]">
+                        Pas encore de ranking
                       </p>
                     )}
                   </div>
-                </div>
-              )}
+                )}
 
-              {myStats.played > 0 ? (
-                <div className="flex items-center justify-between gap-4">
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1">
-                    <div>
-                      <p className="pm-display font-extrabold text-3xl leading-none">
-                        {myStats.played}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-dim)] mt-1">Total</p>
+                {myStats.played > 0 ? (
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 min-w-0">
+                      <div>
+                        <p className="pm-display font-extrabold text-xl leading-none">
+                          {myStats.played}
+                        </p>
+                        <p className="text-[10px] text-[var(--color-text-dim)] mt-0.5">Total</p>
+                      </div>
+                      <div>
+                        <p className="pm-display font-extrabold text-xl leading-none text-emerald-600">
+                          {myStats.wins}
+                        </p>
+                        <p className="text-[10px] text-emerald-600 mt-0.5">Remportés</p>
+                      </div>
+                      <div>
+                        <p className="pm-display font-extrabold text-xl leading-none">
+                          {last10.length}
+                        </p>
+                        <p className="text-[10px] text-[var(--color-text-dim)] mt-0.5">10 derniers</p>
+                      </div>
+                      <div>
+                        <p className="pm-display font-extrabold text-xl leading-none text-emerald-600">
+                          {last10Wins}
+                        </p>
+                        <p className="text-[10px] text-emerald-600 mt-0.5">Remportés</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
-                        {myStats.wins}
-                      </p>
-                      <p className="text-xs text-emerald-600 mt-1">Remportés</p>
-                    </div>
-                    <div>
-                      <p className="pm-display font-extrabold text-3xl leading-none">
-                        {last10.length}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-dim)] mt-1">10 derniers</p>
-                    </div>
-                    <div>
-                      <p className="pm-display font-extrabold text-3xl leading-none text-emerald-600">
-                        {last10Wins}
-                      </p>
-                      <p className="text-xs text-emerald-600 mt-1">Remportés</p>
-                    </div>
+                    <ProgressRing
+                      value={last10Rate}
+                      size={64}
+                      stroke={6}
+                      label="Efficacité"
+                      valueClassName="text-sm"
+                      labelClassName="text-[8px]"
+                    />
                   </div>
-                  <ProgressRing value={last10Rate} label="Efficacité 10 derniers" />
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--color-text-dim)] text-center">
-                  Aucune statistique disponible pour le moment.
-                </p>
-              )}
+                ) : (
+                  showRanking && (
+                    <p className="text-xs text-[var(--color-text-dim)] flex-1 text-center">
+                      Aucune statistique disponible pour le moment.
+                    </p>
+                  )
+                )}
+              </div>
             </Card>
           </>
         )}
