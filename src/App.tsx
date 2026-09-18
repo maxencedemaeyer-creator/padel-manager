@@ -4,288 +4,84 @@
 // N'oubliez pas d'importer "./index.css" une seule fois, dans main.jsx
 // (anciennement injecté via <GlobalStyles/>, maintenant un fichier CSS normal).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useMemo, lazy, Suspense } from "react";
-import { useMatches, useAppSettings, useAbonnements, useClubs } from "./hooks/useFirestoreData";
+import { useState } from "react";
+import { useMatches } from "./hooks/useFirestoreData";
 import { useWithdrawalWatcher } from "./lib/withdrawalWatcher";
-import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
-import { Spinner, BounceLoader, Button } from "./components/ui";
-import { authReady } from "./firebase";
+import { Spinner } from "./components/ui";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
-import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
-import Icon from "./components/icons/Icon";
-// "Matchs" est importé normalement (pas en chargement à la demande) — voir
-// le commentaire détaillé plus bas, juste avant les 5 autres onglets qui
-// restent, eux, chargés à la demande.
 import { MatchesView } from "./views/MatchesView";
+import { PlayersView } from "./views/PlayersView";
+import { StatsView } from "./views/StatsView";
+import { AccountingView } from "./views/AccountingView";
+import { AdminView } from "./views/AdminView";
 
-// Écran plein écran affiché à tous les joueurs non-admin quand le mode
-// maintenance est activé depuis l'onglet Administration (voir
-// src/views/AdminView.jsx, MaintenanceSettingCard). L'administrateur, lui,
-// n'est jamais bloqué : c'est le seul moyen de désactiver la maintenance.
-function MaintenanceScreen() {
-  const { logout } = useAppData();
-
-  return (
-    <div className="pm-root min-h-screen flex flex-col items-center justify-center px-6 py-10 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-300/40 flex items-center justify-center mb-5 text-rose-500">
-        <Icon.AlertCircle className="w-8 h-8" />
-      </div>
-      <h1 className="pm-display font-extrabold text-2xl mb-2">Maintenance en cours</h1>
-      <p className="text-sm text-[var(--color-text-dim)] max-w-xs mb-8">
-        L'application est momentanément indisponible pour effectuer une mise à jour. Merci de
-        votre patience, ça ne devrait pas être long !
-      </p>
-      <Button variant="secondary" onClick={logout}>
-        Changer de compte
-      </Button>
-    </div>
-  );
-}
-
-// Chargement à la demande (code-splitting) : chaque onglet n'est téléchargé
-// que la première fois qu'on l'ouvre, au lieu de tout charger d'un bloc dès
-// l'arrivée sur le site. Réduit nettement le temps avant que l'app devienne
-// utilisable, surtout sur mobile / réseau lent.
-//
-// EXCEPTION — "Matchs" (voir l'import de MatchesView tout en haut du
-// fichier, hors de ce groupe) : c'est le tout premier onglet affiché à
-// TOUT LE MONDE juste après la connexion, jamais un onglet "optionnel"
-// qu'on ouvre parfois. Le charger "à la demande" comme les 5 autres ne fait
-// donc gagner rien : ça ajoute au contraire un aller-retour réseau
-// systématique, pile au moment le plus visible (juste après l'écran de
-// connexion). C'est précisément ce qui donnait l'impression de "deux
-// écrans de chargement l'un après l'autre" (signalé par Max le 04/09/2026,
-// confirmé par vidéo) : l'écran plein écran "Chargement..." (données) était
-// immédiatement suivi d'un second petit chargement (le code de l'onglet
-// Matchs, récupéré séparément) avant que le contenu n'apparaisse enfin.
-// Cet onglet est donc désormais inclus directement dans le fichier
-// principal du site (comme avant l'introduction du chargement à la
-// demande) — un peu plus gros à télécharger au tout début, mais plus
-// aucun aller-retour ni second écran de chargement une fois arrivé dessus.
-// Les 5 autres onglets ci-dessous, eux, restent chargés à la demande : on
-// ne les ouvre pas forcément à chaque visite, ça reste donc un vrai gain.
-//
-// ─────────────────────────────────────────────────────────────────────────
-// Rechargement automatique après une mise à jour du site (04/09/2026).
-// Chaque fichier ci-dessous (chaque onglet) est livré dans son propre petit
-// fichier, avec un nom qui change à chaque nouvelle mise à jour du code
-// (voir vite.config.ts). Problème : quelqu'un qui a déjà l'app ouverte dans
-// son navigateur AU MOMENT où une mise à jour est mise en ligne garde les
-// anciens noms de fichiers en mémoire. S'il navigue ensuite vers un onglet
-// qu'il n'avait pas encore ouvert, son navigateur réclame l'ANCIEN fichier,
-// qui n'existe plus une fois la nouvelle version en ligne — le téléchargement
-// échoue, et jusqu'ici ça affichait l'écran "Un problème est survenu"
-// (ErrorBoundary), en demandant de recharger la page manuellement. C'est
-// exactement ce qui devient plus fréquent à mesure que le site est mis à
-// jour souvent : plus les mises à jour sont fréquentes, plus la probabilité
-// qu'un onglet soit ouvert "au mauvais moment" augmente.
-//
-// `lazyWithReload` détecte ce cas précis et recharge la page UNE SEULE FOIS,
-// automatiquement et silencieusement (sans jamais montrer l'écran d'erreur)
-// — le rechargement récupère la dernière version du site, qui fonctionne
-// normalement. `sessionStorage` sert de mémoire "déjà réessayé" par onglet,
-// pour ne jamais tomber dans une boucle de rechargements si le souci n'est
-// pas résolu par un simple rechargement (un vrai bug, par exemple) : dans ce
-// cas seulement, l'écran d'erreur habituel reprend la main, comme avant.
-function lazyWithReload(chunkName, importer) {
-  const retryFlagKey = `pm-chunk-retry-${chunkName}`;
-  return lazy(() =>
-    importer()
-      .then((module) => {
-        // Chargement réussi : on efface la mémoire d'un éventuel essai
-        // précédent, pour qu'un futur souci (après une prochaine mise à
-        // jour) puisse à nouveau déclencher un rechargement automatique.
-        try {
-          sessionStorage.removeItem(retryFlagKey);
-        } catch (e) {
-          // sessionStorage indisponible (navigation privée très
-          // restrictive) : sans conséquence, juste pas de mémoire d'essai.
-        }
-        return module;
-      })
-      .catch((error) => {
-        let alreadyRetried = false;
-        try {
-          alreadyRetried = sessionStorage.getItem(retryFlagKey) === "1";
-        } catch (e) {
-          // Idem : on considère qu'aucun essai n'a encore été fait.
-        }
-        if (!alreadyRetried) {
-          try {
-            sessionStorage.setItem(retryFlagKey, "1");
-          } catch (e) {}
-          window.location.reload();
-          // La page est sur le point de se recharger : on ne résout (ni ne
-          // rejette) jamais cette promesse, pour ne jamais laisser
-          // apparaître, même brièvement, l'écran d'erreur avant que le
-          // rechargement ait lieu.
-          return new Promise(() => {});
-        }
-        // Déjà réessayé une fois sans succès : ce n'est probablement pas ce
-        // cas précis (mise à jour pendant que l'onglet était ouvert), on
-        // laisse l'ErrorBoundary habituel prendre le relais normalement.
-        throw error;
-      })
-  );
-}
-
-// "Matchs" n'est PAS dans ce groupe : voir le commentaire au-dessus de
-// l'import de MatchesView, en haut du fichier.
-const PlayersView = lazyWithReload("players", () =>
-  import("./views/PlayersView").then((m) => ({ default: m.PlayersView }))
-);
-const StatsView = lazyWithReload("stats", () =>
-  import("./views/StatsView").then((m) => ({ default: m.StatsView }))
-);
-const AccountingView = lazyWithReload("accounting", () =>
-  import("./views/AccountingView").then((m) => ({ default: m.AccountingView }))
-);
-const AdminView = lazyWithReload("admin", () =>
-  import("./views/AdminView").then((m) => ({ default: m.AdminView }))
-);
-const GameCenterView = lazyWithReload("game-center", () =>
-  import("./views/GameCenterView").then((m) => ({ default: m.GameCenterView }))
-);
+// Onglet actif mémorisé pour l'onglet du navigateur en cours (sessionStorage,
+// PAS localStorage) : on reste sur le même volet après un rafraîchissement
+// manuel de la page, mais une nouvelle connexion (nouvel onglet/navigateur)
+// repart bien sur "Matchs" par défaut, comme voulu à l'origine.
+const VIEW_STORAGE_KEY = "pm-active-view";
+const VALID_VIEWS = ["matches", "players", "stats", "accounting", "admin"];
 
 function MainApp() {
   const matchesHook = useMatches();
-  const settingsHook = useAppSettings();
-  const abonnementsHook = useAbonnements();
-  const clubsHook = useClubs();
-  const [view, setView] = useState("matches");
-  // Les deux watchers reçoivent directement les matchs déjà synchronisés par
-  // useMatches() ci-dessus, au lieu de retélécharger toute la collection
-  // "matches" en double de leur côté (voir withdrawalWatcher.js et
-  // presenceWatcher.js pour le détail — c'était une des principales causes
-  // de lenteur au chargement de l'app). Important : ces deux appels DOIVENT
-  // recevoir matchesHook.matches — un remplacement de ce fichier qui les
-  // appellerait sans argument réintroduirait le problème de lenteur pour
-  // usePresenceAutoAbsentWatcher (et viderait silencieusement les données
-  // utilisées par useWithdrawalWatcher).
-  useWithdrawalWatcher(matchesHook.matches);
-  usePresenceAutoAbsentWatcher(matchesHook.matches);
   const appData = useAppData();
+  const [view, setView] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      if (!VALID_VIEWS.includes(saved)) return "matches";
+      // Un onglet restauré auquel ce joueur n'a plus droit (ex. changement
+      // de rôle) ne doit jamais s'afficher — on retombe sur "Matchs".
+      if (saved === "admin" && !appData.isAdmin) return "matches";
+      if (saved === "accounting" && !appData.connectedPlayer.isCreditor) return "matches";
+      return saved;
+    } catch {
+      return "matches";
+    }
+  });
+  useWithdrawalWatcher();
 
-  // Mémoïsation : sans elle, un nouvel objet de contexte était recréé à
-  // chaque rendu de MainApp — y compris à chaque simple clic sur un onglet
-  // de la navigation basse (changement de "view") — ce qui forçait TOUTE
-  // l'app à se re-rendre inutilement à chaque clic. C'était la cause
-  // principale des petits délais ressentis un peu partout dans l'app.
-  const contextValue = useMemo(
-    () => ({
-      ...appData,
-      matches: matchesHook.matches,
-      gameCenterEnabled: settingsHook.settings.gameCenterEnabled,
-      maintenanceEnabled: settingsHook.settings.maintenanceEnabled,
-      presenceWindowDays: settingsHook.settings.presenceWindowDays,
-      // Ranking (voir claude/feature-ranking-padel-manager.md §6) — même
-      // principe que gameCenterEnabled ci-dessus.
-      rankingEnabled: settingsHook.settings.rankingEnabled,
-      abonnements: abonnementsHook.abonnements,
-      clubs: clubsHook.clubs,
-      // Exposé (18/09/2026) pour le lien "Voir mon ranking →" de
-      // MyMatchSummary.jsx, qui doit pouvoir naviguer vers l'onglet "Mon
-      // profil" sans que `view`/`setView` (état local à MainApp) aient
-      // besoin d'être passés en props à travers MatchesView.jsx.
-      setView,
-    }),
-    [
-      appData,
-      matchesHook.matches,
-      settingsHook.settings.gameCenterEnabled,
-      settingsHook.settings.maintenanceEnabled,
-      settingsHook.settings.presenceWindowDays,
-      settingsHook.settings.rankingEnabled,
-      abonnementsHook.abonnements,
-      clubsHook.clubs,
-      setView,
-    ]
-  );
-
-  // Mode maintenance : tout le monde est bloqué sur l'écran d'attente, sauf
-  // l'administrateur (qui doit impérativement garder l'accès pour pouvoir
-  // désactiver la maintenance depuis l'onglet Administration).
-  if (settingsHook.settings.maintenanceEnabled && !appData.isAdmin) {
-    return (
-      <AppDataContext.Provider value={contextValue}>
-        <MaintenanceScreen />
-      </AppDataContext.Provider>
-    );
-  }
-
-  // Juste après la connexion (choix du profil + code PIN), les toutes
-  // premières données (matchs) sont encore en train d'arriver de Firebase :
-  // plutôt que d'afficher l'en-tête et la barre de navigation autour d'un
-  // simple spinner dans le contenu, on affiche un écran de chargement plein
-  // écran (balle qui rebondit) le temps de cette unique pause, puis on
-  // révèle l'app complète d'un coup, déjà prête et rapide.
-  if (matchesHook.loading) {
-    return (
-      <AppDataContext.Provider value={contextValue}>
-        <BounceLoader fullScreen label="Préparation de votre espace..." />
-      </AppDataContext.Provider>
-    );
-  }
+  const changeView = (id) => {
+    setView(id);
+    try {
+      sessionStorage.setItem(VIEW_STORAGE_KEY, id);
+    } catch {
+      // sessionStorage indisponible (navigation privée stricte, etc.) —
+      // le changement d'onglet fonctionne quand même, seule la mémorisation
+      // après rechargement est perdue.
+    }
+  };
 
   return (
-    <AppDataContext.Provider value={contextValue}>
+    <AppDataContext.Provider
+      value={{ ...appData, matches: matchesHook.matches }}
+    >
       <div className="pm-root">
-        <Header setView={setView} />
-        <Suspense
-          fallback={
-            view === "game-center" ? (
-              <BounceLoader label="Chargement du Game Center..." />
-            ) : (
-              <Spinner />
-            )
-          }
-        >
-          {view === "matches" ? (
-            <MatchesView />
-          ) : view === "players" ? (
-            <PlayersView />
-          ) : view === "stats" ? (
-            <StatsView />
-          ) : view === "accounting" ? (
-            <AccountingView />
-          ) : view === "game-center" ? (
-            <GameCenterView />
-          ) : (
-            <AdminView />
-          )}
-        </Suspense>
-        <BottomNav view={view} setView={setView} />
-        <PostMatchPrompt />
+        <Header setView={changeView} />
+        {matchesHook.loading ? (
+          <Spinner />
+        ) : view === "matches" ? (
+          <MatchesView />
+        ) : view === "players" ? (
+          <PlayersView />
+        ) : view === "stats" ? (
+          <StatsView />
+        ) : view === "accounting" ? (
+          <AccountingView />
+        ) : view === "admin" ? (
+          <AdminView />
+        ) : (
+          <MatchesView />
+        )}
+        <BottomNav view={view} setView={changeView} />
       </div>
     </AppDataContext.Provider>
   );
 }
 
 export default function PadelManagerApp() {
-  // Attend la connexion Firebase anonyme (voir src/firebase.js) avant
-  // d'afficher quoi que ce soit : tant qu'elle n'est pas terminée, toute
-  // lecture Firestore serait refusée par les règles de sécurité.
-  const [authIsReady, setAuthIsReady] = useState(false);
-
-  useEffect(() => {
-    authReady.then(() => setAuthIsReady(true));
-  }, []);
-
-  if (!authIsReady) {
-    // Libellé ajouté le 04/09/2026 : jusqu'ici cet écran et celui juste
-    // après (AuthGate.jsx, pendant le chargement de la liste des joueurs)
-    // affichaient tous les deux le même texte générique "Chargement..." —
-    // impossible de distinguer les deux à l'oeil si quelqu'un rapporte avoir
-    // vu "deux écrans de chargement" à la suite. Un libellé différent à
-    // chaque étape (ici / AuthGate.jsx / App.tsx-MainApp) permet de savoir
-    // précisément laquelle des 3 étapes est concernée si ça se reproduit —
-    // aucun changement de comportement, seulement le texte affiché.
-    return <BounceLoader fullScreen label="Connexion en cours..." />;
-  }
-
   return (
     <AuthGate>
       <MainApp />
