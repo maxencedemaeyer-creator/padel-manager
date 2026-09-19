@@ -221,6 +221,9 @@ function MainApp() {
       // Ranking (voir claude/feature-ranking-padel-manager.md §6) — même
       // principe que gameCenterEnabled ci-dessus.
       rankingEnabled: settingsHook.settings.rankingEnabled,
+      // Gel de présence avant match (voir lib/constants.js et
+      // lib/availability.js → isPresenceFrozen).
+      presenceLockHours: settingsHook.settings.presenceLockHours,
       abonnements: abonnementsHook.abonnements,
       clubs: clubsHook.clubs,
       // Exposé (18/09/2026) pour le lien "Voir mon ranking →" de
@@ -238,6 +241,7 @@ function MainApp() {
       settingsHook.settings.maintenanceEnabled,
       settingsHook.settings.presenceWindowDays,
       settingsHook.settings.rankingEnabled,
+      settingsHook.settings.presenceLockHours,
       abonnementsHook.abonnements,
       clubsHook.clubs,
       changeView,
