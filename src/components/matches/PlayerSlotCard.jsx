@@ -16,10 +16,10 @@ export function PlayerSlotCard({
   canPay,
   isCreditorParticipant,
   trackPayments,
+  matchStarted,
   slotTeam,
   slotSide,
   isWinningTeam,
-  isAdmin,
   onAssignClick,
   onSelfClick,
   onPayClick,
@@ -61,16 +61,18 @@ export function PlayerSlotCard({
     );
   }
 
-  const paid = isCreditorParticipant || participant.paidStatus === "paid";
-  const badgeTone = isCreditorParticipant ? "blue" : paid ? "paid" : "unpaid";
-  const badgeLabel = isCreditorParticipant ? "Avancé" : paid ? "Payé" : "Attente";
-  // Demande du 02/09/2026 : la notion de "créancier" (qui a avancé l'argent
-  // pour ce match) reste invisible pour les joueurs, mais doit être visible
-  // pour l'admin. Un joueur non-admin ne voit donc plus du tout la pastille
-  // de paiement sur une place "couverte" par un créancier (elle n'apporte de
-  // toute façon aucune action possible pour lui : le bouton est déjà
-  // désactivé dans ce cas via canPay/paid ci-dessous).
-  const hideCreditorStatusFromPlayer = isCreditorParticipant && !isAdmin;
+  // Statut de paiement : un joueur paie (presque) toujours APRÈS le match,
+  // donc "Attente" n'a d'intérêt qu'une fois le match commencé ou terminé.
+  //  - Place couverte par un créancier ("Avancé") : plus aucune pastille pour
+  //    personne (l'info reste visible via les petits avatars à côté du nom du
+  //    terrain, voir CourtPanel).
+  //  - "Payé" : toujours affiché (cas rare d'un paiement fait à l'avance).
+  //  - "Attente" : affiché seulement quand le match a commencé (matchStarted).
+  const paid = participant.paidStatus === "paid";
+  const badgeTone = paid ? "paid" : "unpaid";
+  const badgeLabel = paid ? "Payé" : "Attente";
+  const showPaymentBadge =
+    trackPayments && !isCreditorParticipant && (paid || matchStarted);
   const side = normalizeSide(playerRecord?.preferredSide);
   const roleLabel =
     side === "Droite" ? "Joueur de droite" : side === "Gauche" ? "Joueur de gauche" : "Polyvalent";
@@ -111,7 +113,7 @@ export function PlayerSlotCard({
             {roleLabel}
             {isSelfSlot && canSelfManage && " · toucher pour se désinscrire"}
           </span>
-          {trackPayments && !hideCreditorStatusFromPlayer && (
+          {showPaymentBadge && (
             <span className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
