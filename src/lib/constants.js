@@ -100,6 +100,19 @@ export const BRICK_BREAKER_TOP_ATTEMPTS_COUNT = 3;
 // — aucune régression sur une saison déjà en cours.
 export const DEFAULT_PRESENCE_WINDOW_DAYS = 999;
 
+// Gel de présence avant match (ajouté le 19/09/2026, demande de Max) — voir
+// lib/availability.js → isPresenceFrozen et la carte "Gel de présence avant
+// match" dans Administration (AdminView.jsx → PresenceLockSettingCard).
+// Nombre d'heures avant le début d'un match à partir duquel un joueur ayant
+// répondu "présent" (titulaire ou réserve) ne peut plus changer sa réponse
+// ni se désinscrire lui-même d'une place — objectif : empêcher les
+// désistements "faciles" de dernière minute qui dissuadaient les joueurs de
+// se déclarer présents dès qu'ils risquaient de finir en réserve. 0 =
+// fonctionnalité désactivée. Contrairement à DEFAULT_PRESENCE_WINDOW_DAYS
+// ci-dessus, cette valeur par défaut active bien le gel dès le déploiement
+// (demande explicite de Max, pas un réglage à activer après coup).
+export const DEFAULT_PRESENCE_LOCK_HOURS = 30;
+
 // Game Center — jeu "Homme du match" (voir src/lib/mvp.js) :
 // - le vote s'ouvre ce nombre d'heures après le DÉBUT du match (le vote
 //   reste ensuite ouvert jusqu'à 23h59 le lendemain de la date du match,
@@ -125,5 +138,3 @@ export const PLAYER_SORT_OPTIONS = [
   { id: "level-asc", label: "Niveau (faible → fort)" },
   { id: "balance-asc", label: "Solde (débiteur → créditeur)" },
 ];
-
-
