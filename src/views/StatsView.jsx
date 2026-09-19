@@ -412,8 +412,10 @@ function RankingInfoModal({ onClose }) {
     >
       <p className="text-sm text-[var(--color-text-dim)]">
         Ce ranking reflète votre niveau interne au club. Il évolue automatiquement selon vos
-        résultats en matchs officiels (victoire, défaite ou match nul, en tenant compte de l'écart
-        de jeux), et se recale si vous changez votre niveau officiel dans votre profil.
+        résultats en matchs officiels : une victoire face à plus fort que vous rapporte davantage,
+        une défaite face à plus fort que vous coûte peu, et l'écart de jeux compte aussi. Jouer
+        régulièrement fait aussi progresser doucement votre ranking, même après une défaite. Il se
+        recale si vous changez votre niveau officiel dans votre profil.
       </p>
     </Modal>
   );
