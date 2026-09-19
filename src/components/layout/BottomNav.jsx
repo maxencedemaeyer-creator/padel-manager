@@ -9,6 +9,13 @@ import Icon from "../icons/Icon";
 
 export function BottomNav({ view, setView }) {
   const { isAdmin, connectedPlayer, gameCenterEnabled } = useAppData();
+  // Le Game Center a un fond sombre (voir GameCenterView.jsx) au lieu du
+  // fond clair habituel du reste de l'app : le verre clair de la barre
+  // (bg-white/60 + texte gris-bleu clair) s'y fondait presque entièrement,
+  // devenant illisible. Sur cet onglet uniquement, on bascule la barre sur
+  // une variante "verre sombre" (fond noir translucide, bordure et texte
+  // clairs) — sur tous les autres onglets, rien ne change.
+  const isDark = view === "game-center";
   const tabs = [
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
     { id: "players", label: "Équipe", icon: Icon.Users },
@@ -24,10 +31,16 @@ export function BottomNav({ view, setView }) {
     ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
   ];
   const content = (
-    <nav className="fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md bg-white/60 backdrop-blur-2xl backdrop-saturate-150 border border-white/70 rounded-full shadow-[0_12px_32px_-8px_rgba(20,33,61,0.18)] flex px-2 py-1.5">
+    <nav
+      className={cn(
+        "fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md backdrop-blur-2xl backdrop-saturate-150 border rounded-full shadow-[0_12px_32px_-8px_rgba(20,33,61,0.18)] flex px-2 py-1.5",
+        isDark ? "bg-black/45 border-white/15" : "bg-white/60 border-white/70"
+      )}
+    >
       {tabs.map((t) => {
         const active = view === t.id;
         const IconEl = t.icon;
+        const inactiveColor = isDark ? "text-white/55" : "text-[var(--color-text-faint)]";
         return (
           <button
             key={t.id}
@@ -41,16 +54,13 @@ export function BottomNav({ view, setView }) {
               )}
             >
               <IconEl
-                className={cn(
-                  "w-5 h-5",
-                  active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
-                )}
+                className={cn("w-5 h-5", active ? "text-[var(--color-lime)]" : inactiveColor)}
               />
             </span>
             <span
               className={cn(
                 "text-[10px] font-semibold",
-                active ? "text-[var(--color-lime)]" : "text-[var(--color-text-faint)]"
+                active ? "text-[var(--color-lime)]" : inactiveColor
               )}
             >
               {t.label}
