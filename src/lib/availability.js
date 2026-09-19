@@ -17,6 +17,7 @@ import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../firebase";
 import { COURT_SLOT_DEFS } from "./constants";
 import { normalizeSide } from "./utils";
+import { getMatchStart, getMatchTiming } from "./matchLogic";
 
 export const AVAILABILITY_STATUSES = ["present", "absent", "unknown"];
 
@@ -139,6 +140,28 @@ function dropSelfJoinedSlot(match, playerId) {
   );
   if (!hasSelfSlot) return null;
   return participants.filter((p) => !(p.playerId === playerId && p.selfJoined === true));
+}
+
+// Gel de présence avant match (ajouté le 19/09/2026, voir constants.js →
+// DEFAULT_PRESENCE_LOCK_HOURS et AdminView.jsx → PresenceLockSettingCard) :
+// vrai si `match` démarre dans moins de `lockHours` heures à l'instant
+// `now`. Utilisé pour empêcher un joueur (jamais l'admin) de changer seul
+// sa réponse une fois "présent"/"réserve" (voir AvailabilityButtons dans
+// components/matches/Availability.jsx) ou de se désinscrire lui-même d'une
+// place déjà obtenue (voir CourtPanel.selfLeave) — trop près du match, un
+// désistement doit passer par l'équipe (WhatsApp) ou l'administrateur, qui
+// lui garde toujours un accès total via ManagePresenceModal.
+//
+// Ne s'applique qu'aux matchs "upcoming" : un match "tbd" (date inconnue —
+// on ne sait pas s'il aura lieu) n'est jamais concerné, et un match déjà
+// "ongoing"/"finished" est couvert séparément par le verrouillage post-match
+// existant (voir isLocked dans AvailabilityButtons). `lockHours` à 0 (ou
+// non positif) désactive complètement le gel.
+export function isPresenceFrozen(match, now, lockHours) {
+  if (!match || !(lockHours > 0)) return false;
+  if (getMatchTiming(match, now) !== "upcoming") return false;
+  const hoursUntilStart = (getMatchStart(match).getTime() - now.getTime()) / 3600000;
+  return hoursUntilStart <= lockHours;
 }
 
 // Écrit la réponse d'un joueur sur TOUS les terrains de la session. Si la
