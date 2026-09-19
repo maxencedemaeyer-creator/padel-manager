@@ -276,7 +276,7 @@ function MainApp() {
   return (
     <AppDataContext.Provider value={contextValue}>
       <div className="pm-root">
-        <Header setView={changeView} />
+        <Header setView={changeView} view={view} />
         <Suspense
           fallback={
             view === "game-center" ? (
