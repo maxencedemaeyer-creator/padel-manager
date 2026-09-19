@@ -3,17 +3,18 @@
 // Absent / Je ne sais pas encore, remplacés une fois qu'on a répondu par un
 // rectangle plein (angles droits, couleur pleine, sans contour) affichant
 // clairement la réponse du joueur — cliquable pour rouvrir une petite
-// fenêtre de changement de réponse, UNIQUEMENT tant que le match n'a pas
-// commencé (voir isLocked dans AvailabilityButtons : passé ce cap, le
-// rectangle devient un simple affichage, non cliquable, pour un joueur —
-// jamais pour l'admin — afin de ne pas fausser la compta, qui se base sur
-// `participants`) — accompagné de 3 mini-compteurs (pastille de couleur +
-// chiffre) poussés à droite, avec pop-up listant les joueurs par statut.
-// Côté admin : le panneau "qui a répondu" à côté de la date (aperçu, non
-// cliquable), ainsi qu'une modale "Gérer les présences" permettant à
-// l'admin de modifier sa propre présence ou celle de n'importe quel autre
-// joueur (même s'il n'a pas encore répondu, et même après le match), avec
-// possibilité de réinitialiser une réponse.
+// fenêtre de changement de réponse, tant que le match n'a pas commencé ET
+// (si le joueur est présent/réserve) qu'on n'est pas entré dans le gel avant
+// match (voir isLocked dans AvailabilityButtons, qui combine ces deux
+// verrous : passé l'un ou l'autre, le rectangle devient un simple affichage,
+// non cliquable, avec une petite explication — jamais pour l'admin, qui
+// garde toujours la main via ManagePresenceModal) — accompagné de 3
+// mini-compteurs (pastille de couleur + chiffre) poussés à droite, avec
+// pop-up listant les joueurs par statut. Côté admin : le panneau "qui a
+// répondu" à côté de la date (aperçu, non cliquable), ainsi qu'une modale
+// "Gérer les présences" permettant à l'admin de modifier sa propre présence
+// ou celle de n'importe quel autre joueur (même s'il n'a pas encore répondu,
+// et même après le match), avec possibilité de réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, formatDateFR, getFirstName } from "../../lib/utils";
@@ -25,6 +26,7 @@ import {
   setSessionAvailability,
   resetSessionAvailability,
   autoPlacePresentPlayer,
+  isPresenceFrozen,
 } from "../../lib/availability";
 import {
   getConvocationOverride,
@@ -188,7 +190,8 @@ function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
 // auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
 // conservée).
 export function AvailabilityButtons({ sessionMatches }) {
-  const { players, connectedPlayer, isAdmin, matches, presenceWindowDays } = useAppData();
+  const { players, connectedPlayer, isAdmin, matches, presenceWindowDays, presenceLockHours } =
+    useAppData();
   const now = useNow();
   const [saving, setSaving] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
@@ -200,21 +203,9 @@ export function AvailabilityButtons({ sessionMatches }) {
   // main sur sa propre réponse (il contrôle la convocation, il n'a pas à en
   // subir la fermeture) ; un joueur ayant déjà répondu garde sa réponse
   // modifiable quel que soit l'état de la convocation, mais seulement tant
-  // que le match n'a pas commencé — voir isLocked ci-dessous.
+  // que le match n'a pas commencé et, s'il est présent/réserve, tant qu'on
+  // n'est pas entré dans le gel avant match — voir isLocked ci-dessous.
   const convocationOpen = isConvocationOpen(sessionMatches, now, presenceWindowDays);
-
-  // Verrouillage post-match (hors admin) : une fois le match commencé, un
-  // joueur ne peut plus changer sa réponse — sinon il pourrait, par ex.,
-  // basculer sur "absent" après avoir joué et se retirer ainsi de
-  // `participants` (voir dropSelfJoinedSlot dans lib/availability.js), ce
-  // qui fausserait la compta (qui se base sur les participants du match) et
-  // les stats. L'admin, lui, garde toujours la main sur sa propre réponse
-  // (comme pour n'importe quel joueur, via ManagePresenceModal). Un match
-  // reporté "à une date inconnue" (statut "tbd") n'est jamais verrouillé ici
-  // puisqu'on ne sait pas s'il a eu lieu.
-  const sessionTiming = getMatchTiming(sessionMatches?.[0] || {}, now);
-  const isLocked =
-    !isAdmin && (sessionTiming === "ongoing" || sessionTiming === "finished");
 
   // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
   // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
@@ -237,6 +228,39 @@ export function AvailabilityButtons({ sessionMatches }) {
       (p) => p.playerId === connectedPlayer.id && p.selfJoined === true
     )
   );
+
+  // Verrouillage post-match (hors admin) : une fois le match commencé, un
+  // joueur ne peut plus changer sa réponse — sinon il pourrait, par ex.,
+  // basculer sur "absent" après avoir joué et se retirer ainsi de
+  // `participants` (voir dropSelfJoinedSlot dans lib/availability.js), ce
+  // qui fausserait la compta (qui se base sur les participants du match) et
+  // les stats. Un match reporté "à une date inconnue" (statut "tbd") n'est
+  // jamais verrouillé ici puisqu'on ne sait pas s'il a eu lieu.
+  const sessionTiming = getMatchTiming(sessionMatches?.[0] || {}, now);
+  const isPostMatchLocked =
+    !isAdmin && (sessionTiming === "ongoing" || sessionTiming === "finished");
+
+  // Gel de présence avant match (ajouté le 19/09/2026, voir constants.js →
+  // DEFAULT_PRESENCE_LOCK_HOURS, réglable depuis Administration) : à moins de
+  // `presenceLockHours` heures du match, un joueur déclaré "présent" ou
+  // "réserve" (RESERVE_STATUS) ne peut plus revenir en arrière lui-même —
+  // objectif : empêcher les désistements "faciles" de dernière minute qui
+  // dissuadaient les joueurs de se déclarer présents dès qu'ils risquaient de
+  // finir en réserve. Ne s'applique volontairement PAS à un joueur
+  // absent/incertain qui changerait d'avis pour devenir présent — arriver
+  // tardivement ne pose de problème à personne. L'admin garde, lui, un accès
+  // total et immédiat via ManagePresenceModal, à tout moment.
+  const isPreMatchFrozen =
+    !isAdmin &&
+    (myStatus === "present" || myStatus === RESERVE_STATUS) &&
+    isPresenceFrozen(sessionMatches?.[0], now, presenceLockHours);
+
+  const isLocked = isPostMatchLocked || isPreMatchFrozen;
+  const lockMessage = isPostMatchLocked
+    ? "Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
+    : isPreMatchFrozen
+    ? `Trop proche du match (moins de ${presenceLockHours}h) pour changer seul votre présence — prévenez l'équipe sur WhatsApp, ou contactez l'administrateur.`
+    : "";
 
   const respond = async (status) => {
     setSaving(true);
@@ -277,7 +301,7 @@ export function AvailabilityButtons({ sessionMatches }) {
         <div className="flex items-stretch gap-2">
           {isLocked ? (
             <div
-              title="Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
+              title={lockMessage}
               className={cn(
                 "flex-1 flex items-center justify-center px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide cursor-default",
                 STATUS_SOLID_CLASS[myStatus]
@@ -338,6 +362,12 @@ export function AvailabilityButtons({ sessionMatches }) {
             </button>
           </div>
         </div>
+
+        {isLocked && (
+          <p className="text-[10px] text-[var(--color-text-faint)] mt-1.5 leading-snug">
+            {lockMessage}
+          </p>
+        )}
 
         {openList && (
           <PlayerListModal
