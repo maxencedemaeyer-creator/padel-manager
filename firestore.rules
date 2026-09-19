@@ -102,6 +102,16 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
     }
 
+    // 10. Admin relations — préférences et incompatibilités entre joueurs de
+    // l'outil "Liens entre joueurs" (Administration). Ce sont des confidences
+    // faites à l'administrateur : verrouillée pour tout navigateur, comme
+    // player_credentials. Seul le SDK Admin (fonction serveur
+    // api/admin-relations.js, qui vérifie que l'appelant est administrateur)
+    // peut y lire et écrire.
+    match /adminRelations/{docId} {
+      allow read, write: if false;
+    }
+
     // Remarque : "isSignedIn()" est vrai dès qu'un visiteur charge le site,
     // même sans code PIN valide, car l'app se connecte automatiquement à
     // Firebase de façon anonyme (voir src/firebase.js). Cela bloque l'accès
