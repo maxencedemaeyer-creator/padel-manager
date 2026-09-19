@@ -221,6 +221,7 @@ export function CourtPanel({ match, now }) {
         canPay={canManagePayments}
         isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
         trackPayments={trackPayments}
+        matchStarted={timing === "ongoing" || finished}
         slotTeam={def.team}
         slotSide={def.side}
         isWinningTeam={Boolean(match.winningTeam) && match.winningTeam === def.team}
