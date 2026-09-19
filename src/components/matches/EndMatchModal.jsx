@@ -27,7 +27,7 @@ import { Modal, Button } from "../ui";
 // de 2 joueurs identifiables (cas qui ne devrait jamais arriver en usage
 // réel, voir §5 de la spec), `computeRankingUpdateForMatch` renvoie `null`
 // et seul le score est enregistré, sans bloquer l'enregistrement.
-async function applyMatchAndRanking({ match, players, sets, matchType, winningTeam, teamsUnreliable }) {
+async function applyMatchAndRanking({ match, players, matches, sets, matchType, winningTeam, teamsUnreliable }) {
   const batch = writeBatch(db);
   const matchUpdate = { scores: sets, matchType, winningTeam, teamsUnreliable };
 
@@ -50,6 +50,8 @@ async function applyMatchAndRanking({ match, players, sets, matchType, winningTe
       sets,
       winningTeam,
       previousLevelDeltas,
+      matches,
+      match,
     });
     if (rankingResult) matchUpdate.levelDeltas = rankingResult.levelDeltas;
   } else if (previousLevelDeltas) {
@@ -79,7 +81,7 @@ async function applyMatchAndRanking({ match, players, sets, matchType, winningTe
 }
 
 export function EndMatchModal({ match, onClose }) {
-  const { players } = useAppData();
+  const { players, matches } = useAppData();
 
   const initSet = (set) => {
     if (set && typeof set === "object") return { a: set.a ?? "", b: set.b ?? "" };
@@ -125,6 +127,7 @@ export function EndMatchModal({ match, onClose }) {
       await applyMatchAndRanking({
         match,
         players,
+        matches,
         sets,
         matchType: "Officiel",
         winningTeam: computeWinnerFromSets(sets),
@@ -146,6 +149,7 @@ export function EndMatchModal({ match, onClose }) {
       await applyMatchAndRanking({
         match,
         players,
+        matches,
         sets: { set1: null, set2: null, set3: null },
         matchType: "Amical",
         winningTeam: null,
