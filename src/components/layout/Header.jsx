@@ -99,14 +99,36 @@ export function WithdrawalAlertsModal({ alerts, onClose }) {
   );
 }
 
-export function Header({ setView }) {
+export function Header({ setView, view }) {
   const { connectedPlayer, isAdmin, logout } = useAppData();
   const withdrawalAlerts = useWithdrawalAlerts();
   const [showAlerts, setShowAlerts] = useState(false);
   const unreadCount = withdrawalAlerts.filter((a) => !a.read).length;
+  // Même principe que BottomNav.jsx : sur le Game Center (fond sombre),
+  // l'en-tête clair habituel (fond blanc, texte/boutons foncés) devient
+  // illisible. On bascule uniquement sur cet onglet vers une variante
+  // sombre — partout ailleurs, l'en-tête garde son style clair d'origine.
+  const isDark = view === "game-center";
+  // Base commune (fond/bordure/texte) des boutons ronds à droite — seule la
+  // couleur au survol reste propre à chaque bouton (sky pour actualiser/
+  // cloche, danger pour la déconnexion), inchangée par rapport à avant.
+  const iconBtnBase = cn(
+    "p-2.5 rounded-full transition-colors",
+    isDark
+      ? "bg-white/10 border border-white/15 text-white/70"
+      : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)]"
+  );
+  const iconBtnHoverSky = isDark
+    ? "hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50"
+    : "hover:text-sky-700 hover:border-sky-300";
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
+    <header
+      className={cn(
+        "sticky top-0 z-30 flex items-center justify-between px-5 py-4 backdrop-blur-md border-b",
+        isDark ? "bg-black/45 border-white/10" : "bg-[var(--color-nav)]/90 border-[var(--color-border)]"
+      )}
+    >
       <div className="flex items-center gap-2 min-w-0">
         <Icon.Ball className="w-5 h-5 text-[var(--color-lime)] shrink-0" />
         {/* Chez l'admin, la mention est réduite (et se réagrandit à partir
@@ -115,7 +137,8 @@ export function Header({ setView }) {
         <span
           className={cn(
             "pm-display font-extrabold truncate",
-            isAdmin ? "text-xs sm:text-base" : "text-base"
+            isAdmin ? "text-xs sm:text-base" : "text-base",
+            isDark && "text-white"
           )}
         >
           Padel Manager
@@ -125,10 +148,20 @@ export function Header({ setView }) {
         <button
           onClick={() => setView("stats")}
           aria-label="Mon profil"
-          className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-sky-300"
+          className={cn(
+            "flex items-center gap-2 pl-1 pr-3 py-1 rounded-full transition-colors",
+            isDark
+              ? "bg-white/10 border border-white/15 hover:border-[var(--color-lime)]/50"
+              : "bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-sky-300"
+          )}
         >
           <PlayerAvatar player={connectedPlayer} size={28} />
-          <span className="text-xs font-semibold max-w-[80px] truncate">
+          <span
+            className={cn(
+              "text-xs font-semibold max-w-[80px] truncate",
+              isDark && "text-white"
+            )}
+          >
             {getFirstName(connectedPlayer.name)}
           </span>
           {isAdmin && (
@@ -141,7 +174,7 @@ export function Header({ setView }) {
           onClick={() => window.location.reload()}
           aria-label="Actualiser la page"
           title="Actualiser la page"
-          className="p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
+          className={cn(iconBtnBase, iconBtnHoverSky)}
         >
           <Icon.Refresh className="w-4 h-4" />
         </button>
@@ -149,7 +182,7 @@ export function Header({ setView }) {
           <button
             onClick={() => setShowAlerts(true)}
             aria-label="Alertes de désinscription"
-            className="relative p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-sky-700 hover:border-sky-300"
+            className={cn("relative", iconBtnBase, iconBtnHoverSky)}
           >
             <Icon.Bell className="w-4 h-4" />
             {unreadCount > 0 && (
@@ -162,7 +195,10 @@ export function Header({ setView }) {
         <button
           onClick={logout}
           aria-label="Déconnexion"
-          className="p-2.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40"
+          className={cn(
+            iconBtnBase,
+            "hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40"
+          )}
         >
           <Icon.Logout className="w-4 h-4" />
         </button>
