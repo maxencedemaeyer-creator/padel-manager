@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
-import { DEFAULT_PRESENCE_WINDOW_DAYS } from "../lib/constants";
+import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS } from "../lib/constants";
 
 export function usePlayers() {
   const [players, setPlayers] = useState([]);
@@ -183,6 +183,9 @@ export function useAppSettings() {
     // absent), le Ranking reste invisible pour les joueurs non-admin, le
     // temps pour l'admin de le valider sur les vrais matchs du club.
     rankingEnabled: false,
+    // Gel de présence avant match (voir constants.js) — par défaut (document
+    // absent ou champ absent), le gel est actif à sa valeur par défaut.
+    presenceLockHours: DEFAULT_PRESENCE_LOCK_HOURS,
   });
   const [loading, setLoading] = useState(true);
 
@@ -201,6 +204,10 @@ export function useAppSettings() {
                 ? data.presenceWindowDays
                 : DEFAULT_PRESENCE_WINDOW_DAYS,
             rankingEnabled: data.rankingEnabled === true,
+            presenceLockHours:
+              typeof data.presenceLockHours === "number" && data.presenceLockHours >= 0
+                ? data.presenceLockHours
+                : DEFAULT_PRESENCE_LOCK_HOURS,
           });
           setLoading(false);
         },
