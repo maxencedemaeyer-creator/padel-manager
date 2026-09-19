@@ -7,7 +7,7 @@ import { doc, deleteDoc, setDoc, updateDoc, writeBatch } from "firebase/firestor
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming, computeWinnerFromSets, hasMatchScore, getMatchStart } from "../lib/matchLogic";
-import { DEFAULT_PRESENCE_WINDOW_DAYS, LEVELS } from "../lib/constants";
+import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS, LEVELS } from "../lib/constants";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -433,6 +433,93 @@ function PresenceWindowSettingCard({ value }) {
           />
           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--color-text-faint)]">
             jour{Number(days) > 1 ? "s" : ""}
+          </span>
+        </div>
+        <Button type="submit" disabled={saving} className="!py-2.5 !px-4 shrink-0">
+          {saving ? "..." : "Enregistrer"}
+        </Button>
+      </form>
+
+      {saveSuccess && (
+        <p className="text-xs font-semibold text-emerald-600 mt-2 flex items-center gap-1">
+          <Icon.CheckCircle className="w-4 h-4" /> Réglage mis à jour !
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// Carte "Gel de présence avant match" (ajoutée le 19/09/2026, demande de
+// Max) — réglage global du nombre d'heures avant un match à partir duquel un
+// joueur ayant répondu "présent" (titulaire OU réserve, voir RESERVE_STATUS
+// dans lib/availability.js) ne peut plus changer sa réponse ni se
+// désinscrire lui-même d'une place (voir isPresenceFrozen dans
+// lib/availability.js, utilisé par AvailabilityButtons dans Availability.jsx
+// et par CourtPanel.selfLeave) — il est alors invité à prévenir l'équipe sur
+// WhatsApp ou à contacter l'administrateur, qui lui garde un accès total et
+// immédiat via "Gérer les présences", à tout moment. Objectif : empêcher les
+// désistements "faciles" de dernière minute qui dissuadaient les joueurs de
+// se déclarer présents dès qu'ils risquaient de finir en réserve (ils
+// redoutaient qu'un titulaire se désiste sur un coup de tête juste avant le
+// match, en comptant sur eux pour combler la place). Ne s'applique jamais à
+// un match "à une date inconnue" (statut "tbd"), ni — bien sûr — une fois le
+// match commencé (déjà couvert séparément par le verrouillage post-match,
+// voir claude/fix-presence-verrouillee-apres-match-2026-09-18.md). 0 =
+// fonctionnalité désactivée (aucun gel). Même mécanique d'écriture que
+// PresenceWindowSettingCard ci-dessus : settings/appConfig →
+// presenceLockHours, répercuté en temps réel via useAppSettings.
+function PresenceLockSettingCard({ value }) {
+  const [hours, setHours] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    setHours(String(value));
+  }, [value]);
+
+  const isDisabled = value <= 0;
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const n = parseInt(hours, 10);
+    if (!Number.isFinite(n) || n < 0) return;
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "settings", "appConfig"), { presenceLockHours: n }, { merge: true });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5 mb-6">
+      <h3 className="font-semibold text-sm mb-1">Gel de présence avant match</h3>
+      <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
+        Nombre d'heures avant un match à partir duquel un joueur présent (titulaire ou réserve) ne
+        peut plus changer sa réponse ou se désinscrire lui-même — il doit alors prévenir l'équipe
+        sur WhatsApp ou vous contacter directement. Vous gardez, vous, un accès total à tout moment
+        via "Gérer les présences".{" "}
+        {isDisabled
+          ? "Actuellement : désactivé (aucun gel)."
+          : `Actuellement : ${value}h avant chaque match.`}
+      </p>
+
+      <form onSubmit={handleSave} className="flex items-center gap-3 max-w-sm">
+        <div className="relative flex-1">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            className={inputClass}
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--color-text-faint)]">
+            heure{Number(hours) > 1 ? "s" : ""}
           </span>
         </div>
         <Button type="submit" disabled={saving} className="!py-2.5 !px-4 shrink-0">
@@ -901,6 +988,7 @@ export function AdminView() {
     maintenanceEnabled,
     presenceWindowDays,
     rankingEnabled,
+    presenceLockHours,
   } = useAppData();
   const [showCreateSeason, setShowCreateSeason] = useState(false);
   const [showManageClubs, setShowManageClubs] = useState(false);
@@ -981,6 +1069,7 @@ export function AdminView() {
       <GameCenterSettingCard enabled={gameCenterEnabled} />
       <RankingSettingCard enabled={rankingEnabled} />
       <PresenceWindowSettingCard value={presenceWindowDays} />
+      <PresenceLockSettingCard value={presenceLockHours} />
       <RankingSetupToolsCard players={players} matches={matches} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
