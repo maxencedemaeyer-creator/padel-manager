@@ -3,11 +3,11 @@
 // gestion des clubs, génération d'abonnements.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from "react";
-import { doc, deleteDoc, setDoc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, deleteDoc, deleteField, onSnapshot, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
-import { getMatchTiming, computeWinnerFromSets, hasMatchScore, getMatchStart } from "../lib/matchLogic";
-import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS, LEVELS } from "../lib/constants";
+import { getMatchTiming } from "../lib/matchLogic";
+import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS } from "../lib/constants";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -15,12 +15,8 @@ import {
   getUnpaidPastParticipations,
   participantsOf,
 } from "../lib/stats";
-import {
-  getPlayerRatingState,
-  computeFreshRankingForMatch,
-  getDivergence,
-  suggestLevelForScore,
-} from "../lib/levelRating";
+import { getDivergence, suggestLevelForScore, RANKING_ENGINE_VERSION } from "../lib/levelRating";
+import { computeFullRecalculation } from "../lib/rankingRecalc";
 import { useAppData } from "../context/AppContext";
 import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState, Switch, Modal, Field, inputClass } from "../components/ui";
@@ -106,167 +102,251 @@ function RankingSettingCard({ enabled }) {
   );
 }
 
-// Outils de mise en place du Ranking (§4.9/§7.4/§8 de
-// claude/feature-ranking-padel-manager.md) — DEUX scripts ponctuels, à
-// lancer une seule fois au déploiement de cette feature, DANS L'ORDRE
-// (Étape 1 puis Étape 2). Les deux sont idempotents : les relancer par
-// erreur, ou plus tard sans rien à traiter, ne fait rien de mal (voir le
-// détail de chaque fonction ci-dessous). Card volontairement peu
-// "définitive" dans son style — ce n'est pas un réglage permanent comme les
-// cartes ci-dessus, juste un outil à utiliser une fois puis à ignorer.
-function RankingSetupToolsCard({ players, matches }) {
-  const [levelsBusy, setLevelsBusy] = useState(false);
-  const [levelsResult, setLevelsResult] = useState(null);
-  const [backfillBusy, setBackfillBusy] = useState(false);
-  const [backfillResult, setBackfillResult] = useState(null);
+// Carte "Recalcul du ranking" (§7 de
+// claude/feature-ranking-v2-progression-assiduite-2026-09-19.md) — rejoue
+// TOUT l'historique des matchs officiels notés avec les règles du code
+// actuellement déployé (src/lib/rankingRecalc.js). Remplace les anciennes
+// "Étape 1" et "Étape 2" de mise en place. Deux boutons : "Aperçu" (calcule
+// et affiche ce qui changerait, sans rien écrire) et "Appliquer" (écrit,
+// après confirmation). Un numéro de version du calcul
+// (RANKING_ENGINE_VERSION, src/lib/levelRating.js) est comparé à celui du
+// dernier recalcul appliqué (settings/appConfig) : s'ils diffèrent, la carte
+// affiche "Recalcul conseillé". Lue directement ici (onSnapshot) plutôt que
+// via useAppSettings, pour ne toucher qu'à ce fichier.
+function formatRankingValue(value) {
+  return value == null ? "—" : value.toFixed(2).replace(".", ",");
+}
 
-  // Étape 1 — corrige `levelSortValue` sur tous les joueurs existants à
-  // partir de leur `level` (label) actuel et de la grille LEVELS corrigée
-  // (voir §7.4). Recalcule TOUJOURS à partir du label (jamais de l'ancienne
-  // valeur numérique) : relancer ce bouton plusieurs fois ne fait que
-  // ré-écrire la même valeur correcte, sans effet de bord.
-  const runLevelsFix = async () => {
-    const sure = window.confirm(
-      "Corriger le niveau (levelSortValue) de tous les joueurs existants à partir de la grille LEVELS corrigée ? À faire UNE FOIS, avant de lancer le backfill du Ranking ci-dessous."
-    );
-    if (!sure) return;
-    setLevelsBusy(true);
-    try {
-      const toFix = players.filter((p) => {
-        const levelInfo = LEVELS.find((l) => l.label === (p.level || "Pas de niveau"));
-        const correctValue = levelInfo ? levelInfo.value : 0;
-        return p.levelSortValue !== correctValue;
-      });
-      for (let i = 0; i < toFix.length; i += 450) {
-        const chunk = toFix.slice(i, i + 450);
-        const batch = writeBatch(db);
-        chunk.forEach((p) => {
-          const levelInfo = LEVELS.find((l) => l.label === (p.level || "Pas de niveau"));
-          batch.update(doc(db, "players", p.id), {
-            levelSortValue: levelInfo ? levelInfo.value : 0,
-          });
-        });
-        await batch.commit();
+function RankingRecalcPreviewModal({ preview, onClose, onApply, busy }) {
+  const rows = preview.playerRows
+    .slice()
+    .sort((a, b) => {
+      const da = a.before != null && a.after != null ? Math.abs(a.after - a.before) : 0;
+      const db2 = b.before != null && b.after != null ? Math.abs(b.after - b.before) : 0;
+      return db2 - da || a.name.localeCompare(b.name);
+    });
+  const { stats } = preview;
+  return (
+    <Modal
+      title="Aperçu du recalcul du ranking"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Fermer
+          </Button>
+          <Button onClick={onApply} disabled={busy}>
+            {busy ? "Recalcul en cours..." : "Appliquer le recalcul"}
+          </Button>
+        </>
       }
-      setLevelsResult(`${toFix.length} joueur${toFix.length !== 1 ? "s" : ""} corrigé${toFix.length !== 1 ? "s" : ""} (sur ${players.length}).`);
+    >
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Rien n'est encore enregistré : voici ce que donnerait le rejeu de tout l'historique avec
+        les règles actuelles. {stats.matchesReplayed} match{stats.matchesReplayed !== 1 ? "s" : ""}{" "}
+        rejoué{stats.matchesReplayed !== 1 ? "s" : ""}, {stats.playersChanged} joueur
+        {stats.playersChanged !== 1 ? "s" : ""} modifié{stats.playersChanged !== 1 ? "s" : ""}
+        {stats.matchesSkipped > 0
+          ? `, ${stats.matchesSkipped} match${stats.matchesSkipped !== 1 ? "s" : ""} ignoré${stats.matchesSkipped !== 1 ? "s" : ""} (composition incomplète)`
+          : ""}
+        .
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {rows.map((row) => {
+          const diff = row.before != null && row.after != null ? row.after - row.before : null;
+          return (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--color-surface-2)]"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{row.name}</p>
+                <p className="text-[10px] text-[var(--color-text-faint)]">
+                  {row.level} · {row.matchesCount} match{row.matchesCount !== 1 ? "s" : ""} noté
+                  {row.matchesCount !== 1 ? "s" : ""}
+                  {row.levelFixed ? " · niveau technique corrigé" : ""}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="pm-mono text-xs font-bold">
+                  {formatRankingValue(row.before)} → {formatRankingValue(row.after)}
+                </p>
+                {diff != null && Math.abs(diff) >= 0.005 && (
+                  <p
+                    className={`pm-mono text-[10px] font-bold ${
+                      diff > 0 ? "text-emerald-600" : "text-rose-600"
+                    }`}
+                  >
+                    {diff > 0 ? "+" : ""}
+                    {diff.toFixed(2).replace(".", ",")}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+function RankingRecalcCard({ players, matches }) {
+  const [applied, setApplied] = useState({ loading: true, version: 0, at: null });
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(
+        doc(db, "settings", "appConfig"),
+        (snap) => {
+          const data = snap.exists() ? snap.data() : {};
+          setApplied({
+            loading: false,
+            version:
+              typeof data.rankingEngineVersionApplied === "number"
+                ? data.rankingEngineVersionApplied
+                : 0,
+            at: typeof data.rankingRecalcAt === "string" ? data.rankingRecalcAt : null,
+          });
+        },
+        (error) => {
+          console.error(error);
+          setApplied((prev) => ({ ...prev, loading: false }));
+        }
+      );
     } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    } finally {
-      setLevelsBusy(false);
+      console.error(error);
     }
+    return () => unsub();
+  }, []);
+
+  const recommended = !applied.loading && applied.version !== RANKING_ENGINE_VERSION;
+
+  const showPreview = () => {
+    setResult(null);
+    setPreview(computeFullRecalculation({ players, matches }));
   };
 
-  // Étape 2 — rejeu chronologique de l'historique existant (§4.9, option B).
-  // Idempotent via le filtre `!m.levelDeltas` : un match déjà traité (par un
-  // run précédent de ce bouton, ou par un vrai match live entre-temps)
-  // n'est jamais rejoué une deuxième fois. L'état de chaque joueur est
-  // maintenu EN MÉMOIRE au fil du rejeu (pas de relecture Firestore à
-  // chaque match) pour un vrai rejeu chronologique cohérent — voir
-  // computeFreshRankingForMatch dans src/lib/levelRating.js.
-  const runBackfill = async () => {
+  // Le calcul est refait à partir des données les plus récentes au moment
+  // du clic (jamais à partir d'un aperçu resté ouvert longtemps).
+  const apply = async () => {
     const sure = window.confirm(
-      "Lancer le backfill du Ranking ? Ceci rejoue chronologiquement tous les matchs Officiels déjà notés qui n'ont pas encore de levelDeltas. Assurez-vous d'avoir déjà lancé l'Étape 1 ci-dessus au moins une fois."
+      "Appliquer le recalcul ? Le ranking de tous les joueurs et le détail de chaque match officiel seront réécrits à partir de l'historique complet. À lancer quand personne n'est en train d'encoder un score."
     );
     if (!sure) return;
-    setBackfillBusy(true);
+    setBusy(true);
     try {
-      const targets = matches
-        .filter((m) => m.matchType === "Officiel" && hasMatchScore(m) && !m.levelDeltas)
-        .sort((a, b) => {
-          const diff = getMatchStart(a) - getMatchStart(b);
-          return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
-        });
-
-      const statesById = {};
-      players.forEach((p) => {
-        statesById[p.id] = getPlayerRatingState(p);
+      const plan = computeFullRecalculation({ players, matches });
+      const ops = [];
+      plan.matchWrites.forEach((w) => {
+        ops.push({ ref: doc(db, "matches", w.matchId), data: { levelDeltas: w.levelDeltas } });
       });
-
-      const matchWrites = [];
-      const touchedPlayerIds = new Set();
-      let skippedIncomplete = 0;
-
-      targets.forEach((m) => {
-        const teamAIds = (m.participants || []).filter((p) => p.team === "A").map((p) => p.playerId);
-        const teamBIds = (m.participants || []).filter((p) => p.team === "B").map((p) => p.playerId);
-        const winningTeam = computeWinnerFromSets(m.scores || {});
-        const fresh = computeFreshRankingForMatch({
-          teamAIds,
-          teamBIds,
-          statesById,
-          sets: m.scores || {},
-          winningTeam,
-        });
-        if (!fresh) {
-          skippedIncomplete += 1;
-          return;
+      plan.matchClears.forEach((matchId) => {
+        ops.push({ ref: doc(db, "matches", matchId), data: { levelDeltas: deleteField() } });
+      });
+      Object.entries(plan.playerWrites).forEach(([playerId, write]) => {
+        const data = {};
+        if (write.levelSortValue !== undefined) data.levelSortValue = write.levelSortValue;
+        if (write.unrank) {
+          data.internalScore = deleteField();
+          data.internalScoreReliability = deleteField();
+        } else if (write.internalScore !== undefined) {
+          data.internalScore = write.internalScore;
+          data.internalScoreReliability = write.internalScoreReliability;
         }
-        matchWrites.push({ matchId: m.id, levelDeltas: fresh.levelDeltas });
-        Object.entries(fresh.newStates).forEach(([id, state]) => {
-          statesById[id] = state;
-          touchedPlayerIds.add(id);
-        });
+        ops.push({ ref: doc(db, "players", playerId), data });
       });
-
-      const allOps = [
-        ...matchWrites.map((w) => ({
-          ref: doc(db, "matches", w.matchId),
-          data: { levelDeltas: w.levelDeltas },
-        })),
-        ...[...touchedPlayerIds].map((id) => ({
-          ref: doc(db, "players", id),
-          data: {
-            internalScore: statesById[id].score,
-            internalScoreReliability: statesById[id].reliability,
-          },
-        })),
-      ];
-      for (let i = 0; i < allOps.length; i += 450) {
-        const chunk = allOps.slice(i, i + 450);
+      for (let i = 0; i < ops.length; i += 450) {
         const batch = writeBatch(db);
-        chunk.forEach((op) => batch.update(op.ref, op.data));
+        ops.slice(i, i + 450).forEach((op) => batch.update(op.ref, op.data));
         await batch.commit();
       }
-
-      setBackfillResult(
-        `${matchWrites.length} match${matchWrites.length !== 1 ? "s" : ""} rejoué${matchWrites.length !== 1 ? "s" : ""}, ${touchedPlayerIds.size} joueur${touchedPlayerIds.size !== 1 ? "s" : ""} mis à jour${
-          skippedIncomplete > 0 ? ` (${skippedIncomplete} match${skippedIncomplete !== 1 ? "s" : ""} ignoré${skippedIncomplete !== 1 ? "s" : ""}, composition incomplète)` : ""
+      await setDoc(
+        doc(db, "settings", "appConfig"),
+        {
+          rankingEngineVersionApplied: RANKING_ENGINE_VERSION,
+          rankingRecalcAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      setPreview(null);
+      const { stats } = plan;
+      setResult(
+        `${stats.matchesReplayed} match${stats.matchesReplayed !== 1 ? "s" : ""} rejoué${stats.matchesReplayed !== 1 ? "s" : ""}, ${stats.playersChanged} joueur${stats.playersChanged !== 1 ? "s" : ""} mis à jour${
+          stats.matchesSkipped > 0
+            ? ` (${stats.matchesSkipped} match${stats.matchesSkipped !== 1 ? "s" : ""} ignoré${stats.matchesSkipped !== 1 ? "s" : ""}, composition incomplète)`
+            : ""
         }.`
       );
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
-      setBackfillBusy(false);
+      setBusy(false);
     }
   };
 
+  let lastRecalcLabel = "Aucun recalcul enregistré pour l'instant.";
+  if (applied.version > 0) {
+    lastRecalcLabel = `Dernier recalcul : version ${applied.version}`;
+    if (applied.at) {
+      const when = new Date(applied.at);
+      if (!Number.isNaN(when.getTime())) {
+        lastRecalcLabel += ` · le ${when.toLocaleDateString("fr-FR")} à ${when.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+      }
+    }
+    lastRecalcLabel += ".";
+  }
+
   return (
-    <Card className="p-4 sm:p-5 mb-6">
-      <h3 className="font-semibold text-sm mb-1">Mise en place du Ranking</h3>
-      <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
-        Deux actions ponctuelles à lancer UNE FOIS, dans l'ordre, au déploiement de cette
-        fonctionnalité — sans effet si relancées par erreur (idempotentes).
+    <Card className={cn("p-4 sm:p-5 mb-6", recommended && "border-amber-200 bg-amber-50/70")}>
+      <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
+        <Icon.Refresh className="w-4 h-4 text-[var(--color-lime)]" /> Recalcul du ranking
+      </h3>
+      <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
+        Rejoue tout l'historique des matchs officiels notés avec les règles de calcul actuelles
+        (version {RANKING_ENGINE_VERSION}), en repartant du niveau officiel actuel de chaque
+        joueur. À utiliser après chaque changement des règles du ranking. Les rankings visibles
+        peuvent changer d'un coup — lancez d'abord l'aperçu, et de préférence quand personne
+        n'encode de score.
       </p>
-      <div className="flex flex-col gap-2 mb-2">
-        <Button variant="secondary" className="!py-2.5 !text-xs w-full" onClick={runLevelsFix} disabled={levelsBusy}>
-          {levelsBusy ? "Correction en cours..." : "Étape 1 — Corriger le niveau des joueurs existants"}
+      {recommended && (
+        <p className="text-[11px] font-semibold text-amber-700 flex items-center gap-1 mb-2">
+          <Icon.AlertCircle className="w-3.5 h-3.5" /> Recalcul conseillé — le calcul a changé
+          depuis le dernier recalcul.
+        </p>
+      )}
+      {!recommended && !applied.loading && (
+        <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 mb-2">
+          <Icon.CheckCircle className="w-3.5 h-3.5" /> Ranking à jour avec la version{" "}
+          {RANKING_ENGINE_VERSION} du calcul.
+        </p>
+      )}
+      <p className="text-[11px] text-[var(--color-text-faint)] mb-3">{lastRecalcLabel}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" className="!py-2.5 !text-xs w-full" onClick={showPreview} disabled={busy}>
+          Aperçu
         </Button>
-        {levelsResult && (
-          <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
-            <Icon.CheckCircle className="w-3.5 h-3.5" /> {levelsResult}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <Button variant="secondary" className="!py-2.5 !text-xs w-full" onClick={runBackfill} disabled={backfillBusy}>
-          {backfillBusy ? "Backfill en cours..." : "Étape 2 — Lancer le backfill du Ranking"}
+        <Button className="!py-2.5 !text-xs w-full" onClick={apply} disabled={busy}>
+          {busy ? "Recalcul en cours..." : "Appliquer"}
         </Button>
-        {backfillResult && (
-          <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
-            <Icon.CheckCircle className="w-3.5 h-3.5" /> {backfillResult}
-          </p>
-        )}
       </div>
+      {result && (
+        <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 mt-3">
+          <Icon.CheckCircle className="w-3.5 h-3.5" /> {result}
+        </p>
+      )}
+      {preview && (
+        <RankingRecalcPreviewModal
+          preview={preview}
+          onClose={() => setPreview(null)}
+          onApply={apply}
+          busy={busy}
+        />
+      )}
     </Card>
   );
 }
@@ -1076,7 +1156,7 @@ export function AdminView() {
       <RankingSettingCard enabled={rankingEnabled} />
       <PresenceWindowSettingCard value={presenceWindowDays} />
       <PresenceLockSettingCard value={presenceLockHours} />
-      <RankingSetupToolsCard players={players} matches={matches} />
+      <RankingRecalcCard players={players} matches={matches} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {stats.map((s) => (
