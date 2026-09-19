@@ -1,0 +1,160 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Recalcul complet du Ranking (bouton admin "Recalcul du ranking") — rejoue
+// TOUT l'historique des matchs officiels notés, dans l'ordre chronologique,
+// avec les règles du code actuellement déployé (voir
+// RANKING_ENGINE_VERSION dans src/lib/levelRating.js et
+// claude/feature-ranking-v2-progression-assiduite-2026-09-19.md §7).
+//
+// Fichier PUR (aucune écriture Firebase ici) : `computeFullRecalculation`
+// ne fait que calculer ce qui SERAIT écrit. AdminView.jsx s'en sert d'abord
+// pour l'aperçu (sans rien écrire), puis pour l'application réelle.
+//
+// Point de départ : le niveau officiel ACTUEL de chaque joueur (relu depuis
+// son libellé `level`, comme le faisait l'ancienne "Étape 1", ce qui répare
+// aussi un éventuel `levelSortValue` incohérent). Les recalibrages manuels de
+// niveau faits dans le passé ne sont pas rejoués : chaque joueur repart de
+// son niveau officiel d'aujourd'hui et rejoue tous ses matchs depuis le
+// premier.
+// ─────────────────────────────────────────────────────────────────────────
+import { LEVELS } from "./constants";
+import { computeWinnerFromSets, hasMatchScore } from "./matchLogic";
+import {
+  getPlayerRatingState,
+  getScoreBase,
+  computeFreshRankingForMatch,
+  compareMatchesChronologically,
+} from "./levelRating";
+
+const EPSILON = 1e-9;
+
+function officialLevelValue(player) {
+  const levelInfo = LEVELS.find((l) => l.label === (player.level || "Pas de niveau"));
+  if (levelInfo) return levelInfo.value;
+  return typeof player.levelSortValue === "number" ? player.levelSortValue : 0;
+}
+
+// Retourne :
+// - `playerRows` : une ligne par joueur (pour l'aperçu) — ancien/nouveau
+//   ranking, nombre de matchs rejoués.
+// - `playerWrites` : `{ [playerId]: { levelSortValue?, internalScore?,
+//   internalScoreReliability?, unrank? } }` — uniquement les joueurs dont
+//   une donnée change réellement. `unrank: true` = supprimer
+//   internalScore/internalScoreReliability (retour à "score de base" ou
+//   "Non classé").
+// - `matchWrites` : `[{ matchId, levelDeltas }]` — matchs à (ré)écrire.
+// - `matchClears` : ids de matchs qui portent un `levelDeltas` devenu sans
+//   objet (plus officiel, plus de score, composition incomplète) — à effacer.
+// - `stats`.
+export function computeFullRecalculation({ players, matches }) {
+  const statesById = {};
+  const historyById = {};
+  const startById = {};
+  const countById = {};
+  const levelFixById = {};
+
+  players.forEach((p) => {
+    const levelValue = officialLevelValue(p);
+    if (p.levelSortValue !== levelValue) levelFixById[p.id] = levelValue;
+    const base = getScoreBase(levelValue);
+    statesById[p.id] =
+      base == null
+        ? { score: null, reliability: 0, hasRanking: false }
+        : { score: base, reliability: 0, hasRanking: true };
+    historyById[p.id] = [];
+    startById[p.id] = base;
+    countById[p.id] = 0;
+  });
+
+  const eligible = (matches || [])
+    .filter((m) => m.matchType === "Officiel" && hasMatchScore(m))
+    .sort(compareMatchesChronologically);
+
+  const matchWrites = [];
+  const replayedIds = new Set();
+  let skippedIncomplete = 0;
+
+  eligible.forEach((m) => {
+    const teamAIds = (m.participants || []).filter((p) => p.team === "A").map((p) => p.playerId);
+    const teamBIds = (m.participants || []).filter((p) => p.team === "B").map((p) => p.playerId);
+    const contextById = {};
+    [...teamAIds, ...teamBIds].forEach((id) => {
+      if (statesById[id]) contextById[id] = { history: historyById[id], startRef: startById[id] };
+    });
+    const fresh = computeFreshRankingForMatch({
+      teamAIds,
+      teamBIds,
+      statesById,
+      sets: m.scores || {},
+      winningTeam: computeWinnerFromSets(m.scores || {}),
+      contextById,
+    });
+    if (!fresh) {
+      skippedIncomplete += 1;
+      return;
+    }
+    matchWrites.push({ matchId: m.id, levelDeltas: fresh.levelDeltas });
+    replayedIds.add(m.id);
+    Object.entries(fresh.newStates).forEach(([id, state]) => {
+      statesById[id] = state;
+      historyById[id] = [...historyById[id], state.score];
+      if (startById[id] == null) startById[id] = state.score;
+      countById[id] += 1;
+    });
+  });
+
+  const matchClears = (matches || [])
+    .filter((m) => m.levelDeltas && !replayedIds.has(m.id))
+    .map((m) => m.id);
+
+  const playerRows = [];
+  const playerWrites = {};
+  players.forEach((p) => {
+    const before = getPlayerRatingState(p);
+    const after = statesById[p.id];
+    // Sans aucun match rejoué, le joueur retombe sur son ranking "de base"
+    // (calculé à la volée à partir de son niveau officiel) : on supprime les
+    // champs stockés plutôt que d'y écrire une valeur redondante.
+    const afterScore = after.hasRanking ? after.score : null;
+    const afterReliability = after.hasRanking ? after.reliability : 0;
+    const write = {};
+    if (levelFixById[p.id] !== undefined) write.levelSortValue = levelFixById[p.id];
+
+    const hadStored = typeof p.internalScore === "number";
+    if (countById[p.id] > 0) {
+      const same =
+        hadStored &&
+        Math.abs(p.internalScore - afterScore) < EPSILON &&
+        Math.abs((p.internalScoreReliability || 0) - afterReliability) < EPSILON;
+      if (!same) {
+        write.internalScore = afterScore;
+        write.internalScoreReliability = afterReliability;
+      }
+    } else if (hadStored || typeof p.internalScoreReliability === "number") {
+      write.unrank = true;
+    }
+    if (Object.keys(write).length > 0) playerWrites[p.id] = write;
+
+    playerRows.push({
+      id: p.id,
+      name: p.name,
+      level: p.level || "Pas de niveau",
+      before: before.hasRanking ? before.score : null,
+      after: afterScore,
+      matchesCount: countById[p.id],
+      levelFixed: levelFixById[p.id] !== undefined,
+    });
+  });
+
+  return {
+    playerRows,
+    playerWrites,
+    matchWrites,
+    matchClears,
+    stats: {
+      matchesReplayed: matchWrites.length,
+      matchesSkipped: skippedIncomplete,
+      matchesCleared: matchClears.length,
+      playersChanged: Object.keys(playerWrites).length,
+    },
+  };
+}
