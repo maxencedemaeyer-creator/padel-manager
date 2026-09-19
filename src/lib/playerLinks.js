@@ -307,47 +307,76 @@ function evaluateOpponentLink(ctx, relations, x, y, nameOf) {
   return { ...base, status: "gray", label: "Neutre", notes: [], penalty: 0 };
 }
 
-// Évalue les 3 façons de faire deux équipes avec 4 joueurs et les classe de la
-// plus harmonieuse à la moins harmonieuse. NE PLACE PERSONNE et ne modifie
-// rien : c'est un simple calcul de lecture.
+// Tous les moyens de couper une liste en paires (appariements parfaits) :
+// 3 pour 4 éléments, 105 pour 8.
+function perfectMatchings(items) {
+  if (items.length === 0) return [[]];
+  const [first, ...rest] = items;
+  const out = [];
+  rest.forEach((partner, i) => {
+    const remaining = rest.filter((_, j) => j !== i);
+    perfectMatchings(remaining).forEach((m) => out.push([[first, partner], ...m]));
+  });
+  return out;
+}
+
+// Nombre de joueurs acceptés par le simulateur : 4 (un match) ou 8 (une
+// session de deux matchs, la situation habituelle du club).
+export const SIMULATOR_SIZES = [4, 8];
+
+// Évalue toutes les façons de répartir 4 joueurs (1 match : 3 combinaisons) ou
+// 8 joueurs (2 matchs : 315 combinaisons = 105 façons de former 4 paires ×
+// 3 façons d'opposer ces paires deux à deux) et les classe de la plus
+// harmonieuse à la moins harmonieuse. NE PLACE PERSONNE et ne modifie rien :
+// c'est un simple calcul de lecture.
 //
-// Classement : toute répartition qui contient une paire "à éviter" passe en
+// Chaque combinaison = { matches: [{ teams: [[a,b],[c,d]], partnerLinks,
+// opponentLinks }], attentionCount, hasAvoid, greenCount, score, best }.
+//
+// Classement : toute combinaison qui contient une paire "à éviter" passe en
 // dernier ; ensuite, somme de pénalités (un désaccord ou une paire trop
 // fréquente pèse plus qu'un adversaire trop fréquent, et un adversaire
 // fréquent entre deux joueurs Indifférents pèse le moins) ; à égalité, celle
-// qui a le plus de liens verts passe devant.
-export function evaluateSplits(ctx, relations, fourIds, nameOf) {
-  if (!Array.isArray(fourIds) || fourIds.length !== 4) return [];
-  const [p0, p1, p2, p3] = fourIds;
-  const rawSplits = [
-    [[p0, p1], [p2, p3]],
-    [[p0, p2], [p1, p3]],
-    [[p0, p3], [p1, p2]],
-  ];
+// qui a le plus de liens verts passe devant. Deux joueurs placés dans deux
+// matchs différents ne se rencontrent pas : seuls les liens DANS un même
+// match comptent.
+export function evaluateConfigurations(ctx, relations, ids, nameOf) {
+  if (!Array.isArray(ids) || !SIMULATOR_SIZES.includes(ids.length)) return [];
 
-  const evaluated = rawSplits.map((teams, index) => {
-    const [[a, b], [c, d]] = teams;
-    const partnerLinks = [
-      evaluatePartnerLink(ctx, relations, a, b, nameOf),
-      evaluatePartnerLink(ctx, relations, c, d, nameOf),
-    ];
-    const opponentLinks = [
-      evaluateOpponentLink(ctx, relations, a, c, nameOf),
-      evaluateOpponentLink(ctx, relations, a, d, nameOf),
-      evaluateOpponentLink(ctx, relations, b, c, nameOf),
-      evaluateOpponentLink(ctx, relations, b, d, nameOf),
-    ];
-    const all = [...partnerLinks, ...opponentLinks];
-    return {
-      index,
-      teams,
-      partnerLinks,
-      opponentLinks,
-      attentionCount: all.filter((l) => ATTENTION_STATUSES.includes(l.status)).length,
-      hasAvoid: all.some((l) => l.status === "avoid"),
-      greenCount: all.filter((l) => l.status === "green").length,
-      score: all.reduce((sum, l) => sum + l.penalty, 0),
-    };
+  const evaluated = [];
+  perfectMatchings(ids).forEach((pairs) => {
+    // Les paires sont ensuite opposées deux à deux pour former les matchs.
+    perfectMatchings(pairs.map((_, i) => i)).forEach((grouping) => {
+      const matches = grouping.map(([i, j]) => {
+        const [a, b] = pairs[i];
+        const [c, d] = pairs[j];
+        return {
+          teams: [
+            [a, b],
+            [c, d],
+          ],
+          partnerLinks: [
+            evaluatePartnerLink(ctx, relations, a, b, nameOf),
+            evaluatePartnerLink(ctx, relations, c, d, nameOf),
+          ],
+          opponentLinks: [
+            evaluateOpponentLink(ctx, relations, a, c, nameOf),
+            evaluateOpponentLink(ctx, relations, a, d, nameOf),
+            evaluateOpponentLink(ctx, relations, b, c, nameOf),
+            evaluateOpponentLink(ctx, relations, b, d, nameOf),
+          ],
+        };
+      });
+      const all = matches.flatMap((m) => [...m.partnerLinks, ...m.opponentLinks]);
+      evaluated.push({
+        index: evaluated.length,
+        matches,
+        attentionCount: all.filter((l) => ATTENTION_STATUSES.includes(l.status)).length,
+        hasAvoid: all.some((l) => l.status === "avoid"),
+        greenCount: all.filter((l) => l.status === "green").length,
+        score: all.reduce((sum, l) => sum + l.penalty, 0),
+      });
+    });
   });
 
   evaluated.sort((s1, s2) => {
