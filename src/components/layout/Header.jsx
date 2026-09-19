@@ -126,7 +126,11 @@ export function Header({ setView, view }) {
     <header
       className={cn(
         "sticky top-0 z-30 flex items-center justify-between px-5 py-4 backdrop-blur-md border-b",
-        isDark ? "bg-black/45 border-white/10" : "bg-[var(--color-nav)]/90 border-[var(--color-border)]"
+        // Bleu-nuit proche du fond du Game Center (voir le dégradé
+        // #0B0B1E → #13132C dans GameCenterView.jsx), plutôt qu'un gris
+        // neutre — pour que l'en-tête ait l'air de prolonger ce fond au
+        // lieu de sembler être un simple overlay sombre générique.
+        isDark ? "bg-[#12122c]/85 border-white/10" : "bg-[var(--color-nav)]/90 border-[var(--color-border)]"
       )}
     >
       <div className="flex items-center gap-2 min-w-0">
