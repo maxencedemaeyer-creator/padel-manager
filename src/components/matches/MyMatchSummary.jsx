@@ -28,13 +28,9 @@ const UPCOMING_WINDOW_DAYS = 15;
 const UPCOMING_SESSIONS_COUNT = 2;
 
 export function MyMatchSummary({ now }) {
-  const { connectedPlayer, players, matches, isAdmin, presenceWindowDays, rankingEnabled, setView } =
-    useAppData();
-  // Ranking (voir claude/feature-ranking-padel-manager.md §6) — petit lien
-  // discret vers "Mon profil", sans jamais afficher le chiffre ici (ce
-  // n'est pas un 3e emplacement public, juste un raccourci vers le 2e).
-  // Même condition d'affichage que PlayerRow.jsx/StatsView.jsx.
-  const showRankingCta = isAdmin || rankingEnabled;
+  const { connectedPlayer, players, matches, isAdmin, presenceWindowDays } = useAppData();
+  // (19/09/2026) Le lien "Voir mon ranking →" a été retiré de ce bandeau :
+  // pour consulter son ranking, le joueur passe par l'onglet "Mon profil".
 
   // Matchs "à une date inconnue" (voir MatchSettingsModals.jsx → "Reporter
   // à une date inconnue") que CE joueur a le droit de gérer — admin, ou
@@ -272,16 +268,6 @@ export function MyMatchSummary({ now }) {
           </span>{" "}
           pour le match du {formatDateFR(owesMoney.date)}.
         </p>
-      )}
-
-      {showRankingCta && (
-        <button
-          type="button"
-          onClick={() => setView("stats")}
-          className="mt-2 pt-2 border-t border-white/20 text-sm font-semibold text-white/90 hover:text-white text-left"
-        >
-          🎾 Voir mon ranking →
-        </button>
       )}
     </div>
   );
