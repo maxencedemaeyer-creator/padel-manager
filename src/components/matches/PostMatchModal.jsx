@@ -23,7 +23,7 @@ import { PickPlayerModal } from "./PickPlayerModal";
 // applique en une seule écriture atomique le score du match ET, s'il y a un
 // score exploitable (ou s'il y en avait un avant cette correction), la mise
 // à jour du Ranking des 4 joueurs — voir src/lib/levelRating.js.
-async function applyMatchAndRanking({ match, players, sets, matchType, winningTeam, teamsUnreliable }) {
+async function applyMatchAndRanking({ match, players, matches, sets, matchType, winningTeam, teamsUnreliable }) {
   const batch = writeBatch(db);
   const matchUpdate = { scores: sets, matchType, winningTeam, teamsUnreliable };
 
@@ -46,6 +46,8 @@ async function applyMatchAndRanking({ match, players, sets, matchType, winningTe
       sets,
       winningTeam,
       previousLevelDeltas,
+      matches,
+      match,
     });
     if (rankingResult) matchUpdate.levelDeltas = rankingResult.levelDeltas;
   } else if (previousLevelDeltas) {
@@ -73,7 +75,7 @@ async function applyMatchAndRanking({ match, players, sets, matchType, winningTe
 }
 
 export function PostMatchModal({ match, onClose }) {
-  const { isAdmin, players } = useAppData();
+  const { isAdmin, players, matches } = useAppData();
   const [pickSlot, setPickSlot] = useState(null); // { team, courtSide, participant } | null
 
   const initSet = (set) => {
@@ -136,6 +138,7 @@ export function PostMatchModal({ match, onClose }) {
       await applyMatchAndRanking({
         match,
         players,
+        matches,
         sets,
         matchType: "Officiel",
         winningTeam: computeWinnerFromSets(sets),
@@ -155,6 +158,7 @@ export function PostMatchModal({ match, onClose }) {
       await applyMatchAndRanking({
         match,
         players,
+        matches,
         sets: { set1: null, set2: null, set3: null },
         matchType: "Amical",
         winningTeam: null,
