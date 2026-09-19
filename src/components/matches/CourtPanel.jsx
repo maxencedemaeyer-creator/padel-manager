@@ -16,6 +16,7 @@ import {
   getSessionCreditorIds,
   isPlayerMatchCreditor,
 } from "../../lib/matchLogic";
+import { isPresenceFrozen } from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Button } from "../ui";
@@ -43,7 +44,7 @@ function StatusBadge({ match, now }) {
 }
 
 export function CourtPanel({ match, now }) {
-  const { isAdmin, connectedPlayer, players, matches } = useAppData();
+  const { isAdmin, connectedPlayer, players, matches, presenceLockHours } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
@@ -117,6 +118,21 @@ export function CourtPanel({ match, now }) {
   };
 
   const selfLeave = async () => {
+    // Gel de présence avant match (ajouté le 19/09/2026, voir constants.js →
+    // DEFAULT_PRESENCE_LOCK_HOURS, réglable depuis Administration) : trop
+    // près du match, un joueur ne peut plus se désinscrire lui-même d'une
+    // place — même garde-fou, et même message, que dans AvailabilityButtons
+    // (Availability.jsx) pour le rectangle "ma réponse". Même logique que
+    // `withinSelfRegWindow` juste au-dessus pour l'inscription : le bouton
+    // reste cliquable (voir canSelfLeave, volontairement pas modifié), mais
+    // l'action explique pourquoi elle n'aboutit pas plutôt que de disparaître
+    // silencieusement.
+    if (isPresenceFrozen(match, now, presenceLockHours)) {
+      alert(
+        `Vous ne pouvez plus vous désinscrire vous-même à moins de ${presenceLockHours}h du match. Prévenez l'équipe sur WhatsApp, ou contactez l'administrateur.`
+      );
+      return;
+    }
     // Corrigé le 02/09/2026 (audit paiements) : le statut de paiement ne vit
     // que dans cette entrée `participants[]` — se désinscrire l'efface
     // définitivement, même si le joueur avait déjà été marqué payé à
