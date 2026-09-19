@@ -1,20 +1,40 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Moteur de calcul du "Ranking" (score interne au club, échelle 1-10) — voir
-// claude/feature-ranking-padel-manager.md pour la spec complète. Fichier
-// PUR : aucune dépendance Firestore ici (voir §7.2/§11 de la spec) — les
-// composants appelants (EndMatchModal.jsx, PostMatchModal.jsx, et les
-// outils de migration dans AdminView.jsx) sont seuls responsables des
+// claude/feature-ranking-padel-manager.md (spec de base) ET
+// claude/feature-ranking-v2-progression-assiduite-2026-09-19.md (règles v2,
+// en vigueur depuis le 19/09/2026). Fichier PUR : aucune dépendance
+// Firestore ici (voir §7.2/§11 de la spec) — les composants appelants
+// (EndMatchModal.jsx, PostMatchModal.jsx, et le recalcul admin dans
+// src/lib/rankingRecalc.js + AdminView.jsx) sont seuls responsables des
 // lectures/écritures Firebase, à partir de ce que ce fichier calcule.
 //
 // Vocabulaire (voir §1 de la spec) : "Ranking" = le score interne construit
 // ici (jamais montré ailleurs dans le code sous ce nom technique — les
 // champs restent `internalScore` / `internalScoreReliability` en base).
 // "Niveau officiel" = l'AUTRE donnée, déjà existante (LEVELS, constants.js).
+//
+// Règles v2 par rapport à la v1 (toutes ajustables via les constantes
+// ci-dessous — c'est le SEUL endroit à toucher, puis incrémenter
+// RANKING_ENGINE_VERSION pour que l'admin voie "Recalcul conseillé") :
+//   1. Marge : si l'équipe favorite gagne, facteur de marge fixé à 0,7.
+//   2. Force d'équipe : moyenne − 0,15 × écart entre les deux partenaires.
+//   3. Gains : tout gain de base est multiplié par 1,2.
+//   4. Plafond souple : progression sur 40 matchs libre jusqu'à +1,0 puis
+//      dégressive jusqu'à 0 à +2,5 (s'applique aux gains ET au bonus).
+//   5. Bonus d'assiduité : petit bonus à chaque match officiel noté
+//      (victoire ou défaite), qui s'éteint quand le joueur est déjà bien
+//      au-dessus de son niveau officiel de départ.
 // ─────────────────────────────────────────────────────────────────────────
 import { LEVELS } from "./constants";
 
+// Numéro de version du calcul — à incrémenter à CHAQUE changement de règle
+// ci-dessous. L'admin compare ce numéro à celui du dernier recalcul appliqué
+// (stocké dans settings/appConfig) pour afficher "Recalcul conseillé".
+export const RANKING_ENGINE_VERSION = 2;
+
 // ─── Constantes (voir §4.2, §4.4, §4.6, §13 de la spec — ajustées par
-// simulation, voir claude/feature-ranking-padel-manager.md §12) ───────────
+// simulation, voir claude/feature-ranking-padel-manager.md §12 et
+// claude/feature-ranking-v2-progression-assiduite-2026-09-19.md §11) ────────
 export const RANKING_SCALE_MIN = 1;
 export const RANKING_SCALE_MAX = 10;
 
@@ -26,6 +46,24 @@ const ELO_DIVISOR = 3;
 const MARGIN_FLOOR = 0.7;
 const MARGIN_CEIL = 1.3;
 const MARGIN_SLOPE = 1.2;
+
+// v2 — règle 1 : facteur de marge quand l'équipe favorite gagne.
+const FAVOURITE_WIN_MARGIN = 0.7;
+// v2 — règle 2 : pénalité de déséquilibre entre les deux partenaires.
+const PARTNER_GAP_WEIGHT = 0.15;
+// v2 — règle 3 : multiplicateur des gains (deltas positifs).
+const WIN_GAIN_MULTIPLIER = 1.2;
+// v2 — règle 4 : plafond souple de progression.
+const CAP_WINDOW_MATCHES = 40; // fenêtre = une saison de 40 matchs officiels
+const CAP_FREE_PROGRESSION = 1.0; // libre jusqu'à +1,0
+const CAP_ZERO_PROGRESSION = 2.5; // gains annulés à partir de +2,5
+// v2 — règle 5 : bonus d'assiduité (par match noté, victoire ou défaite).
+const BONUS_AT_LOW_RANKING = 0.015; // ranking ≤ 3
+const BONUS_AT_HIGH_RANKING = 0.006; // ranking ≥ 8
+const BONUS_LOW_RANKING = 3;
+const BONUS_RANKING_SPAN = 5;
+const BONUS_TAPER_FULL = 0.5; // bonus complet tant que ranking − départ ≤ 0,5
+const BONUS_TAPER_END = 1.0; // bonus nul dès ranking − départ ≥ 1,0
 
 const RECAL_WEIGHT_MIN = 0.3;
 const RECAL_WEIGHT_MAX = 0.95;
@@ -132,49 +170,107 @@ function opposingAnchor(oppTeamStates) {
   return (oppTeamStates[0].score + oppTeamStates[1].score) / 2;
 }
 
-// Moyenne d'équipe utilisée pour le calcul attendu/delta des AUTRES joueurs
-// (partenaire + adversaires) de ce match — §4.7, "Répercussion sur les 3
-// autres joueurs du même match". Un joueur non classé de cette équipe
-// contribue à cette moyenne avec `niveau_ancre` (moyenne de l'équipe
-// adverse, ou plancher 1 si elle-même pas entièrement classée) plutôt
-// qu'avec une valeur arbitraire — extension symétrique documentée dans la
-// spec au cas (rare) où DEUX joueurs d'une même équipe seraient non classés
-// en même temps : chacun contribue alors avec le même niveau_ancre.
-function teamAverageForCalc(teamStates, oppTeamStates) {
-  const anchor = opposingAnchor(oppTeamStates);
-  const contributions = teamStates.map((s) => (s.hasRanking ? s.score : anchor));
-  return (contributions[0] + contributions[1]) / 2;
+// ─── v2 : contexte de progression d'un joueur (règles 4 et 5) ─────────────
+// `history` : ses rankings APRÈS chacun de ses matchs officiels notés
+// précédents, du plus ancien au plus récent. `startRef` : son point de
+// départ de référence — le ranking de son niveau officiel déclaré, ou, pour
+// un joueur "Non classé", son ranking après son tout premier match noté.
+// Si le contexte manque (ne devrait pas arriver), on retombe sur "aucune
+// progression connue" : plafond inactif et bonus complet.
+function progressionOf(state, context) {
+  const history = (context && context.history) || [];
+  const startRef =
+    context && typeof context.startRef === "number" ? context.startRef : state.score;
+  const windowRef =
+    history.length >= CAP_WINDOW_MATCHES ? history[history.length - CAP_WINDOW_MATCHES] : startRef;
+  return {
+    windowProgression: Math.max(0, state.score - windowRef),
+    overStart: state.score - startRef,
+  };
 }
 
-// ─── §4.1-§4.5 + §4.7 : calcule les deltas des 4 joueurs d'un match ────────
+// Règle 4 : facteur du plafond souple (1 = libre, 0 = gains annulés).
+export function capFactorFromProgression(windowProgression) {
+  if (windowProgression <= CAP_FREE_PROGRESSION) return 1;
+  return Math.max(
+    0,
+    (CAP_ZERO_PROGRESSION - windowProgression) / (CAP_ZERO_PROGRESSION - CAP_FREE_PROGRESSION)
+  );
+}
+
+// Règle 5 : bonus d'assiduité de base pour un ranking donné (plus petit
+// quand le ranking est déjà élevé), avant extinction et plafond.
+export function attendanceBonusBase(score) {
+  const t = clamp((score - BONUS_LOW_RANKING) / BONUS_RANKING_SPAN, 0, 1);
+  return BONUS_AT_LOW_RANKING - (BONUS_AT_LOW_RANKING - BONUS_AT_HIGH_RANKING) * t;
+}
+function attendanceTaper(overStart) {
+  if (overStart <= BONUS_TAPER_FULL) return 1;
+  if (overStart >= BONUS_TAPER_END) return 0;
+  return (BONUS_TAPER_END - overStart) / (BONUS_TAPER_END - BONUS_TAPER_FULL);
+}
+
+// Force d'une équipe pour le résultat attendu (règle 2) : moyenne des deux
+// rankings, moins 0,15 × l'écart entre les deux partenaires.
+function teamStrength(contributions) {
+  const mean = (contributions[0] + contributions[1]) / 2;
+  return mean - PARTNER_GAP_WEIGHT * Math.abs(contributions[0] - contributions[1]);
+}
+
+// Contributions individuelles d'une équipe : le ranking de chaque joueur,
+// ou `niveau_ancre` pour un joueur "Non classé" (§4.7).
+function teamContributions(teamStates, oppTeamStates) {
+  const anchor = opposingAnchor(oppTeamStates);
+  return teamStates.map((s) => (s.hasRanking ? s.score : anchor));
+}
+
+// ─── §4.1-§4.5 + §4.7 + règles v2 : calcule les deltas des 4 joueurs ───────
 // `teamA`/`teamB` : tableaux de 2 `{ playerId, state }` (state = résultat de
-// getPlayerRatingState). Retourne `null` si l'un des deux camps n'a pas
-// exactement 2 joueurs (garde-fou — voir §5, "match à 3 joueurs" : ce cas
-// n'existe pas dans l'usage réel du club, mais on ne calcule jamais de
+// getPlayerRatingState). `contextById` : `{ [playerId]: { history, startRef } }`
+// (voir progressionOf ci-dessus). Retourne `null` si l'un des deux camps n'a
+// pas exactement 2 joueurs (garde-fou — voir §5, "match à 3 joueurs" : ce
+// cas n'existe pas dans l'usage réel du club, mais on ne calcule jamais de
 // ranking sur des données incomplètes plutôt que de risquer un calcul
 // faux/biaisé).
-function computeFreshDeltas({ teamA, teamB, sets, winningTeam }) {
+//
+// Ordre de calcul pour un joueur classé : marge → delta de base
+// K·(résultat − attendu)·marge → ×1,2 si gain → plafond souple si gain →
+// + bonus d'assiduité (lui aussi plafonné) → écrêtage 1..10. `delta` stocké
+// = variation TOTALE (bonus compris), pour que l'annulation d'une correction
+// (§4.8) retire exactement ce qui a été ajouté.
+function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById }) {
   if (!teamA || !teamB || teamA.length !== 2 || teamB.length !== 2) return null;
 
   const statesA = teamA.map((p) => p.state);
   const statesB = teamB.map((p) => p.state);
   const anchorForA = opposingAnchor(statesB); // "niveau_ancre" si un joueur de A est non classé
   const anchorForB = opposingAnchor(statesA); // idem pour B
-  const teamAvgA = teamAverageForCalc(statesA, statesB);
-  const teamAvgB = teamAverageForCalc(statesB, statesA);
-  const expectedA = expectedScore(teamAvgA, teamAvgB);
+  const strengthA = teamStrength(teamContributions(statesA, statesB));
+  const strengthB = teamStrength(teamContributions(statesB, statesA));
+  const expectedA = expectedScore(strengthA, strengthB);
   const expectedB = 1 - expectedA;
-  const marginFactorValue = marginFactorFromSets(sets, winningTeam);
+
+  // Règle 1 : l'équipe favorite qui gagne obtient le facteur de marge minimal.
+  let marginFactorValue = marginFactorFromSets(sets, winningTeam);
+  const favouriteWon =
+    (winningTeam === "A" && expectedA > 0.5) || (winningTeam === "B" && expectedB > 0.5);
+  if (favouriteWon) marginFactorValue = FAVOURITE_WIN_MARGIN;
 
   const entries = {};
+  const contexts = contextById || {};
 
   const processTeam = (team, myTeamLabel, expectedForTeam, anchorForTeam) => {
     team.forEach(({ playerId, state }) => {
       const resultat = resultValue(myTeamLabel, winningTeam);
       if (state.hasRanking) {
-        // Cas normal — §4.1 à §4.5.
+        // Cas normal — §4.1 à §4.5 + règles v2 3, 4 et 5.
         const k = kFactor(state.reliability);
-        const delta = k * (resultat - expectedForTeam) * marginFactorValue;
+        let delta = k * (resultat - expectedForTeam) * marginFactorValue;
+        const { windowProgression, overStart } = progressionOf(state, contexts[playerId]);
+        const capFactor = capFactorFromProgression(windowProgression);
+        if (delta > 0) delta = delta * WIN_GAIN_MULTIPLIER * capFactor;
+        const bonus = attendanceBonusBase(state.score) * attendanceTaper(overStart) * capFactor;
+        delta += bonus;
         const apres = clamp(state.score + delta, RANKING_SCALE_MIN, RANKING_SCALE_MAX);
         entries[playerId] = {
           avant: state.score,
@@ -183,11 +279,16 @@ function computeFreshDeltas({ teamA, teamB, sets, winningTeam }) {
           attendu: expectedForTeam,
           resultat,
           facteurMarge: marginFactorValue,
+          bonus,
+          facteurPlafond: capFactor,
           wasBootstrap: false,
         };
       } else {
         // Amorçage (§4.7) — attendu fixé à 0.5, K(0) = K_max, fiabilité → 1.
-        const delta = kFactor(0) * (resultat - 0.5) * marginFactorValue;
+        // Pas de plafond ni de bonus (aucun historique), gain ×1,2 comme
+        // pour les autres joueurs.
+        let delta = kFactor(0) * (resultat - 0.5) * marginFactorValue;
+        if (delta > 0) delta *= WIN_GAIN_MULTIPLIER;
         const apres = clamp(anchorForTeam + delta, RANKING_SCALE_MIN, RANKING_SCALE_MAX);
         entries[playerId] = {
           avant: null,
@@ -196,6 +297,8 @@ function computeFreshDeltas({ teamA, teamB, sets, winningTeam }) {
           attendu: 0.5,
           resultat,
           facteurMarge: marginFactorValue,
+          bonus: 0,
+          facteurPlafond: 1,
           wasBootstrap: true,
           niveauAncre: anchorForTeam,
         };
@@ -275,7 +378,14 @@ function stateToPlayerUpdate(state) {
 // `computeFreshDeltas` (garde-fou 2v2, voir §5). `newStates` contient l'état
 // résultant de chacun des 4 joueurs (à reporter tel quel dans l'état
 // "en mémoire" de l'appelant, ou à convertir en écriture Firestore).
-export function computeFreshRankingForMatch({ teamAIds, teamBIds, statesById, sets, winningTeam }) {
+export function computeFreshRankingForMatch({
+  teamAIds,
+  teamBIds,
+  statesById,
+  sets,
+  winningTeam,
+  contextById,
+}) {
   if (
     !Array.isArray(teamAIds) ||
     !Array.isArray(teamBIds) ||
@@ -290,7 +400,7 @@ export function computeFreshRankingForMatch({ teamAIds, teamBIds, statesById, se
 
   const teamA = teamAIds.map((id) => ({ playerId: id, state: statesById[id] }));
   const teamB = teamBIds.map((id) => ({ playerId: id, state: statesById[id] }));
-  const levelDeltas = computeFreshDeltas({ teamA, teamB, sets, winningTeam });
+  const levelDeltas = computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById });
   if (!levelDeltas) return null;
 
   const newStates = {};
@@ -304,6 +414,47 @@ export function computeFreshRankingForMatch({ teamAIds, teamBIds, statesById, se
     };
   });
   return { levelDeltas, newStates };
+}
+
+// ─── v2 : contexte de progression construit depuis les matchs existants ───
+// Clé chronologique d'un match (même convention que
+// getRecentLevelDeltaHistory plus bas et que getMatchStart de matchLogic.js).
+function matchChronoKey(match) {
+  return `${match.date || ""}T${match.time || "00:00"}`;
+}
+// Tri chronologique unique, partagé avec le recalcul admin (rankingRecalc.js)
+// pour que le rejeu et la saisie en direct ordonnent les matchs pareil.
+export function compareMatchesChronologically(a, b) {
+  const diff = matchChronoKey(a).localeCompare(matchChronoKey(b));
+  return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+}
+
+// Pour chaque joueur de `playerIds` : `{ history, startRef }` (voir
+// progressionOf). `history` = ses rankings APRÈS ses matchs officiels notés
+// (donc portant un `levelDeltas` à son nom) STRICTEMENT antérieurs au match
+// `currentMatch` (lui-même exclu), dans l'ordre chronologique. `startRef` =
+// ranking de son niveau officiel déclaré, ou — sans niveau déclaré ("Non
+// classé") — son ranking après son tout premier match noté.
+export function buildRankingContext({ playerIds, playersById, matches, currentMatch }) {
+  const currentKey = currentMatch ? matchChronoKey(currentMatch) : null;
+  const currentId = currentMatch ? currentMatch.id : null;
+  const contextById = {};
+  playerIds.forEach((id) => {
+    const history = (matches || [])
+      .filter(
+        (m) =>
+          m.id !== currentId &&
+          m.levelDeltas &&
+          m.levelDeltas[id] &&
+          (currentKey === null || matchChronoKey(m) <= currentKey)
+      )
+      .sort(compareMatchesChronologically)
+      .map((m) => m.levelDeltas[id].apres)
+      .filter((v) => typeof v === "number");
+    const base = getScoreBase(playersById[id] && playersById[id].levelSortValue);
+    contextById[id] = { history, startRef: base != null ? base : history.length ? history[0] : null };
+  });
+  return contextById;
 }
 
 // ─── Point d'entrée principal — utilisé par EndMatchModal.jsx,
@@ -321,6 +472,10 @@ export function computeFreshRankingForMatch({ teamAIds, teamBIds, statesById, se
 // `previousLevelDeltas` : l'éventuel `match.levelDeltas` existant avant
 // cette écriture (ou `null`/`undefined` s'il n'y en a pas) — gère à la fois
 // un tout premier encodage ET une correction (§4.8) de façon uniforme.
+// `matches` + `match` (v2) : tous les matchs connus et le match en cours de
+// saisie — servent à reconstituer l'historique de chaque joueur (plafond
+// souple et bonus d'assiduité, voir buildRankingContext). Sans eux, ces deux
+// règles se comportent comme si le joueur n'avait aucun historique.
 //
 // Retourne `null` si les 4 ids ne forment pas 2 équipes de 2 joueurs
 // distincts (garde-fou, §5) — l'appelant ne touche alors à rien côté
@@ -335,6 +490,8 @@ export function computeRankingUpdateForMatch({
   sets,
   winningTeam,
   previousLevelDeltas,
+  matches,
+  match,
 }) {
   if (
     !Array.isArray(teamAIds) ||
@@ -351,7 +508,20 @@ export function computeRankingUpdateForMatch({
   const statesAfterCancel = statesAfterCancellation(allIds, playersById, previousLevelDeltas);
   const statesById = Object.fromEntries(allIds.map((id) => [id, statesAfterCancel.get(id)]));
 
-  const fresh = computeFreshRankingForMatch({ teamAIds, teamBIds, statesById, sets, winningTeam });
+  const contextById = buildRankingContext({
+    playerIds: allIds,
+    playersById,
+    matches,
+    currentMatch: match,
+  });
+  const fresh = computeFreshRankingForMatch({
+    teamAIds,
+    teamBIds,
+    statesById,
+    sets,
+    winningTeam,
+    contextById,
+  });
   if (!fresh) return null;
 
   const playerUpdates = {};
