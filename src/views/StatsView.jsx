@@ -97,7 +97,7 @@ function ProgressRing({
   );
 }
 
-// Carte "personne mise en avant" — avatar rond (photo, émoji ou initiales,
+// Carte "personne mise en avant" — avatar rond (émoji ou initiales,
 // sur un fond coloré selon la catégorie) au-dessus du nom + info. Le rond
 // imite l'affichage des avatars utilisé partout ailleurs dans l'app.
 function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
@@ -114,9 +114,7 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
           accent
         )}
       >
-        {player.avatarPhotoUrl ? (
-          <img src={player.avatarPhotoUrl} alt="" className="w-full h-full object-cover" />
-        ) : player.emoji ? (
+        {player.emoji ? (
           <span className="text-2xl">{player.emoji}</span>
         ) : (
           <span className="text-white pm-display font-extrabold text-lg">
