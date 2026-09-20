@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Avatar du joueur connecté, avec un petit bouton discret (crayon) pour
-// changer lui-même sa photo de profil (ou son emoji et sa couleur de fond).
+// changer lui-même son emoji et sa couleur de fond (les photos de profil ont
+// été retirées le 20/09/2026, voir AvatarPicker.jsx).
 // Chaque changement est enregistré immédiatement sur Firebase.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
@@ -50,8 +51,8 @@ export function AvatarSelfEditor({ player, size = 80 }) {
           }
         >
           <p className="text-xs text-[var(--color-text-dim)] mb-4">
-            Choisissez une photo depuis votre galerie, ou un emoji et une couleur — chaque
-            changement est enregistré immédiatement.
+            Choisissez un emoji et une couleur — chaque changement est enregistré
+            immédiatement.
           </p>
 
           <AvatarPicker
@@ -59,9 +60,6 @@ export function AvatarSelfEditor({ player, size = 80 }) {
             color={player.avatarColor}
             onEmojiChange={(e) => saveField({ emoji: e })}
             onColorChange={(c) => saveField({ avatarColor: c })}
-            photoUrl={player.avatarPhotoUrl}
-            onPhotoChange={(url) => saveField({ avatarPhotoUrl: url })}
-            playerId={player.id}
           />
 
           {busy && (
