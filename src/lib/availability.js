@@ -13,7 +13,7 @@
 // jamais touchée ici : la priorité admin est toujours conservée, quelle que
 // soit la présence déclarée du joueur.
 // ─────────────────────────────────────────────────────────────────────────
-import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteField, runTransaction } from "firebase/firestore";
 import { db } from "../firebase";
 import { COURT_SLOT_DEFS } from "./constants";
 import { normalizeSide } from "./utils";
@@ -55,6 +55,25 @@ export function getSessionAvailability(sessionMatches) {
 // place) des présents "en réserve" (au-delà de la capacité, voir plus bas).
 export function getSessionCapacity(sessionMatches) {
   return COURT_SLOT_DEFS.length * (sessionMatches || []).length;
+}
+
+// Nombre de places encore libres dans la session, tous terrains confondus —
+// même définition d'une place "libre" que autoPlacePresentPlayer (une place =
+// un couple équipe + côté de COURT_SLOT_DEFS, libre tant que personne ne
+// l'occupe). Sert à savoir si un joueur en réserve peut prendre la place d'un
+// désistement (voir le bouton "Je prends la place" dans AvailabilityButtons).
+export function getFreeSlotCount(sessionMatches) {
+  let free = 0;
+  (sessionMatches || []).forEach((m) => {
+    const participants = m.participants || [];
+    COURT_SLOT_DEFS.forEach((def) => {
+      const taken = participants.some(
+        (p) => p.team === def.team && p.courtSide === def.side
+      );
+      if (!taken) free += 1;
+    });
+  });
+  return free;
 }
 
 // Tous les joueurs déjà assignés à une place sur l'un des terrains de la
@@ -242,13 +261,28 @@ function compareByCourtNumber(a, b) {
 //
 // Ne place jamais un joueur déjà engagé ailleurs le même jour (même garde
 // que l'auto-inscription classique, voir CourtPanel.alreadyElsewhereToday).
-// Relit chaque terrain au plus frais juste avant d'écrire pour réduire le
-// risque de collision entre deux présences quasi simultanées — l'app
-// n'utilise de transaction Firestore nulle part ailleurs non plus, donc un
-// risque résiduel (rare, faible groupe de joueurs) subsiste, cohérent avec
-// le reste du code.
+// Relit chaque terrain au plus frais juste avant d'écrire, puis écrit dans
+// une transaction Firestore (voir plus bas) : deux présences quasi
+// simultanées ne peuvent plus se disputer la même place.
+//
+// Valeur de retour (ajoutée pour le bouton "Je prends la place" d'un joueur en
+// réserve, voir AvailabilityButtons dans Availability.jsx — les appelants
+// historiques, qui ignorent la valeur retournée, ne sont pas affectés) :
+//   "placed"    — le joueur vient d'être placé sur une place libre ;
+//   "already"   — il avait déjà une place (rien à faire) ;
+//   "full"      — plus aucune place libre (session complète, ou place prise à
+//                 l'instant par quelqu'un d'autre) ;
+//   "elsewhere" — il est déjà engagé sur un autre match le même jour ;
+//   "error"     — erreur technique (voir la console) ;
+//   "invalid"   — appel sans session ou sans joueur.
+//
+// L'écriture finale se fait dans une transaction Firestore : si deux joueurs
+// en réserve tentent de prendre la même place libre en même temps, un seul
+// l'obtient — l'autre voit la place déjà occupée, retente sur une autre place
+// libre s'il en reste, sinon reçoit "full". Le placement ne peut donc plus
+// écraser celui d'un autre joueur.
 export async function autoPlacePresentPlayer(sessionMatches, matches, player) {
-  if (!sessionMatches?.length || !player) return;
+  if (!sessionMatches?.length || !player) return "invalid";
 
   const sessionDate = sessionMatches[0].date;
   const sessionIds = new Set(sessionMatches.map((m) => m.id));
@@ -258,80 +292,99 @@ export async function autoPlacePresentPlayer(sessionMatches, matches, player) {
       m.date === sessionDate &&
       (m.participants || []).some((p) => p.playerId === player.id)
   );
-  if (alreadyElsewhereToday) return;
+  if (alreadyElsewhereToday) return "elsewhere";
 
-  const freshDocs = await Promise.all(
-    sessionMatches.map((m) => getDoc(doc(db, "matches", m.id)))
-  );
-  const freshMatches = freshDocs
-    .filter((d) => d.exists())
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort(compareByCourtNumber); // terrain 1, puis 2, etc. — nécessaire pour le critère de niveau ci-dessous
+  // Jusqu'à 3 tentatives : si la place choisie est prise entre la lecture et
+  // l'écriture (conflit détecté par la transaction), on relit tout et on
+  // choisit une autre place libre.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const freshDocs = await Promise.all(
+      sessionMatches.map((m) => getDoc(doc(db, "matches", m.id)))
+    );
+    const freshMatches = freshDocs
+      .filter((d) => d.exists())
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort(compareByCourtNumber); // terrain 1, puis 2, etc. — nécessaire pour le critère de niveau ci-dessous
 
-  const alreadyPlaced = freshMatches.some((m) =>
-    (m.participants || []).some((p) => p.playerId === player.id)
-  );
-  if (alreadyPlaced) return;
+    const alreadyPlaced = freshMatches.some((m) =>
+      (m.participants || []).some((p) => p.playerId === player.id)
+    );
+    if (alreadyPlaced) return "already";
 
-  // Toutes les places encore libres de la session, tous terrains confondus.
-  const freeSlots = [];
-  freshMatches.forEach((match, courtIndex) => {
-    const participants = match.participants || [];
-    COURT_SLOT_DEFS.forEach((def) => {
-      const taken = participants.some(
-        (p) => p.team === def.team && p.courtSide === def.side
-      );
-      if (!taken) freeSlots.push({ match, participants, def, courtIndex });
+    // Toutes les places encore libres de la session, tous terrains confondus.
+    const freeSlots = [];
+    freshMatches.forEach((match, courtIndex) => {
+      const participants = match.participants || [];
+      COURT_SLOT_DEFS.forEach((def) => {
+        const taken = participants.some(
+          (p) => p.team === def.team && p.courtSide === def.side
+        );
+        if (!taken) freeSlots.push({ match, participants, def, courtIndex });
+      });
     });
-  });
-  if (freeSlots.length === 0) return; // session complète — le joueur reste "présent" non placé
+    if (freeSlots.length === 0) return "full"; // session complète — le joueur reste "présent" non placé
 
-  // Préférence n°2 : côté du joueur.
-  const preferredSide = normalizeSide(player.preferredSide);
-  const sideSlots =
-    preferredSide === "Droite" || preferredSide === "Gauche"
-      ? freeSlots.filter((slot) => slot.def.side === preferredSide)
-      : [];
-  const candidates = sideSlots.length > 0 ? sideSlots : freeSlots;
+    // Préférence n°2 : côté du joueur.
+    const preferredSide = normalizeSide(player.preferredSide);
+    const sideSlots =
+      preferredSide === "Droite" || preferredSide === "Gauche"
+        ? freeSlots.filter((slot) => slot.def.side === preferredSide)
+        : [];
+    const candidates = sideSlots.length > 0 ? sideSlots : freeSlots;
 
-  // Préférence n°3 : niveau → numéro de terrain. On calcule le terrain
-  // "idéal" du joueur en répartissant l'échelle de niveau (0 à 100, voir
-  // LEVELS dans constants.js — 100 = P1000, le plus fort, depuis la
-  // correction du 18/09/2026) linéairement sur le nombre de terrains de la
-  // session, puis on choisit, parmi les places encore possibles, celle dont
-  // le terrain est le plus proche de cet idéal (à égalité, le plus petit
-  // numéro l'emporte).
-  const courtCount = freshMatches.length;
-  const levelValue = typeof player.levelSortValue === "number" ? player.levelSortValue : 0;
-  const idealCourtIndex =
-    courtCount > 1 ? Math.round(((100 - levelValue) / 100) * (courtCount - 1)) : 0;
+    // Préférence n°3 : niveau → numéro de terrain. On calcule le terrain
+    // "idéal" du joueur en répartissant l'échelle de niveau (0 à 100, voir
+    // LEVELS dans constants.js — 100 = P1000, le plus fort, depuis la
+    // correction du 18/09/2026) linéairement sur le nombre de terrains de la
+    // session, puis on choisit, parmi les places encore possibles, celle dont
+    // le terrain est le plus proche de cet idéal (à égalité, le plus petit
+    // numéro l'emporte).
+    const courtCount = freshMatches.length;
+    const levelValue = typeof player.levelSortValue === "number" ? player.levelSortValue : 0;
+    const idealCourtIndex =
+      courtCount > 1 ? Math.round(((100 - levelValue) / 100) * (courtCount - 1)) : 0;
 
-  let best = candidates[0];
-  let bestDistance = Math.abs(best.courtIndex - idealCourtIndex);
-  for (const slot of candidates) {
-    const distance = Math.abs(slot.courtIndex - idealCourtIndex);
-    if (distance < bestDistance || (distance === bestDistance && slot.courtIndex < best.courtIndex)) {
-      best = slot;
-      bestDistance = distance;
+    let best = candidates[0];
+    let bestDistance = Math.abs(best.courtIndex - idealCourtIndex);
+    for (const slot of candidates) {
+      const distance = Math.abs(slot.courtIndex - idealCourtIndex);
+      if (distance < bestDistance || (distance === bestDistance && slot.courtIndex < best.courtIndex)) {
+        best = slot;
+        bestDistance = distance;
+      }
+    }
+
+    const newParticipant = {
+      playerId: player.id,
+      name: player.name,
+      paidStatus: "unpaid",
+      creditorId: null,
+      team: best.def.team,
+      courtSide: best.def.side,
+      selfJoined: true,
+    };
+    try {
+      const matchRef = doc(db, "matches", best.match.id);
+      const outcome = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(matchRef);
+        if (!snap.exists()) return "conflict";
+        const current = snap.data().participants || [];
+        if (current.some((p) => p.playerId === player.id)) return "already";
+        const slotTaken = current.some(
+          (p) => p.team === best.def.team && p.courtSide === best.def.side
+        );
+        if (slotTaken) return "conflict"; // quelqu'un vient de prendre cette place
+        tx.update(matchRef, { participants: [...current, newParticipant] });
+        return "placed";
+      });
+      if (outcome === "placed" || outcome === "already") return outcome;
+      // "conflict" : on relit et on retente sur une autre place libre.
+    } catch (e) {
+      console.error("Erreur lors du placement automatique en composition :", e);
+      return "error";
     }
   }
-
-  const newParticipant = {
-    playerId: player.id,
-    name: player.name,
-    paidStatus: "unpaid",
-    creditorId: null,
-    team: best.def.team,
-    courtSide: best.def.side,
-    selfJoined: true,
-  };
-  try {
-    await updateDoc(doc(db, "matches", best.match.id), {
-      participants: [...best.participants, newParticipant],
-    });
-  } catch (e) {
-    console.error("Erreur lors du placement automatique en composition :", e);
-  }
+  return "full";
 }
 
 // Réinitialise la réponse d'un joueur sur TOUS les terrains de la session —
