@@ -27,6 +27,7 @@ import {
   resetSessionAvailability,
   autoPlacePresentPlayer,
   isPresenceFrozen,
+  getFreeSlotCount,
 } from "../../lib/availability";
 import {
   getConvocationOverride,
@@ -178,6 +179,41 @@ function ChangeMyResponseModal({ myStatus, saving, onChoose, onClose }) {
   );
 }
 
+// Petite fenêtre de confirmation du bouton "Je prends la place" — affichée à
+// un joueur en réserve (présent mais sans place) quand une place se libère
+// dans la session (désistement). Prendre la place le fait passer titulaire :
+// il sera compté comme participant du match (donc dans la compta), d'où la
+// confirmation explicite plutôt qu'un placement automatique.
+function ClaimSlotModal({ saving, onConfirm, onClose }) {
+  return (
+    <Modal title="Prendre la place libre" onClose={onClose}>
+      <p className="text-sm text-[var(--color-text-dim)] mb-4 leading-snug">
+        Une place s'est libérée pour cette session. En la prenant, vous quittez
+        la réserve et passez <strong>titulaire</strong> : vous serez compté
+        comme participant du match (et donc dans les frais du terrain).
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onClose}
+          className="py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-sm font-bold text-[var(--color-text-dim)] hover:border-slate-400 active:scale-[0.98] transition-all disabled:opacity-50"
+        >
+          Annuler
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onConfirm}
+          className="py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 active:scale-[0.98] transition-all disabled:opacity-50"
+        >
+          {saving ? "Placement…" : "Confirmer"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // Bouton/compteur RSVP pour le joueur connecté (admin ou non). Avant réponse :
 // 3 boutons de choix. Après réponse : un rectangle plein affichant la
 // réponse du joueur (cliquable → petite fenêtre de changement) + 3
@@ -196,6 +232,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   const [saving, setSaving] = useState(false);
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
   const [showChangeModal, setShowChangeModal] = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
   // Convocation (voir lib/convocation.js) : tant qu'elle n'est pas ouverte
   // pour cette session (fenêtre automatique pas encore atteinte, ou
   // fermeture forcée par l'admin), un joueur qui n'a pas encore répondu ne
@@ -261,6 +298,63 @@ export function AvailabilityButtons({ sessionMatches }) {
     : isPreMatchFrozen
     ? `Trop proche du match (moins de ${presenceLockHours}h) pour changer seul votre présence — prévenez l'équipe sur WhatsApp, ou contactez l'administrateur.`
     : "";
+
+  // Bouton "Je prends la place" (ajouté le 20/09/2026) : un joueur en réserve
+  // "automatique" — déclaré présent ("present") mais sans place sur un terrain
+  // parce que la session était complète — voit un bandeau dès qu'une place se
+  // libère (désistement d'un titulaire), et peut la prendre lui-même.
+  // Conditions, toutes requises :
+  // - statut "present" uniquement : la réserve mise volontairement par
+  //   l'admin (RESERVE_STATUS) reste une décision de l'admin, pas de bouton ;
+  // - pas déjà placé sur un terrain de la session, ni engagé ailleurs le
+  //   même jour (même garde que autoPlacePresentPlayer) ;
+  // - au moins une place réellement libre dans la session ;
+  // - match pas encore commencé ("upcoming") ; le gel de présence avant match
+  //   ne s'applique volontairement pas ici : il empêche de se DÉSISTER tard,
+  //   pas de combler une place libre à la dernière minute ;
+  // - pas un joueur occasionnel (c'est l'admin qui gère sa présence).
+  // Premier arrivé, premier servi : si deux joueurs cliquent en même temps
+  // pour une seule place, la transaction de autoPlacePresentPlayer n'en
+  // place qu'un — l'autre reçoit un message "place déjà prise".
+  const firstSessionMatch = sessionMatches?.[0];
+  const isPlacedInSession = (sessionMatches || []).some((m) =>
+    (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+  );
+  const sessionIdSet = new Set((sessionMatches || []).map((m) => m.id));
+  const isEngagedElsewhereToday =
+    Boolean(firstSessionMatch) &&
+    (matches || []).some(
+      (m) =>
+        !sessionIdSet.has(m.id) &&
+        m.date === firstSessionMatch.date &&
+        (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
+    );
+  const canClaimSlot =
+    myStatus === "present" &&
+    !connectedPlayer.isOccasional &&
+    sessionTiming === "upcoming" &&
+    !isPlacedInSession &&
+    !isEngagedElsewhereToday &&
+    getFreeSlotCount(sessionMatches) > 0;
+
+  const claimSlot = async () => {
+    setSaving(true);
+    try {
+      const result = await autoPlacePresentPlayer(sessionMatches, matches, connectedPlayer);
+      setShowClaimModal(false);
+      if (result === "full") {
+        alert("Trop tard : la place vient d'être prise par un autre joueur. Vous restez en réserve.");
+      } else if (result === "elsewhere") {
+        alert("Vous êtes déjà inscrit sur un autre match le même jour, impossible de prendre cette place.");
+      } else if (result === "error") {
+        alert("Impossible de vous placer pour l'instant. Réessayez dans un instant ou contactez l'administrateur.");
+      }
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const respond = async (status) => {
     setSaving(true);
@@ -363,6 +457,23 @@ export function AvailabilityButtons({ sessionMatches }) {
           </div>
         </div>
 
+        {canClaimSlot && (
+          <div className="mt-2 flex items-center gap-2.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5">
+            <p className="flex-1 text-xs font-semibold text-emerald-900 leading-snug">
+              Une place est libre — vous êtes en réserve, elle est pour vous si
+              vous êtes dispo !
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setShowClaimModal(true)}
+              className="shrink-0 px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs font-extrabold uppercase tracking-wide hover:bg-emerald-600 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              Je prends la place
+            </button>
+          </div>
+        )}
+
         {isLocked && (
           <p className="text-[10px] text-[var(--color-text-faint)] mt-1.5 leading-snug">
             {lockMessage}
@@ -388,6 +499,14 @@ export function AvailabilityButtons({ sessionMatches }) {
             reservePlayers={openList === "present" ? presentReserve : undefined}
             capacity={capacity}
             onClose={() => setOpenList(null)}
+          />
+        )}
+
+        {showClaimModal && canClaimSlot && (
+          <ClaimSlotModal
+            saving={saving}
+            onConfirm={claimSlot}
+            onClose={() => setShowClaimModal(false)}
           />
         )}
 
