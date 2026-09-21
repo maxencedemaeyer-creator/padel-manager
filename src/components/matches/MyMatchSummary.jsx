@@ -193,7 +193,7 @@ export function MyMatchSummary({ now }) {
   if (myStats.streak >= 2 && myStats.streakType === "win") {
     hook = `🔥 ${myStats.streak} victoires d'affilée — en forme !`;
   } else if (myRank > 0 && myRank <= 3) {
-    hook = `🏆 ${myRank}${myRank === 1 ? "er" : "ème"} au classement du club`;
+    hook = `🏆 ${myRank}${myRank === 1 ? "er" : "ème"} du Top 5 du club`;
   } else if (myStats.streak >= 2 && myStats.streakType === "loss") {
     hook = `💪 ${myStats.streak} défaites d'affilée — la revanche approche`;
   } else if (myStats.bestDuo) {
