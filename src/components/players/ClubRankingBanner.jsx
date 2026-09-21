@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Bandeau "Classement du club" — top 5 par % de victoires. Visible par
-// tous, en tête de l'onglet Équipe.
+// Bandeau "Top 5 du club" (anciennement "Classement du club", renommé le
+// 21/09/2026 : le mot "Classement" est réservé au classement officiel P100,
+// P200…) — top 5 par % de victoires. Visible par tous, en tête de l'onglet
+// Équipe.
 // ─────────────────────────────────────────────────────────────────────────
 import { computePlayerStats } from "../../lib/stats";
 import { getFirstName } from "../../lib/utils";
@@ -26,7 +28,7 @@ export function ClubRankingBanner({ players, matches }) {
   return (
     <div className="rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
       <p className="text-sm font-semibold text-white/90 mb-3">
-        🏆 Classement du club (% de victoires)
+        🏆 Top 5 du club (% de victoires)
       </p>
       <div className="flex flex-col gap-2">
         {ranked.map((r, i) => (
