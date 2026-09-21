@@ -7,7 +7,7 @@ import { doc, deleteDoc, deleteField, onSnapshot, setDoc, updateDoc, writeBatch 
 import { db } from "../firebase";
 import { cn, formatClaimPeriodLabel } from "../lib/utils";
 import { getMatchTiming } from "../lib/matchLogic";
-import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS } from "../lib/constants";
+import { DEFAULT_PRESENCE_WINDOW_DAYS, DEFAULT_PRESENCE_LOCK_HOURS, levelDisplayLabel } from "../lib/constants";
 import {
   getCreditorAccounting,
   getCreditorClaims,
@@ -63,7 +63,7 @@ function GameCenterSettingCard({ enabled }) {
   );
 }
 
-// Carte "Ranking" — interrupteur pour rendre le Ranking visible par tous
+// Carte "Niveau" (ex-"Ranking") — interrupteur pour rendre le Niveau visible par tous
 // les joueurs (par défaut, réservé à l'admin, voir §6 de
 // claude/feature-ranking-padel-manager.md). Même mécanique exacte que
 // GameCenterSettingCard ci-dessus : écrit `rankingEnabled` dans
@@ -90,7 +90,7 @@ function RankingSettingCard({ enabled }) {
         <Icon.Chart className="w-5 h-5" />
       </span>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm">Ranking</p>
+        <p className="font-semibold text-sm">Niveau</p>
         <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
           {enabled
             ? "Visible par tous les joueurs."
@@ -102,7 +102,7 @@ function RankingSettingCard({ enabled }) {
   );
 }
 
-// Carte "Recalcul du ranking" (§7 de
+// Carte "Recalcul du niveau" (ex-"Recalcul du ranking", §7 de
 // claude/feature-ranking-v2-progression-assiduite-2026-09-19.md) — rejoue
 // TOUT l'historique des matchs officiels notés avec les règles du code
 // actuellement déployé (src/lib/rankingRecalc.js). Remplace les anciennes
@@ -128,7 +128,7 @@ function RankingRecalcPreviewModal({ preview, onClose, onApply, busy }) {
   const { stats } = preview;
   return (
     <Modal
-      title="Aperçu du recalcul du ranking"
+      title="Aperçu du recalcul du niveau"
       onClose={onClose}
       wide
       footer={
@@ -163,9 +163,9 @@ function RankingRecalcPreviewModal({ preview, onClose, onApply, busy }) {
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{row.name}</p>
                 <p className="text-[10px] text-[var(--color-text-faint)]">
-                  {row.level} · {row.matchesCount} match{row.matchesCount !== 1 ? "s" : ""} noté
+                  {levelDisplayLabel(row.level)} · {row.matchesCount} match{row.matchesCount !== 1 ? "s" : ""} noté
                   {row.matchesCount !== 1 ? "s" : ""}
-                  {row.levelFixed ? " · niveau technique corrigé" : ""}
+                  {row.levelFixed ? " · classement technique corrigé" : ""}
                 </p>
               </div>
               <div className="text-right shrink-0">
@@ -235,7 +235,7 @@ function RankingRecalcCard({ players, matches }) {
   // du clic (jamais à partir d'un aperçu resté ouvert longtemps).
   const apply = async () => {
     const sure = window.confirm(
-      "Appliquer le recalcul ? Le ranking de tous les joueurs et le détail de chaque match officiel seront réécrits à partir de l'historique complet. À lancer quand personne n'est en train d'encoder un score."
+      "Appliquer le recalcul ? Le niveau de tous les joueurs et le détail de chaque match officiel seront réécrits à partir de l'historique complet. À lancer quand personne n'est en train d'encoder un score."
     );
     if (!sure) return;
     setBusy(true);
@@ -304,12 +304,12 @@ function RankingRecalcCard({ players, matches }) {
   return (
     <Card className={cn("p-4 sm:p-5 mb-6", recommended && "border-amber-200 bg-amber-50/70")}>
       <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-        <Icon.Refresh className="w-4 h-4 text-[var(--color-lime)]" /> Recalcul du ranking
+        <Icon.Refresh className="w-4 h-4 text-[var(--color-lime)]" /> Recalcul du niveau
       </h3>
       <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
         Rejoue tout l'historique des matchs officiels notés avec les règles de calcul actuelles
-        (version {RANKING_ENGINE_VERSION}), en repartant du niveau officiel actuel de chaque
-        joueur. À utiliser après chaque changement des règles du ranking. Les rankings visibles
+        (version {RANKING_ENGINE_VERSION}), en repartant du classement officiel actuel de chaque
+        joueur. À utiliser après chaque changement des règles du niveau. Les niveaux visibles
         peuvent changer d'un coup — lancez d'abord l'aperçu, et de préférence quand personne
         n'encode de score.
       </p>
@@ -321,7 +321,7 @@ function RankingRecalcCard({ players, matches }) {
       )}
       {!recommended && !applied.loading && (
         <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 mb-2">
-          <Icon.CheckCircle className="w-3.5 h-3.5" /> Ranking à jour avec la version{" "}
+          <Icon.CheckCircle className="w-3.5 h-3.5" /> Niveau à jour avec la version{" "}
           {RANKING_ENGINE_VERSION} du calcul.
         </p>
       )}
@@ -351,7 +351,7 @@ function RankingRecalcCard({ players, matches }) {
   );
 }
 
-// Carte "Écarts de ranking" (§13) — liste uniquement les joueurs dont le
+// Carte "Écarts de niveau" (ex-"Écarts de ranking", §13) — liste uniquement les joueurs dont le
 // signal de divergence est actif. Pas de mécanisme de masquage/snooze :
 // apparaît/disparaît automatiquement selon la condition de déclenchement —
 // donc invisible dès qu'aucun joueur n'est concerné (comme les autres
@@ -367,11 +367,11 @@ function RankingDivergenceCard({ players }) {
   return (
     <Card className="p-4 sm:p-5 mb-6 border-amber-200 bg-amber-50/70">
       <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-        <Icon.AlertCircle className="w-4 h-4 text-amber-600" /> Écarts de ranking
+        <Icon.AlertCircle className="w-4 h-4 text-amber-600" /> Écarts de niveau
       </h3>
       <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
         Ce n'est pas une preuve d'erreur de déclaration — juste une observation interne au club,
-        à interpréter au cas par cas. Ne changez le niveau officiel que sur une preuve externe
+        à interpréter au cas par cas. Ne changez le classement officiel que sur une preuve externe
         réelle (tournoi, reclassement fédéral).
       </p>
       <div className="flex flex-col gap-2">
@@ -389,8 +389,8 @@ function RankingDivergenceCard({ players }) {
               </div>
               <p className="text-[11px] text-[var(--color-text-dim)]">
                 {goingUp
-                  ? `Ce joueur performe nettement au-dessus de son niveau déclaré. Si son niveau réel a changé, envisager de le monter (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa force au sein du club.`
-                  : `Ce joueur performe nettement en dessous de son niveau déclaré. Si son niveau réel a changé, envisager de le descendre (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa position au sein du club.`}
+                  ? `Ce joueur performe nettement au-dessus de son classement déclaré. Si son niveau réel a changé, envisager de le monter (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa force au sein du club.`
+                  : `Ce joueur performe nettement en dessous de son classement déclaré. Si son niveau réel a changé, envisager de le descendre (suggestion : ${suggestion ? suggestion.label : "—"}). Sinon, cet écart peut simplement refléter sa position au sein du club.`}
               </p>
             </div>
           );
