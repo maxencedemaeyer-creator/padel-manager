@@ -40,7 +40,8 @@ import { PlayerAvatar } from "./PlayerAvatar";
 // contexte (un joueur récent ou récemment recalibré varie plus fort).
 function RankingHistoryModal({ player, matches, onClose }) {
   const state = getPlayerRatingState(player);
-  const history = getRecentLevelDeltaHistory(player.id, matches, 200).slice().reverse();
+  // `true` : inclut aussi les matchs joués sans score (bonus d'assiduité seul).
+  const history = getRecentLevelDeltaHistory(player.id, matches, 200, true).slice().reverse();
 
   return (
     <Modal title={`Historique de niveau — ${player.name}`} onClose={onClose} wide>
@@ -63,6 +64,8 @@ function RankingHistoryModal({ player, matches, onClose }) {
                 <p className="text-[10px] text-[var(--color-text-faint)]">
                   {entry.wasBootstrap
                     ? "Amorçage (1er match noté)"
+                    : entry.bonusOnly
+                    ? `Avant ${entry.avant.toFixed(2)} · Match sans score : bonus d'assiduité seul`
                     : `Avant ${entry.avant.toFixed(2)} · Attendu ${entry.attendu.toFixed(2)} · Marge ×${entry.facteurMarge.toFixed(2)}`}
                 </p>
               </div>
@@ -72,7 +75,7 @@ function RankingHistoryModal({ player, matches, onClose }) {
                 }`}
               >
                 {entry.delta > 0 ? "+" : ""}
-                {entry.delta.toFixed(2)} → {entry.apres.toFixed(2)}
+                {entry.delta.toFixed(entry.bonusOnly ? 3 : 2)} → {entry.apres.toFixed(entry.bonusOnly ? 3 : 2)}
               </span>
             </div>
           ))}
