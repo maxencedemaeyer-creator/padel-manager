@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, normalizeSide } from "../../lib/utils";
-import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
+import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES, levelDisplayLabel } from "../../lib/constants";
 import { getScoreBase, getPlayerRatingState, computeLevelChangeRecalibration } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -335,18 +335,18 @@ export function EditPlayerModal({ player, onClose }) {
         </select>
       </Field>
 
-      <Field label="Niveau estimé">
+      <Field label="Classement estimé">
         <select className={inputClass} value={level} onChange={(e) => setLevel(e.target.value)}>
           {LEVELS.map((l) => (
             <option key={l.label} value={l.label}>
-              {l.label}
+              {levelDisplayLabel(l.label)}
             </option>
           ))}
         </select>
         {showLevelChangeWarning && (
           <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
-            ⚠️ Modifier {isSelf ? "votre" : "son"} niveau officiel peut recalibrer et réduire la
-            fiabilité {isSelf ? "de votre" : "de son"} ranking — à éviter si {isSelf ? "vous le changez" : "ce changement est fait"} juste pour tester.
+            ⚠️ Modifier {isSelf ? "votre" : "son"} classement officiel peut recalibrer et réduire la
+            fiabilité {isSelf ? "de votre" : "de son"} niveau — à éviter si {isSelf ? "vous le changez" : "ce changement est fait"} juste pour tester.
           </p>
         )}
       </Field>
