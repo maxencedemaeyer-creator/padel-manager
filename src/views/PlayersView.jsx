@@ -1,19 +1,61 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Équipe" — Top 5 du club, liste des joueurs (ordre alphabétique).
+// Onglet "Équipe" — Top 5 du club, liste des joueurs. Par défaut par ordre
+// alphabétique des prénoms ; une rangée de boutons "Trier par" permet aussi
+// de trier par Niveau, Homme du match, Classement ou Régularité (ajouté le
+// 21/09/2026). Chaque tri est toujours départagé par l'ordre alphabétique
+// des prénoms, puis par le nom en cas de prénoms identiques.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
 import { useMvpVotes } from "../hooks/useFirestoreData";
 import { computeMvpWinner } from "../lib/mvp";
+import { computePlayerStats } from "../lib/stats";
+import { getPlayerRatingState } from "../lib/levelRating";
+import { cn, getFirstName } from "../lib/utils";
 import Icon from "../components/icons/Icon";
 import { Button, EmptyState } from "../components/ui";
 import { ClubRankingBanner } from "../components/players/ClubRankingBanner";
 import { PlayerRow } from "../components/players/PlayerRow";
 import { AddPlayerModal } from "../components/players/AddPlayerModal";
 
+// Les 5 façons de trier la liste (dans l'ordre d'affichage des boutons).
+// - name       : ordre alphabétique des prénoms (tri par défaut)
+// - level      : Niveau (nombre calculé), du plus haut au plus bas, les
+//                "N.C." tout en bas — bouton masqué tant que le Niveau n'est
+//                pas visible pour les joueurs (même règle que la pastille)
+// - mvp        : nombre de fois élu "homme du match", du plus au moins
+// - rank       : Classement officiel, de P1000 à P50, les non classés en bas
+// - regularity : nombre de matchs joués, du plus au moins
+const SORT_OPTIONS = [
+  { id: "name", label: "Nom" },
+  { id: "level", label: "Niveau" },
+  { id: "mvp", label: "Homme du match" },
+  { id: "rank", label: "Classement" },
+  { id: "regularity", label: "Régularité" },
+];
+
+// Comparaison alphabétique insensible aux accents et aux majuscules :
+// d'abord le prénom, puis le nom complet (donc le nom de famille quand les
+// prénoms sont identiques), puis l'identifiant pour un ordre toujours stable.
+const collator = new Intl.Collator("fr", { sensitivity: "base" });
+function compareByName(a, b) {
+  return (
+    collator.compare(getFirstName(a.name), getFirstName(b.name)) ||
+    collator.compare(a.name || "", b.name || "") ||
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
 export function PlayersView() {
-  const { players, matches, isAdmin } = useAppData();
+  const { players, matches, isAdmin, rankingEnabled } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
+  const [sortId, setSortId] = useState("name");
+  // Le Niveau n'est visible que par l'admin, ou par tous une fois le switch
+  // "Niveau" activé (Administration) — trier par Niveau révélerait l'ordre,
+  // donc le bouton suit exactement la même règle que la pastille.
+  const showLevel = isAdmin || rankingEnabled;
+  const sortOptions = SORT_OPTIONS.filter((o) => o.id !== "level" || showLevel);
+  const activeSort = sortOptions.some((o) => o.id === sortId) ? sortId : "name";
   // Nombre de fois où chaque joueur a été élu "homme du match" (voir jeu du
   // Fun Center, lib/mvp.js) — calculé une seule fois ici à partir du flux
   // temps réel de la collection "mvpVotes", puis distribué à chaque ligne
@@ -35,24 +77,58 @@ export function PlayersView() {
   // uniquement), voir feature "joueurs occasionnels".
   const [showOccasional, setShowOccasional] = useState(false);
 
-  // Toujours affiché par ordre alphabétique — tri manuel supprimé.
-  const sorted = useMemo(() => {
-    const arr = [...players].filter((p) => (isAdmin || !p.isTest) && !p.isOccasional);
-    arr.sort((a, b) => a.name.localeCompare(b.name));
-    return arr;
-  }, [players, isAdmin]);
+  // Matchs joués par joueur (même nombre que celui affiché sur chaque carte)
+  // — calculé seulement quand le tri "Régularité" est actif, pour ne rien
+  // ajouter au coût de l'écran dans les autres cas.
+  const playedCounts = useMemo(() => {
+    if (activeSort !== "regularity") return null;
+    const counts = {};
+    players.forEach((p) => {
+      counts[p.id] = computePlayerStats(p.id, matches).played;
+    });
+    return counts;
+  }, [activeSort, players, matches]);
 
-  const occasionalPlayers = useMemo(() => {
-    const arr = [...players].filter((p) => (isAdmin || !p.isTest) && p.isOccasional);
-    arr.sort((a, b) => a.name.localeCompare(b.name));
-    return arr;
-  }, [players, isAdmin]);
+  // Applique le tri choisi. Chaque critère est décroissant (le "meilleur" en
+  // haut) ; toute égalité est départagée par l'ordre alphabétique des
+  // prénoms. Pour le Niveau, l'égalité se juge sur la valeur AFFICHÉE (une
+  // décimale) : deux joueurs à "4,2" restent donc en ordre alphabétique. Un
+  // joueur sans Niveau ("N.C.") ou sans classement vaut -1, donc tout en bas.
+  const sortPlayers = useMemo(() => {
+    const metric = (p) => {
+      switch (activeSort) {
+        case "level": {
+          const state = getPlayerRatingState(p);
+          return state.hasRanking ? Math.round(state.score * 10) : -1;
+        }
+        case "rank":
+          return p.levelSortValue > 0 ? p.levelSortValue : -1;
+        case "mvp":
+          return mvpCounts[p.id] || 0;
+        case "regularity":
+          return playedCounts ? playedCounts[p.id] || 0 : 0;
+        default:
+          return 0;
+      }
+    };
+    return (list) => [...list].sort((a, b) => metric(b) - metric(a) || compareByName(a, b));
+  }, [activeSort, mvpCounts, playedCounts]);
+
+  const sorted = useMemo(
+    () => sortPlayers(players.filter((p) => (isAdmin || !p.isTest) && !p.isOccasional)),
+    [players, isAdmin, sortPlayers]
+  );
+
+  const occasionalPlayers = useMemo(
+    () => sortPlayers(players.filter((p) => (isAdmin || !p.isTest) && p.isOccasional)),
+    [players, isAdmin, sortPlayers]
+  );
 
   return (
     <div className="px-4 pt-4 pb-28">
       <ClubRankingBanner players={players} matches={matches} />
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="pm-display font-bold text-xl text-white">Équipe</h2>
         {isAdmin && (
           <Button variant="secondary" className="!py-2 !px-3" onClick={() => setShowAdd(true)}>
@@ -61,6 +137,36 @@ export function PlayersView() {
             </span>
           </Button>
         )}
+      </div>
+
+      {/* Boutons de tri — passent à la ligne sur petit écran pour que tous
+          restent visibles sans défilement. Le bouton actif est plein vert,
+          les autres sont blancs (lisibles quel que soit le fond). */}
+      <div
+        role="group"
+        aria-label="Trier les joueurs"
+        className="flex flex-wrap items-center gap-2 mb-4"
+      >
+        <span className="text-[11px] font-semibold text-[var(--color-text-dim)]">Trier par</span>
+        {sortOptions.map((option) => {
+          const active = option.id === activeSort;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSortId(option.id)}
+              aria-pressed={active}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95",
+                active
+                  ? "bg-[var(--color-lime)] text-white border-transparent shadow-sm"
+                  : "bg-white/90 text-[var(--color-text-dim)] border-white/70 hover:bg-white"
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
 
       {sorted.length === 0 ? (
