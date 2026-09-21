@@ -24,13 +24,19 @@
 //   5. Bonus d'assiduité : petit bonus à chaque match officiel noté
 //      (victoire ou défaite), qui s'éteint quand le joueur est déjà bien
 //      au-dessus de son niveau officiel de départ.
+//   6. (v3, 21/09/2026) Le bonus d'assiduité s'applique AUSSI à un match joué
+//      « sans score » (bouton « Pas de score », matchType "Amical") : c'est un
+//      entraînement, donc une progression comme un autre match. Ce match
+//      donne le MÊME bonus (même extinction, même plafond) mais ne change ni
+//      la fiabilité ni rien d'autre : aucune victoire/défaite n'est comptée.
+//      Un joueur "Non classé" n'a pas de niveau de référence : rien pour lui.
 // ─────────────────────────────────────────────────────────────────────────
 import { LEVELS } from "./constants";
 
 // Numéro de version du calcul — à incrémenter à CHAQUE changement de règle
 // ci-dessous. L'admin compare ce numéro à celui du dernier recalcul appliqué
 // (stocké dans settings/appConfig) pour afficher "Recalcul conseillé".
-export const RANKING_ENGINE_VERSION = 2;
+export const RANKING_ENGINE_VERSION = 3;
 
 // ─── Constantes (voir §4.2, §4.4, §4.6, §13 de la spec — ajustées par
 // simulation, voir claude/feature-ranking-padel-manager.md §12 et
@@ -327,7 +333,12 @@ function cancelOneEntry(currentState, oldEntry) {
     RANKING_SCALE_MIN,
     RANKING_SCALE_MAX
   );
-  const newReliability = Math.max(0, (currentState.hasRanking ? currentState.reliability : 0) - 1);
+  // v3 : un match "bonus seul" (sans score) n'avait pas touché à la fiabilité,
+  // donc son annulation ne la baisse pas non plus.
+  const currentReliability = currentState.hasRanking ? currentState.reliability : 0;
+  const newReliability = oldEntry.bonusOnly
+    ? currentReliability
+    : Math.max(0, currentReliability - 1);
   return { reverted: false, newScore, newReliability };
 }
 
@@ -416,6 +427,56 @@ export function computeFreshRankingForMatch({
   return { levelDeltas, newStates };
 }
 
+// ─── v3 : match joué SANS score ("Pas de score", matchType "Amical") ──────
+// Chaque joueur qui a un ranking reçoit uniquement le bonus d'assiduité (règle
+// 5, avec extinction et plafond souple comme pour un match noté). La
+// fiabilité ne change pas (aucune information sur le niveau) et les équipes
+// n'ont aucune importance (personne ne gagne ni ne perd). Un joueur "Non
+// classé" ne reçoit rien (pas de niveau de référence) et n'apparaît donc pas
+// dans le résultat. Même garde-fou 2v2 que computeFreshRankingForMatch.
+// Retourne `null` si la composition est incomplète/incohérente, sinon
+// `{ levelDeltas, newStates }` (les deux peuvent être vides si aucun des 4
+// joueurs n'a de ranking). Les entrées portent `bonusOnly: true`.
+export function computeBonusOnlyForMatch({ teamAIds, teamBIds, statesById, contextById }) {
+  if (
+    !Array.isArray(teamAIds) ||
+    !Array.isArray(teamBIds) ||
+    teamAIds.length !== 2 ||
+    teamBIds.length !== 2
+  ) {
+    return null;
+  }
+  const allIds = [...teamAIds, ...teamBIds];
+  if (new Set(allIds).size !== 4) return null;
+  if (allIds.some((id) => !statesById[id])) return null;
+
+  const contexts = contextById || {};
+  const levelDeltas = {};
+  const newStates = {};
+  allIds.forEach((id) => {
+    const state = statesById[id];
+    if (!state.hasRanking) return;
+    const { windowProgression, overStart } = progressionOf(state, contexts[id]);
+    const capFactor = capFactorFromProgression(windowProgression);
+    const bonus = attendanceBonusBase(state.score) * attendanceTaper(overStart) * capFactor;
+    const apres = clamp(state.score + bonus, RANKING_SCALE_MIN, RANKING_SCALE_MAX);
+    levelDeltas[id] = {
+      avant: state.score,
+      apres,
+      delta: bonus,
+      attendu: null,
+      resultat: null,
+      facteurMarge: null,
+      bonus,
+      facteurPlafond: capFactor,
+      wasBootstrap: false,
+      bonusOnly: true,
+    };
+    newStates[id] = { score: apres, reliability: state.reliability, hasRanking: true };
+  });
+  return { levelDeltas, newStates };
+}
+
 // ─── v2 : contexte de progression construit depuis les matchs existants ───
 // Clé chronologique d'un match (même convention que
 // getRecentLevelDeltaHistory plus bas et que getMatchStart de matchLogic.js).
@@ -477,10 +538,17 @@ export function buildRankingContext({ playerIds, playersById, matches, currentMa
 // souple et bonus d'assiduité, voir buildRankingContext). Sans eux, ces deux
 // règles se comportent comme si le joueur n'avait aucun historique.
 //
+// `bonusOnly` (v3) : true pour un match joué SANS score ("Pas de score") — seul
+// le bonus d'assiduité est appliqué (voir computeBonusOnlyForMatch), `sets` et
+// `winningTeam` sont alors ignorés. Un éventuel ancien ajustement de ce match
+// (ex. il avait un score avant correction) est annulé comme d'habitude.
+//
 // Retourne `null` si les 4 ids ne forment pas 2 équipes de 2 joueurs
 // distincts (garde-fou, §5) — l'appelant ne touche alors à rien côté
 // ranking. Sinon, retourne `{ levelDeltas, playerUpdates }` :
-// - `levelDeltas` : à écrire tel quel sur `match.levelDeltas`.
+// - `levelDeltas` : à écrire tel quel sur `match.levelDeltas` (peut être VIDE
+//   en mode `bonusOnly` si aucun des 4 joueurs n'a de ranking : l'appelant
+//   supprime alors le champ plutôt que d'écrire un objet vide).
 // - `playerUpdates` : `{ [playerId]: {internalScore, internalScoreReliability} | UNRANK_PLAYER }`
 //   à appliquer sur chaque document joueur concerné.
 export function computeRankingUpdateForMatch({
@@ -492,6 +560,7 @@ export function computeRankingUpdateForMatch({
   previousLevelDeltas,
   matches,
   match,
+  bonusOnly = false,
 }) {
   if (
     !Array.isArray(teamAIds) ||
@@ -514,19 +583,29 @@ export function computeRankingUpdateForMatch({
     matches,
     currentMatch: match,
   });
-  const fresh = computeFreshRankingForMatch({
-    teamAIds,
-    teamBIds,
-    statesById,
-    sets,
-    winningTeam,
-    contextById,
-  });
+  const fresh = bonusOnly
+    ? computeBonusOnlyForMatch({ teamAIds, teamBIds, statesById, contextById })
+    : computeFreshRankingForMatch({
+        teamAIds,
+        teamBIds,
+        statesById,
+        sets,
+        winningTeam,
+        contextById,
+      });
   if (!fresh) return null;
 
+  // Match noté : les 4 joueurs ont un nouvel état. Match sans score : seuls les
+  // joueurs classés en ont un ; un joueur non classé n'est touché que si un
+  // ancien ajustement de ce match vient d'être annulé (retour éventuel à
+  // "Non classé" après annulation d'un amorçage).
   const playerUpdates = {};
   allIds.forEach((id) => {
-    playerUpdates[id] = stateToPlayerUpdate(fresh.newStates[id]);
+    if (fresh.newStates[id]) {
+      playerUpdates[id] = stateToPlayerUpdate(fresh.newStates[id]);
+    } else if (previousLevelDeltas && previousLevelDeltas[id]) {
+      playerUpdates[id] = stateToPlayerUpdate(statesById[id]);
+    }
   });
 
   return { levelDeltas: fresh.levelDeltas, playerUpdates };
@@ -623,9 +702,17 @@ export function suggestLevelForScore(internalScore) {
 // Reconstruit, à la volée (aucun champ dédié en base, voir §8), les derniers
 // ajustements chronologiques d'un joueur à partir de `match.levelDeltas`.
 // Retourne du plus ANCIEN au plus RÉCENT (ordre naturel pour une sparkline).
-export function getRecentLevelDeltaHistory(playerId, matches, limit = 10) {
+// v3 : par défaut, les matchs "bonus seul" (sans score, entrée `bonusOnly`)
+// sont exclus — la sparkline et le "Dernier : ▲ +0,3" de "Mon profil" parlent
+// de vrais résultats. L'historique admin passe `includeBonusOnly = true`.
+export function getRecentLevelDeltaHistory(playerId, matches, limit = 10, includeBonusOnly = false) {
   const relevant = (matches || [])
-    .filter((m) => m.levelDeltas && m.levelDeltas[playerId])
+    .filter(
+      (m) =>
+        m.levelDeltas &&
+        m.levelDeltas[playerId] &&
+        (includeBonusOnly || !m.levelDeltas[playerId].bonusOnly)
+    )
     .map((m) => ({ match: m, entry: m.levelDeltas[playerId] }))
     .sort((a, b) => {
       const da = `${a.match.date || ""}T${a.match.time || "00:00"}`;
