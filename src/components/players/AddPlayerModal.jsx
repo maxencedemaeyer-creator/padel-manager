@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn } from "../../lib/utils";
-import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES } from "../../lib/constants";
+import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES, levelDisplayLabel } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
@@ -250,7 +250,7 @@ export function AddPlayerModal({ onClose }) {
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Niveau">
+        <Field label="Classement">
           <select
             className={inputClass}
             value={form.level}
@@ -258,7 +258,7 @@ export function AddPlayerModal({ onClose }) {
           >
             {LEVELS.map((l) => (
               <option key={l.label} value={l.label}>
-                {l.label}
+                {levelDisplayLabel(l.label)}
               </option>
             ))}
           </select>
