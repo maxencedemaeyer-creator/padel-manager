@@ -414,12 +414,16 @@ function RankingInfoModal({ onClose }) {
         part de votre classement officiel (P100, P200…) puis évolue automatiquement selon vos
         résultats en matchs officiels : une victoire face à plus fort que vous rapporte davantage,
         une défaite face à plus fort que vous coûte peu, et l'écart de jeux compte aussi. Jouer
-        régulièrement fait aussi progresser doucement votre niveau, même après une défaite. Il se
-        recale si vous changez votre classement officiel dans votre profil.
+        régulièrement fait aussi progresser doucement votre niveau, même après une défaite et même
+        pour un match joué sans score (bouton « Pas de score »). Il se recale si vous changez votre
+        classement officiel dans votre profil.
       </p>
       <p className="text-sm font-semibold mt-4 mb-1.5">Comment augmenter mon niveau ?</p>
       <ul className="text-sm text-[var(--color-text-dim)] list-disc pl-5 flex flex-col gap-1">
-        <li>Jouer souvent : la régularité fait progresser doucement, même après une défaite.</li>
+        <li>
+          Jouer souvent : la régularité fait progresser doucement, même après une défaite ou un
+          match sans score.
+        </li>
         <li>Gagner plus de matchs.</li>
         <li>Battre des joueurs plus forts que vous : c'est ce qui rapporte le plus.</li>
         <li>Gagner nettement (grand écart de jeux) quand vous étiez l'outsider.</li>
