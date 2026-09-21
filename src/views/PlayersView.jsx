@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Onglet "Équipe" — classement, liste des joueurs (ordre alphabétique).
+// Onglet "Équipe" — Top 5 du club, liste des joueurs (ordre alphabétique).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
