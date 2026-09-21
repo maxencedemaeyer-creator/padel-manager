@@ -29,6 +29,16 @@ export const LEVELS = [
   { label: "Pas de niveau", value: 0 },
 ];
 
+// Terminologie (21/09/2026) : P50, P100, P200… s'appellent désormais le
+// "Classement" (officiel) ; le mot "Niveau" est réservé au nombre calculé de 1
+// à 10 (l'ancien "Ranking"). L'option "Pas de niveau" s'affiche donc
+// "Non classé" — MAIS sa valeur enregistrée dans Firebase (champ `level` des
+// joueurs) reste "Pas de niveau", car le code la compare partout à ce texte.
+// À utiliser uniquement pour l'AFFICHAGE d'un classement officiel.
+export function levelDisplayLabel(label) {
+  return !label || label === "Pas de niveau" ? "Non classé" : label;
+}
+
 export const HAND_OPTIONS = ["Droitier", "Gaucher", "Ambidextre"];
 export const SIDE_OPTIONS = ["Droite", "Gauche", "Polyvalent"];
 export const FEDERATION_OPTIONS = ["Aucune", "AFP", "AFT", "AFP + AFT"];
