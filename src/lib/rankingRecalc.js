@@ -1,7 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Recalcul complet du Ranking (bouton admin "Recalcul du ranking") — rejoue
-// TOUT l'historique des matchs officiels notés, dans l'ordre chronologique,
-// avec les règles du code actuellement déployé (voir
+// TOUT l'historique des matchs officiels notés ET (depuis la version 3 du
+// calcul) des matchs joués "sans score" (matchType "Amical", qui ne rapportent
+// que le bonus d'assiduité), dans l'ordre chronologique, avec les règles du
+// code actuellement déployé (voir
 // RANKING_ENGINE_VERSION dans src/lib/levelRating.js et
 // claude/feature-ranking-v2-progression-assiduite-2026-09-19.md §7).
 //
@@ -22,6 +24,7 @@ import {
   getPlayerRatingState,
   getScoreBase,
   computeFreshRankingForMatch,
+  computeBonusOnlyForMatch,
   compareMatchesChronologically,
 } from "./levelRating";
 
@@ -35,7 +38,8 @@ function officialLevelValue(player) {
 
 // Retourne :
 // - `playerRows` : une ligne par joueur (pour l'aperçu) — ancien/nouveau
-//   ranking, nombre de matchs rejoués.
+//   ranking, nombre de matchs NOTÉS rejoués (`matchesCount` : les matchs sans
+//   score, qui ne rapportent que le bonus d'assiduité, n'y sont pas comptés).
 // - `playerWrites` : `{ [playerId]: { levelSortValue?, internalScore?,
 //   internalScoreReliability?, unrank? } }` — uniquement les joueurs dont
 //   une donnée change réellement. `unrank: true` = supprimer
@@ -49,7 +53,8 @@ export function computeFullRecalculation({ players, matches }) {
   const statesById = {};
   const historyById = {};
   const startById = {};
-  const countById = {};
+  const countById = {}; // tous les matchs rejoués (notés + sans score)
+  const scoredCountById = {}; // seulement les matchs notés (affiché dans l'aperçu)
   const levelFixById = {};
 
   players.forEach((p) => {
@@ -63,10 +68,15 @@ export function computeFullRecalculation({ players, matches }) {
     historyById[p.id] = [];
     startById[p.id] = base;
     countById[p.id] = 0;
+    scoredCountById[p.id] = 0;
   });
 
+  // Matchs rejoués : officiels avec score (calcul complet) + matchs joués sans
+  // score, confirmés par « Pas de score » (matchType "Amical", bonus seul).
+  const isScoredOfficial = (m) => m.matchType === "Officiel" && hasMatchScore(m);
+  const isBonusOnly = (m) => m.matchType === "Amical" && !hasMatchScore(m);
   const eligible = (matches || [])
-    .filter((m) => m.matchType === "Officiel" && hasMatchScore(m))
+    .filter((m) => isScoredOfficial(m) || isBonusOnly(m))
     .sort(compareMatchesChronologically);
 
   const matchWrites = [];
@@ -74,24 +84,33 @@ export function computeFullRecalculation({ players, matches }) {
   let skippedIncomplete = 0;
 
   eligible.forEach((m) => {
+    const bonusOnly = isBonusOnly(m);
     const teamAIds = (m.participants || []).filter((p) => p.team === "A").map((p) => p.playerId);
     const teamBIds = (m.participants || []).filter((p) => p.team === "B").map((p) => p.playerId);
     const contextById = {};
     [...teamAIds, ...teamBIds].forEach((id) => {
       if (statesById[id]) contextById[id] = { history: historyById[id], startRef: startById[id] };
     });
-    const fresh = computeFreshRankingForMatch({
-      teamAIds,
-      teamBIds,
-      statesById,
-      sets: m.scores || {},
-      winningTeam: computeWinnerFromSets(m.scores || {}),
-      contextById,
-    });
+    const fresh = bonusOnly
+      ? computeBonusOnlyForMatch({ teamAIds, teamBIds, statesById, contextById })
+      : computeFreshRankingForMatch({
+          teamAIds,
+          teamBIds,
+          statesById,
+          sets: m.scores || {},
+          winningTeam: computeWinnerFromSets(m.scores || {}),
+          contextById,
+        });
     if (!fresh) {
-      skippedIncomplete += 1;
+      // Un match sans score à la composition incomplète est ignoré sans bruit
+      // (d'anciens matchs amicaux peuvent être incomplets) ; on ne compte comme
+      // « ignoré » que les matchs notés.
+      if (!bonusOnly) skippedIncomplete += 1;
       return;
     }
+    // Match sans score où aucun des 4 joueurs n'a de ranking : rien à écrire
+    // (et un éventuel ancien levelDeltas de ce match sera effacé plus bas).
+    if (Object.keys(fresh.levelDeltas).length === 0) return;
     matchWrites.push({ matchId: m.id, levelDeltas: fresh.levelDeltas });
     replayedIds.add(m.id);
     Object.entries(fresh.newStates).forEach(([id, state]) => {
@@ -99,6 +118,7 @@ export function computeFullRecalculation({ players, matches }) {
       historyById[id] = [...historyById[id], state.score];
       if (startById[id] == null) startById[id] = state.score;
       countById[id] += 1;
+      if (!bonusOnly) scoredCountById[id] += 1;
     });
   });
 
@@ -140,7 +160,7 @@ export function computeFullRecalculation({ players, matches }) {
       level: p.level || "Pas de niveau",
       before: before.hasRanking ? before.score : null,
       after: afterScore,
-      matchesCount: countById[p.id],
+      matchesCount: scoredCountById[p.id],
       levelFixed: levelFixById[p.id] !== undefined,
     });
   });
