@@ -138,7 +138,9 @@ export function PlayerRow({ player, mvpCount = 0 }) {
   // tous les joueurs une fois le switch admin activé (`rankingEnabled`), et
   // toujours visible pour l'admin quel que soit l'état du switch. Quand la
   // condition est fausse, l'emplacement disparaît entièrement (y compris le
-  // badge "Non classé") — pas de placeholder.
+  // badge "N.C." des joueurs non classés) — pas de placeholder. Un joueur non
+  // classé garde exactement la même pastille que les autres (fond, balle de
+  // tennis), avec la mention "N.C." à la place du nombre (modif. 21/09/2026).
   const showRanking = isAdmin || rankingEnabled;
   const rankingState = getPlayerRatingState(player);
   // Historique de ranking (icône admin) : reste visible pour l'admin dès
@@ -178,7 +180,7 @@ export function PlayerRow({ player, mvpCount = 0 }) {
                 <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[9px]">
                   {rankingState.hasRanking
                     ? `🎾 ${rankingState.score.toFixed(1).replace(".", ",")}`
-                    : "Non classé"}
+                    : "🎾 N.C."}
                 </Badge>
               )}
               {player.isCreditor && isAdmin && (
