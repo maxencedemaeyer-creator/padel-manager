@@ -21,7 +21,8 @@ import { Modal, Button } from "../ui";
 
 // Applique en une seule écriture atomique (writeBatch) le score du match ET,
 // s'il y a un score exploitable (ou s'il y en avait un avant cette
-// correction), la mise à jour du Ranking des 4 joueurs — voir
+// correction, ou si c'est un match « Pas de score » qui rapporte le bonus
+// d'assiduité seul — v3), la mise à jour du Ranking des 4 joueurs — voir
 // src/lib/levelRating.js (§4.1-§4.9 de la spec). Le Ranking reste
 // "best-effort" : si les 4 participants ne forment pas exactement 2 équipes
 // de 2 joueurs identifiables (cas qui ne devrait jamais arriver en usage
@@ -40,9 +41,12 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
   const playersById = Object.fromEntries(players.map((p) => [p.id, p]));
   const previousLevelDeltas = match.levelDeltas || null;
   const hasScore = hasMatchScore({ scores: sets });
+  // v3 (21/09/2026) : « Pas de score » (matchType "Amical") = le match a bien
+  // été joué → chaque joueur qui a un niveau reçoit le bonus d'assiduité seul.
+  const bonusOnly = !hasScore && matchType === "Amical";
 
   let rankingResult = null;
-  if (hasScore) {
+  if (hasScore || bonusOnly) {
     rankingResult = computeRankingUpdateForMatch({
       teamAIds,
       teamBIds,
@@ -52,9 +56,17 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
       previousLevelDeltas,
       matches,
       match,
+      bonusOnly,
     });
-    if (rankingResult) matchUpdate.levelDeltas = rankingResult.levelDeltas;
-  } else if (previousLevelDeltas) {
+    if (rankingResult) {
+      // Aucun joueur classé dans un match sans score : rien à mémoriser.
+      matchUpdate.levelDeltas =
+        Object.keys(rankingResult.levelDeltas).length > 0
+          ? rankingResult.levelDeltas
+          : deleteField();
+    }
+  }
+  if (!hasScore && !rankingResult && previousLevelDeltas) {
     // Le score exploitable a disparu (correction) : on annule l'ancien
     // ajustement sans en appliquer de nouveau — voir §4.8.B de la spec.
     rankingResult = cancelRankingForMatch({ previousLevelDeltas, playersById });
@@ -116,7 +128,9 @@ export function EndMatchModal({ match, onClose }) {
     (k) => isSuspicious(sets[k].a) || isSuspicious(sets[k].b)
   );
   // Avertissement discret (voir §5 de la spec) : si rien d'exploitable n'est
-  // saisi, le score s'enregistre normalement mais le Ranking ne bouge pas.
+  // saisi, le score s'enregistre normalement mais le niveau ne bouge pas. Le
+  // message oriente vers « Pas de score » si le match a bien été joué (v3 :
+  // ce bouton rapporte le bonus d'assiduité).
   const noExploitableData = !hasMatchScore({ scores: sets });
 
   // Un score saisi ici correspond toujours à un match officiel — les deux
@@ -239,7 +253,8 @@ export function EndMatchModal({ match, onClose }) {
       )}
       {noExploitableData && (
         <p className="text-[var(--color-text-faint)] text-[11px] mb-2">
-          Aucun score exploitable saisi pour l'instant — le niveau ne sera pas mis à jour.
+          Aucun score exploitable saisi pour l'instant — le niveau ne sera pas mis à jour. Si le
+          match a bien été joué sans score, utilisez un des boutons « Pas de score » ci-dessous.
         </p>
       )}
 
@@ -260,6 +275,10 @@ export function EndMatchModal({ match, onClose }) {
         >
           Pas de score — Match amical
         </Button>
+        <p className="text-[var(--color-text-faint)] text-[11px] text-center">
+          Un match joué sans score rapporte quand même un petit bonus de régularité à chaque
+          joueur qui a un niveau.
+        </p>
       </div>
     </Modal>
   );
