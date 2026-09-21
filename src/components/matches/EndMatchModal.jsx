@@ -239,7 +239,7 @@ export function EndMatchModal({ match, onClose }) {
       )}
       {noExploitableData && (
         <p className="text-[var(--color-text-faint)] text-[11px] mb-2">
-          Aucun score exploitable saisi pour l'instant — le Ranking ne sera pas mis à jour.
+          Aucun score exploitable saisi pour l'instant — le niveau ne sera pas mis à jour.
         </p>
       )}
 
