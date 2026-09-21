@@ -1,7 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Une carte de la liste Équipe : avatar à gauche, puis 3 lignes (nom +
 // badges, stats, homme du match), et à droite un bloc 2x2 (main / côté /
-// niveau / historique de ranking) suivi du bouton modifier (admin).
+// classement officiel / historique de niveau) suivi du bouton modifier (admin).
+// Vocabulaire (21/09/2026) : "Niveau" = le nombre calculé de 1 à 10 (pastille
+// "🎾 4,2", ex-"Ranking") ; "Classement" = P100, P200… (classement officiel).
 // Le solde d'un créancier ne s'affiche plus ici — il vit uniquement dans
 // l'onglet "Ma comptabilité" / "Administration".
 //
@@ -31,7 +33,8 @@ import { Card, Badge, Modal } from "../ui";
 import { EditPlayerModal } from "./EditPlayerModal";
 import { PlayerAvatar } from "./PlayerAvatar";
 
-// Modale "Historique de ranking — [nom]" — réservée à l'admin (voir §6 de
+// Modale "Historique de niveau — [nom]" (anciennement "Historique de ranking",
+// renommé le 21/09/2026) — réservée à l'admin (voir §6 de
 // claude/feature-ranking-padel-manager.md). Liste du plus récent au plus
 // ancien, avec la fiabilité actuelle du joueur en en-tête pour donner le
 // contexte (un joueur récent ou récemment recalibré varie plus fort).
@@ -40,13 +43,13 @@ function RankingHistoryModal({ player, matches, onClose }) {
   const history = getRecentLevelDeltaHistory(player.id, matches, 200).slice().reverse();
 
   return (
-    <Modal title={`Historique de ranking — ${player.name}`} onClose={onClose} wide>
+    <Modal title={`Historique de niveau — ${player.name}`} onClose={onClose} wide>
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         Fiabilité actuelle : <span className="font-semibold">{state.reliability.toFixed(1)}</span>
       </p>
       {history.length === 0 ? (
         <p className="text-sm text-[var(--color-text-faint)] italic">
-          Aucun ajustement de ranking enregistré pour ce joueur.
+          Aucun ajustement de niveau enregistré pour ce joueur.
         </p>
       ) : (
         <div className="flex flex-col gap-2">
@@ -134,20 +137,21 @@ export function PlayerRow({ player, mvpCount = 0 }) {
   // hauteur constante, avec ou sans mention.
   const mvpLine = mvpCount > 0 ? `🏆 ${mvpCount}x homme du match` : "";
 
-  // Ranking (voir claude/feature-ranking-padel-manager.md §6) — visible par
-  // tous les joueurs une fois le switch admin activé (`rankingEnabled`), et
-  // toujours visible pour l'admin quel que soit l'état du switch. Quand la
-  // condition est fausse, l'emplacement disparaît entièrement (y compris le
-  // badge "N.C." des joueurs non classés) — pas de placeholder. Un joueur non
-  // classé garde exactement la même pastille que les autres (fond, balle de
-  // tennis), avec la mention "N.C." à la place du nombre (modif. 21/09/2026).
+  // Niveau (ex-"Ranking", voir claude/feature-ranking-padel-manager.md §6) —
+  // visible par tous les joueurs une fois le switch admin activé
+  // (`rankingEnabled`), et toujours visible pour l'admin quel que soit
+  // l'état du switch. Quand la condition est fausse, l'emplacement disparaît
+  // entièrement (y compris le badge "N.C." des joueurs non classés) — pas de
+  // placeholder. Un joueur non classé (pas de classement officiel P100,
+  // P200…) n'a pas encore de niveau : il garde exactement la même pastille
+  // que les autres, avec "N.C." à la place du nombre (modif. 21/09/2026).
   const showRanking = isAdmin || rankingEnabled;
   const rankingState = getPlayerRatingState(player);
-  // Historique de ranking (icône admin) : reste visible pour l'admin dès
-  // qu'un joueur a un ranking, quel que soit l'état du switch
+  // Historique de niveau (icône admin) : reste visible pour l'admin dès
+  // qu'un joueur a un niveau, quel que soit l'état du switch
   // `rankingEnabled` — confirmé explicitement par Max (19/09/2026), même
   // comportement que l'ancienne version. Ce switch ne contrôle que la
-  // visibilité du Ranking pour les autres joueurs (badge dans la ligne 1),
+  // visibilité du Niveau pour les autres joueurs (badge dans la ligne 1),
   // jamais l'accès admin à l'historique.
   const showHistoryCell = isAdmin && rankingState.hasRanking;
 
@@ -221,8 +225,8 @@ export function PlayerRow({ player, mvpCount = 0 }) {
             </p>
           </div>
 
-          {/* Bloc de droite : main / côté / niveau / historique en 2x2 (ou
-              2x1 + niveau seul en dessous si l'historique est masqué), puis
+          {/* Bloc de droite : main / côté / classement / historique en 2x2 (ou
+              2x1 + classement seul en dessous si l'historique est masqué), puis
               le bouton modifier tout à droite de la carte. */}
           <div className="flex items-center gap-2 shrink-0">
             <div className="grid grid-cols-2 gap-1.5">
@@ -242,15 +246,15 @@ export function PlayerRow({ player, mvpCount = 0 }) {
               >
                 {sideAbbrev(player.preferredSide)}
               </button>
-              <span className={levelCellClass} title="Niveau officiel">
+              <span className={levelCellClass} title="Classement officiel">
                 {levelLabel}
               </span>
               {showHistoryCell && (
                 <button
                   type="button"
                   onClick={() => setShowRankingHistory(true)}
-                  aria-label="Historique de ranking"
-                  title="Historique de ranking"
+                  aria-label="Historique de niveau"
+                  title="Historique de niveau"
                   className={`${letterCellClass} hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50`}
                 >
                   <Icon.History className="w-3.5 h-3.5" />
