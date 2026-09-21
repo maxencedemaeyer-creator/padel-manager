@@ -21,6 +21,7 @@ import {
   HAND_OPTIONS,
   SIDE_OPTIONS,
   FEDERATION_OPTIONS,
+  levelDisplayLabel,
 } from "../lib/constants";
 import {
   computePlayerStats,
@@ -372,11 +373,11 @@ function SettingsModal({ player, players, sessionToken, onClose }) {
         </Field>
       </div>
 
-      <Field label="Niveau estimé">
+      <Field label="Classement estimé">
         <select className={inputClass} value={level} onChange={(e) => setLevel(e.target.value)}>
           {LEVELS.map((l) => (
             <option key={l.label} value={l.label}>
-              {l.label}
+              {levelDisplayLabel(l.label)}
             </option>
           ))}
         </select>
@@ -397,25 +398,26 @@ function SettingsModal({ player, players, sessionToken, onClose }) {
   );
 }
 
-// Ranking (voir claude/feature-ranking-padel-manager.md §6) — désormais
+// Niveau (ex-"Ranking", voir claude/feature-ranking-padel-manager.md §6) —
 // incorporé directement dans la carte "Statistiques" (pastille "🎾 nombre"
-// ou "🎾 N.C.", avec le libellé "Ranking" au-dessus). Popup d'explication, courte
-// et à la demande seulement (bouton "?").
+// ou "🎾 N.C.", avec le libellé "Niveau" au-dessus). Popup d'explication,
+// courte et à la demande seulement (bouton "?").
 function RankingInfoModal({ onClose }) {
   return (
     <Modal
-      title="Qu'est-ce que le Ranking ?"
+      title="Qu'est-ce que le Niveau ?"
       onClose={onClose}
       footer={<Button onClick={onClose}>Compris</Button>}
     >
       <p className="text-sm text-[var(--color-text-dim)]">
-        Ce ranking reflète votre niveau interne au club. Il évolue automatiquement selon vos
+        Votre niveau est un nombre de 1 à 10 qui reflète votre force de jeu au sein du club. Il
+        part de votre classement officiel (P100, P200…) puis évolue automatiquement selon vos
         résultats en matchs officiels : une victoire face à plus fort que vous rapporte davantage,
         une défaite face à plus fort que vous coûte peu, et l'écart de jeux compte aussi. Jouer
-        régulièrement fait aussi progresser doucement votre ranking, même après une défaite. Il se
-        recale si vous changez votre niveau officiel dans votre profil.
+        régulièrement fait aussi progresser doucement votre niveau, même après une défaite. Il se
+        recale si vous changez votre classement officiel dans votre profil.
       </p>
-      <p className="text-sm font-semibold mt-4 mb-1.5">Comment augmenter mon ranking ?</p>
+      <p className="text-sm font-semibold mt-4 mb-1.5">Comment augmenter mon niveau ?</p>
       <ul className="text-sm text-[var(--color-text-dim)] list-disc pl-5 flex flex-col gap-1">
         <li>Jouer souvent : la régularité fait progresser doucement, même après une défaite.</li>
         <li>Gagner plus de matchs.</li>
@@ -613,11 +615,11 @@ export function StatsView() {
     },
     {
       emoji: "🎖️",
-      label: "Niveau",
-      value:
-        (LEVELS.find((l) => l.value === connectedPlayer.levelSortValue)?.label) ||
-        connectedPlayer.level ||
-        "Non renseigné",
+      label: "Classement",
+      value: levelDisplayLabel(
+        LEVELS.find((l) => l.value === connectedPlayer.levelSortValue)?.label ||
+          connectedPlayer.level
+      ),
     },
     {
       emoji: "🏛️",
@@ -685,7 +687,7 @@ export function StatsView() {
         )}
 
         {/* Bloc "Statistiques" — tout tient désormais sur une seule ligne :
-            à gauche la colonne Ranking (pastille identique à celle de l'onglet
+            à gauche la colonne Niveau (pastille identique à celle de l'onglet
             Équipe mais en grand, puis la tendance en petit,
             puis le delta du dernier match encore plus petit, du plus au
             moins important visuellement), à droite les totaux + le rond
@@ -698,7 +700,7 @@ export function StatsView() {
                 <button
                   type="button"
                   onClick={() => setShowRankingInfo(true)}
-                  aria-label="En savoir plus sur le Ranking"
+                  aria-label="En savoir plus sur le Niveau"
                   title="En savoir plus"
                   className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] hover:text-[var(--color-lime)]"
                 >
@@ -715,7 +717,7 @@ export function StatsView() {
                     )}
                   >
                     <p className="text-[9px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
-                      Ranking
+                      Niveau
                     </p>
                     {/* Même pastille que dans l'onglet Équipe (Badge "lime" :
                         fond turquoise, balle de tennis + nombre, ou "N.C."
@@ -753,7 +755,7 @@ export function StatsView() {
                       </>
                     ) : (
                       <p className="text-[9px] text-[var(--color-text-dim)] mt-1.5 leading-tight max-w-[76px]">
-                        Pas encore de ranking
+                        Pas encore de niveau
                       </p>
                     )}
                   </div>
