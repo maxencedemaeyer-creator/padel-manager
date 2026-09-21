@@ -32,7 +32,7 @@ import {
 import { countMvpWins } from "../lib/mvp";
 import { getPlayerRatingState, getRecentLevelDeltaHistory } from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
-import { Card, Field, inputClass, Modal, Button } from "../components/ui";
+import { Card, Badge, Field, inputClass, Modal, Button } from "../components/ui";
 import Icon from "../components/icons/Icon";
 import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
@@ -398,8 +398,8 @@ function SettingsModal({ player, players, sessionToken, onClose }) {
 }
 
 // Ranking (voir claude/feature-ranking-padel-manager.md §6) — désormais
-// incorporé directement dans la carte "Statistiques" (nombre en grand dans
-// un rond, avec le libellé "Ranking" au-dessus). Popup d'explication, courte
+// incorporé directement dans la carte "Statistiques" (pastille "🎾 nombre"
+// ou "🎾 N.C.", avec le libellé "Ranking" au-dessus). Popup d'explication, courte
 // et à la demande seulement (bouton "?").
 function RankingInfoModal({ onClose }) {
   return (
@@ -685,7 +685,8 @@ export function StatsView() {
         )}
 
         {/* Bloc "Statistiques" — tout tient désormais sur une seule ligne :
-            à gauche la colonne Ranking (rond, puis la tendance en petit,
+            à gauche la colonne Ranking (pastille identique à celle de l'onglet
+            Équipe mais en grand, puis la tendance en petit,
             puis le delta du dernier match encore plus petit, du plus au
             moins important visuellement), à droite les totaux + le rond
             d'efficacité, réduits pour respirer sur la même hauteur. */}
@@ -716,15 +717,18 @@ export function StatsView() {
                     <p className="text-[9px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-1.5">
                       Ranking
                     </p>
-                    <div className="w-16 h-16 rounded-full border-4 border-[var(--color-lime)] flex items-center justify-center shrink-0">
-                      {rankingState.hasRanking ? (
-                        <span className="pm-display font-extrabold text-lg leading-none">
-                          {rankingState.score.toFixed(1).replace(".", ",")}
-                        </span>
-                      ) : (
-                        <span className="text-lg text-[var(--color-text-faint)]">—</span>
-                      )}
-                    </div>
+                    {/* Même pastille que dans l'onglet Équipe (Badge "lime" :
+                        fond turquoise, balle de tennis + nombre, ou "N.C."
+                        pour un joueur non classé), en plus grand. */}
+                    <Badge
+                      tone="lime"
+                      className="pm-display !px-3.5 !py-1.5 !text-xl !font-extrabold !gap-1.5 leading-none"
+                    >
+                      <span className="text-lg leading-none">🎾</span>
+                      {rankingState.hasRanking
+                        ? rankingState.score.toFixed(1).replace(".", ",")
+                        : "N.C."}
+                    </Badge>
                     {rankingState.hasRanking && rankingSparklineValues.length >= 2 ? (
                       <>
                         <div className="mt-1.5">
