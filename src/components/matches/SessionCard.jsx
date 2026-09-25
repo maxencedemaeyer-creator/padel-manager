@@ -429,7 +429,14 @@ export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false, 
 // `roundLabel` : étiquette « Manche 1 » affichée au-dessus des équipes, seulement
 // quand la session compte au moins une manche supplémentaire (voir
 // MatchResultBlock).
-export function CompactMatchResult({ match, compact = false, roundLabel = null }) {
+// `canEditScore` : true pour un joueur de la session (non-admin) dans le bloc
+// « Dernier résultat » — affiche la même roulette ⚙️ que l'admin, limitée à « Modifier le score du match ».
+export function CompactMatchResult({
+  match,
+  compact = false,
+  roundLabel = null,
+  canEditScore = false,
+}) {
   const { isAdmin, players } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
@@ -504,7 +511,7 @@ export function CompactMatchResult({ match, compact = false, roundLabel = null }
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {isAdmin && (
+        {(isAdmin || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
@@ -518,6 +525,7 @@ export function CompactMatchResult({ match, compact = false, roundLabel = null }
 
       {showMenu && (
         <CourtSettingsMenu
+          scoreOnly={!isAdmin}
           onClose={() => setShowMenu(false)}
           onPickDateTime={() => {
             setShowMenu(false);
@@ -555,7 +563,13 @@ export function CompactMatchResult({ match, compact = false, roundLabel = null }
 // présentation qu'un résultat de terrain, avec l'étiquette « Manche N » (le match
 // de base est la manche 1). Pour l'admin, la roulette ⚙️ permet de modifier ou
 // de supprimer la manche en cas d'erreur.
-function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) {
+function RoundResultRow({
+  match,
+  sessionMatches,
+  roundIndex,
+  compact = false,
+  canEditScore = false,
+}) {
   const { isAdmin, players } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -630,7 +644,7 @@ function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) 
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {isAdmin && (
+        {(isAdmin || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
@@ -653,18 +667,20 @@ function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) 
               }}
               className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
             >
-              Modifier la composition ou le score
+              {isAdmin ? "Modifier la composition ou le score" : "Encoder le score de la manche"}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowMenu(false);
-                setShowDelete(true);
-              }}
-              className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-left text-sm font-medium text-rose-700"
-            >
-              Supprimer cette manche
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowDelete(true);
+                }}
+                className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-left text-sm font-medium text-rose-700"
+              >
+                Supprimer cette manche
+              </button>
+            )}
           </div>
         </Modal>
       )}
@@ -673,6 +689,7 @@ function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) 
           match={match}
           sessionMatches={sessionMatches}
           roundIndex={roundIndex}
+          scoreOnly={!isAdmin}
           onClose={() => setShowEdit(false)}
         />
       )}
@@ -711,7 +728,14 @@ function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) 
 // "Dernier match joué", et en taille réduite (compact = true) pour les
 // matchs terminés de "Reste de la saison" (affichage direct ou dans la
 // petite fenêtre de résultat).
-export function MatchResultBlock({ sessionMatches, compact = false, label = "Résultat" }) {
+// `allowScoreEdit` : uniquement pour « Dernier résultat » (LastMatchCard) — les
+// joueurs de la session peuvent alors ENCODER un score manquant (roulette ⚙️) ; modifier un score existant reste réservé à l'admin.
+export function MatchResultBlock({
+  sessionMatches,
+  compact = false,
+  label = "Résultat",
+  allowScoreEdit = false,
+}) {
   const { isAdmin, connectedPlayer } = useAppData();
   const [showAddRound, setShowAddRound] = useState(false);
   const first = sessionMatches[0];
@@ -725,6 +749,7 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
       (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
     );
   const addRoundCourts = canAddRound ? sessionMatches : [];
+  const canEditScore = allowScoreEdit && canAddRound;
   // Nombre de manches de la session = le plus grand nombre de manches d'un terrain
   // (le match de base compte pour la manche 1).
   const totalRounds = 1 + Math.max(0, ...sessionMatches.map((m) => getRounds(m).length));
@@ -776,6 +801,7 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
                   match={m}
                   compact={compact}
                   roundLabel={totalRounds > 1 ? "Manche 1" : null}
+                  canEditScore={canEditScore}
                 />
               );
             }
@@ -787,6 +813,7 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
                 sessionMatches={sessionMatches}
                 roundIndex={r}
                 compact={compact}
+                canEditScore={canEditScore}
               />
             );
           })
@@ -806,5 +833,7 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
 // Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
 // et volontairement simplifiée : juste la date, les noms et le score.
 export function LastMatchCard({ sessionMatches }) {
-  return <MatchResultBlock sessionMatches={sessionMatches} label="Dernier résultat" />;
+  return (
+    <MatchResultBlock sessionMatches={sessionMatches} label="Dernier résultat" allowScoreEdit />
+  );
 }
