@@ -9,6 +9,7 @@ import {
   getSessionCreditorIds,
   isDraw,
 } from "./matchLogic";
+import { expandRounds, roundIndexOf } from "./rounds";
 
 // Petit garde-fou : un très ancien match (créé avant que le format actuel
 // de "participants" se stabilise, ou une donnée corrompue par un souci
@@ -428,6 +429,13 @@ export function getCreditorRemainingMatchesCount(creditorId, abonnements, matche
 // a été renseignée lors de l'assignation ; victoire/défaite uniquement si
 // l'équipe gagnante a aussi été renseignée en fin de match. Utilise aussi la
 // position fixe sur le terrain (Droite/Gauche) enregistrée à l'assignation.
+//
+// Depuis le 25/09/2026, tout est compté en MANCHES : un match compte pour une
+// manche (sa composition de base), plus une manche par composition ajoutée
+// depuis « Ajouter une manche » (voir lib/rounds.js). Avec une seule manche
+// par session, rien ne change. Ces statistiques sont purement sportives : la
+// comptabilité (getCreditorAccounting, getPlayerDebts…) ne passe JAMAIS par
+// ici et reste sur la composition de base.
 export function computePlayerStats(playerId, matches) {
   let played = 0;
   let wins = 0;
@@ -443,7 +451,7 @@ export function computePlayerStats(playerId, matches) {
   const positionResults = { Droite: { wins: 0, losses: 0 }, Gauche: { wins: 0, losses: 0 } };
   const history = [];
 
-  matches.forEach((m) => {
+  expandRounds(matches).forEach((m) => {
     if (getMatchTiming(m) !== "finished") return;
     const participants = participantsOf(m);
     const me = participants.find((p) => p.playerId === playerId);
@@ -455,7 +463,7 @@ export function computePlayerStats(playerId, matches) {
     // On l'enregistre quand même dans l'historique (résultat inconnu) pour
     // qu'une série de victoires/défaites s'arrête correctement dessus.
     if (m.teamsUnreliable) {
-      history.push({ date: m.date, time: m.time, result: null });
+      history.push({ date: m.date, time: m.time, round: roundIndexOf(m), result: null });
       return;
     }
 
@@ -498,7 +506,7 @@ export function computePlayerStats(playerId, matches) {
       });
     }
 
-    history.push({ date: m.date, time: m.time, result });
+    history.push({ date: m.date, time: m.time, round: roundIndexOf(m), result });
   });
 
   const topOf = (map) => {
@@ -533,9 +541,11 @@ export function computePlayerStats(playerId, matches) {
 
   // Série en cours : du match le plus récent vers le plus ancien, tant que
   // le résultat (victoire/défaite) reste identique.
+  // (à date/heure égales, la manche la plus récente est la plus haute).
   history.sort(
     (a, b) =>
-      new Date(`${b.date}T${b.time || "00:00"}`) - new Date(`${a.date}T${a.time || "00:00"}`)
+      new Date(`${b.date}T${b.time || "00:00"}`) - new Date(`${a.date}T${a.time || "00:00"}`) ||
+      b.round - a.round
   );
   let streak = 0;
   let streakType = null;
@@ -605,13 +615,13 @@ export function computePlayerStats(playerId, matches) {
 // sans résultat exploitable : pas de score du tout, ou équipes changées en
 // cours de match).
 export function getRecentForm(playerId, matches, limit = 10) {
-  const relevant = matches
+  const relevant = expandRounds(matches)
     .filter(
       (m) =>
         getMatchTiming(m) === "finished" &&
         participantsOf(m).some((p) => p.playerId === playerId)
     )
-    .sort((a, b) => getMatchStart(a) - getMatchStart(b));
+    .sort((a, b) => getMatchStart(a) - getMatchStart(b) || roundIndexOf(a) - roundIndexOf(b));
 
   return relevant.slice(-limit).map((m) => {
     const me = participantsOf(m).find((p) => p.playerId === playerId);
@@ -635,7 +645,7 @@ export function computeHeadToHead(idA, idB, matches) {
   let asPartners = 0;
   let partnerWins = 0;
 
-  matches.forEach((m) => {
+  expandRounds(matches).forEach((m) => {
     if (getMatchTiming(m) !== "finished" || m.teamsUnreliable) return;
     const participants = participantsOf(m);
     const pa = participants.find((p) => p.playerId === idA);
