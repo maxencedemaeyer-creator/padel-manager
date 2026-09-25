@@ -67,7 +67,9 @@ export function computeFullRecalculation({ players, matches }) {
   players.forEach((p) => {
     const levelValue = officialLevelValue(p);
     if (p.levelSortValue !== levelValue) levelFixById[p.id] = levelValue;
-    const base = getScoreBase(levelValue);
+    // Joueur « Invité » : jamais de Niveau (voir levelRating.js) — toujours
+    // « Non classé » ici, même si sa fiche porte encore un ancien niveau.
+    const base = p.isGuest === true ? null : getScoreBase(levelValue);
     statesById[p.id] =
       base == null
         ? { score: null, reliability: 0, hasRanking: false }
@@ -89,6 +91,7 @@ export function computeFullRecalculation({ players, matches }) {
     .filter((m) => isScoredOfficial(m) || isBonusOnly(m))
     .sort(compareMatchesChronologically);
   const sessionEntries = new Set(); // "session|joueur" : bonus d'assiduité déjà versé
+  const guestIds = new Set(players.filter((p) => p.isGuest === true).map((p) => p.id));
 
   const matchWrites = [];
   const replayedIds = new Set();
@@ -126,6 +129,13 @@ export function computeFullRecalculation({ players, matches }) {
       if (!bonusOnly) skippedIncomplete += 1;
       return;
     }
+    // Invité : aucune trace de niveau à son nom (ni dans le match, ni sur sa fiche).
+    [...teamAIds, ...teamBIds].forEach((id) => {
+      if (guestIds.has(id)) {
+        delete fresh.levelDeltas[id];
+        delete fresh.newStates[id];
+      }
+    });
     // Match sans score où aucun des 4 joueurs n'a de ranking : rien à écrire
     // (et un éventuel ancien levelDeltas de ce match sera effacé plus bas).
     if (Object.keys(fresh.levelDeltas).length === 0) return;
