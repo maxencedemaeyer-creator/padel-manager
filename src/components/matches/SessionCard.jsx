@@ -2,7 +2,7 @@
 // Cartes de session : SessionCard (un ou plusieurs terrains, vue complète),
 // et les variantes compactes utilisées pour "Dernier match joué".
 // ─────────────────────────────────────────────────────────────────────────
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
 import { hasMatchScore, getSetDisplay, getMatchTiming, useNow } from "../../lib/matchLogic";
 import { isCompositionPublished, setCompositionPublished } from "../../lib/composition";
@@ -426,7 +426,10 @@ export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false, 
 // "Dernier match joué" (purement informative, pas besoin des détails), et,
 // en version "compact" (encore plus petite), pour les matchs terminés de
 // "Reste de la saison".
-export function CompactMatchResult({ match, compact = false }) {
+// `roundLabel` : étiquette « Manche 1 » affichée au-dessus des équipes, seulement
+// quand la session compte au moins une manche supplémentaire (voir
+// MatchResultBlock).
+export function CompactMatchResult({ match, compact = false, roundLabel = null }) {
   const { isAdmin, players } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
@@ -462,6 +465,11 @@ export function CompactMatchResult({ match, compact = false }) {
       )}
     >
       <div className="min-w-0 flex-1">
+        {roundLabel && (
+          <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">
+            {roundLabel}
+          </p>
+        )}
         <p
           className={cn(
             "truncate",
@@ -717,6 +725,9 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
       (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
     );
   const addRoundCourts = canAddRound ? sessionMatches : [];
+  // Nombre de manches de la session = le plus grand nombre de manches d'un terrain
+  // (le match de base compte pour la manche 1).
+  const totalRounds = 1 + Math.max(0, ...sessionMatches.map((m) => getRounds(m).length));
   return (
     <div
       className={cn(
@@ -753,20 +764,33 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
         {formatDateFR(first.date)}
       </p>
       <div className="flex flex-col">
-        {sessionMatches.map((m) => (
-          <Fragment key={m.id}>
-            <CompactMatchResult match={m} compact={compact} />
-            {getRounds(m).map((_, i) => (
+        {/* Ordre d'affichage : toutes les manches 1 (un résultat par terrain)
+            d'abord, puis toutes les manches 2, etc., quel que soit le terrain.
+            « Manche 1 » n'est affiché que si la session a au moins 2 manches. */}
+        {Array.from({ length: totalRounds }, (_, r) =>
+          sessionMatches.map((m) => {
+            if (r === 0) {
+              return (
+                <CompactMatchResult
+                  key={m.id}
+                  match={m}
+                  compact={compact}
+                  roundLabel={totalRounds > 1 ? "Manche 1" : null}
+                />
+              );
+            }
+            if (!getRounds(m)[r - 1]) return null;
+            return (
               <RoundResultRow
-                key={`${m.id}#r${i + 1}`}
+                key={`${m.id}#r${r}`}
                 match={m}
                 sessionMatches={sessionMatches}
-                roundIndex={i + 1}
+                roundIndex={r}
                 compact={compact}
               />
-            ))}
-          </Fragment>
-        ))}
+            );
+          })
+        )}
       </div>
       {showAddRound && (
         <RoundModal
