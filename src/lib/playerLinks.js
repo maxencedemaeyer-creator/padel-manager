@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { getMatchTiming } from "./matchLogic";
 import { participantsOf } from "./stats";
+import { expandRounds, sessionKeyOf } from "./rounds";
 
 export const PARTNER_MODES = ["indifferent", "varied", "stable"];
 
@@ -40,13 +41,22 @@ export function pairKey(a, b) {
 
 // Parcourt les matchs joués et retourne :
 //   pairs  : Map<pairKey, { withDates: string[], againstDates: string[] }>
-//   played : Map<playerId, nombre de matchs comptés>
+//   played : Map<playerId, nombre de sessions comptées>
+//
+// Depuis le 25/09/2026, les manches supplémentaires (voir lib/rounds.js) sont
+// prises en compte, mais chaque lien ne compte qu'UNE FOIS PAR SESSION : si
+// deux joueurs sont partenaires (ou adversaires) dans deux manches du même
+// jour, la paire compte 1 — l'outil mesure la variété des paires d'un jour,
+// pas le nombre de manches. Avec une seule manche par session, rien ne change.
 export function computePlayerLinks(matches) {
   const pairs = new Map();
   const played = new Map();
+  const seenLinks = new Set(); // session|paire|avec ou contre
+  const seenPlayed = new Set(); // session|joueur
 
-  (matches || []).forEach((m) => {
+  expandRounds(matches).forEach((m) => {
     if (getMatchTiming(m) !== "finished" || m.teamsUnreliable) return;
+    const session = sessionKeyOf(m);
 
     const seen = new Set();
     const placed = participantsOf(m).filter((p) => {
@@ -56,14 +66,23 @@ export function computePlayerLinks(matches) {
       return true;
     });
 
-    placed.forEach((p) => played.set(p.playerId, (played.get(p.playerId) || 0) + 1));
+    placed.forEach((p) => {
+      const playedKey = `${session}|${p.playerId}`;
+      if (seenPlayed.has(playedKey)) return;
+      seenPlayed.add(playedKey);
+      played.set(p.playerId, (played.get(p.playerId) || 0) + 1);
+    });
 
     for (let i = 0; i < placed.length; i += 1) {
       for (let j = i + 1; j < placed.length; j += 1) {
         const key = pairKey(placed[i].playerId, placed[j].playerId);
+        const together = placed[i].team === placed[j].team;
+        const linkKey = `${session}|${key}|${together ? "with" : "against"}`;
+        if (seenLinks.has(linkKey)) continue; // déjà compté pour cette session
+        seenLinks.add(linkKey);
         if (!pairs.has(key)) pairs.set(key, { withDates: [], againstDates: [] });
         const entry = pairs.get(key);
-        if (placed[i].team === placed[j].team) entry.withDates.push(m.date || "");
+        if (together) entry.withDates.push(m.date || "");
         else entry.againstDates.push(m.date || "");
       }
     }
