@@ -242,11 +242,14 @@ function RankingRecalcCard({ players, matches }) {
     try {
       const plan = computeFullRecalculation({ players, matches });
       const ops = [];
-      plan.matchWrites.forEach((w) => {
-        ops.push({ ref: doc(db, "matches", w.matchId), data: { levelDeltas: w.levelDeltas } });
-      });
-      plan.matchClears.forEach((matchId) => {
-        ops.push({ ref: doc(db, "matches", matchId), data: { levelDeltas: deleteField() } });
+      // v4 : une opération par document match (le match de base ET ses
+      // manches supplémentaires sont dans le même document).
+      plan.matchOps.forEach((op) => {
+        const data = {};
+        if (op.levelDeltas === null) data.levelDeltas = deleteField();
+        else if (op.levelDeltas) data.levelDeltas = op.levelDeltas;
+        if (op.rounds) data.rounds = op.rounds;
+        if (Object.keys(data).length > 0) ops.push({ ref: doc(db, "matches", op.matchId), data });
       });
       Object.entries(plan.playerWrites).forEach(([playerId, write]) => {
         const data = {};
