@@ -95,7 +95,10 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
 }
 
 export function EndMatchModal({ match, onClose }) {
-  const { players, matches } = useAppData();
+  const { players, matches, isAdmin } = useAppData();
+  // Un joueur (non-admin) ne peut qu'ENCODER un score quand il n'y en a pas
+  // encore ; dès qu'un score existe, seul l'admin peut le modifier.
+  const playerBlocked = !isAdmin && hasMatchScore(match);
 
   const initSet = (set) => {
     if (set && typeof set === "object") return { a: set.a ?? "", b: set.b ?? "" };
@@ -138,6 +141,7 @@ export function EndMatchModal({ match, onClose }) {
   // Un score saisi ici correspond toujours à un match officiel — le bouton
   // "Pas de score" ci-dessous couvre l'autre cas.
   const submit = async () => {
+    if (playerBlocked) return;
     setSaving(true);
     try {
       await applyMatchAndRanking({
@@ -196,7 +200,7 @@ export function EndMatchModal({ match, onClose }) {
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Annuler
           </Button>
-          <Button onClick={submit} disabled={saving}>
+          <Button onClick={submit} disabled={saving || playerBlocked}>
             {saving ? "Enregistrement..." : "Enregistrer"}
           </Button>
         </>
@@ -262,20 +266,33 @@ export function EndMatchModal({ match, onClose }) {
         </p>
       )}
 
+      {playerBlocked && (
+        <p className="text-[var(--color-danger)] text-[11px] font-semibold mb-2">
+          Un score vient d'être encodé pour ce match — fermez cette fenêtre.
+        </p>
+      )}
+
       <div className="flex flex-col gap-2 mt-3">
-        <Button
-          variant="secondary"
-          className="w-full !text-xs"
-          onClick={noScore}
-          disabled={saving}
-        >
-          Pas de score
-        </Button>
+        {isAdmin && (
+          <Button
+            variant="secondary"
+            className="w-full !text-xs"
+            onClick={noScore}
+            disabled={saving}
+          >
+            Pas de score
+          </Button>
+        )}
         <p className="text-[var(--color-text-faint)] text-[11px] text-center">
           Un match joué sans score rapporte quand même un petit bonus de régularité à chaque
           joueur qui a un niveau. Si les équipes ont changé en cours de route, vous pourrez
           ajouter une manche ensuite depuis le bloc « Dernier résultat ».
         </p>
+        {!isAdmin && (
+          <p className="text-[var(--color-text-faint)] text-[10px] text-center">
+            Pour modifier un score, contactez l'admin.
+          </p>
+        )}
       </div>
     </Modal>
   );
