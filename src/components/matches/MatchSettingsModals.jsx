@@ -157,6 +157,7 @@ export function CourtSettingsMenu({
   onPickDateTime,
   onPickScore,
   onPickDelete,
+  onPickComposition,
   dateOnly = false,
 }) {
   return (
@@ -180,6 +181,16 @@ export function CourtSettingsMenu({
               <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
               Modifier le score du match
             </button>
+            {onPickComposition && (
+              <button
+                type="button"
+                onClick={onPickComposition}
+                className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+              >
+                <Icon.Users className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
+                Remplacer un joueur
+              </button>
+            )}
             <button
               type="button"
               onClick={onPickDelete}
