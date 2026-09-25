@@ -169,8 +169,33 @@ function initSet(set) {
   return { a: "", b: "" };
 }
 
-export function RoundModal({ match, sessionMatches, roundIndex = null, onClose }) {
+// Nom court d'un terrain pour le sélecteur (« Terrain 6 », sinon le lieu).
+function courtLabelOf(m) {
+  if (m.court != null && String(m.court).trim() !== "") return `Terrain ${m.court}`;
+  return m.location || "Terrain";
+}
+
+// `match` : le match (terrain) qui reçoit la manche — obligatoire pour modifier.
+// `courtChoices` : pour un ajout depuis le bouton « + » du bloc résultat, la
+// liste des terrains possibles ; si elle en compte plusieurs, la fenêtre
+// demande sur quel terrain se fait la manche (celui du joueur connecté est
+// présélectionné).
+export function RoundModal({
+  match: matchProp,
+  courtChoices = null,
+  sessionMatches,
+  roundIndex = null,
+  onClose,
+}) {
   const { players, matches, connectedPlayer } = useAppData();
+  const choices = courtChoices && courtChoices.length > 0 ? courtChoices : [matchProp];
+  const [courtId, setCourtId] = useState(() => {
+    const mine = choices.find((m) =>
+      (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
+    );
+    return (mine || choices[0]).id;
+  });
+  const match = choices.find((m) => m.id === courtId) || choices[0];
   const isEdit = roundIndex != null;
   const existing = isEdit ? getRounds(match)[roundIndex - 1] : null;
 
@@ -272,6 +297,30 @@ export function RoundModal({ match, sessionMatches, roundIndex = null, onClose }
         </>
       }
     >
+      {!isEdit && choices.length > 1 && (
+        <>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-2">
+            Terrain
+          </p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {choices.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setCourtId(m.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-bold border transition-all",
+                  m.id === courtId
+                    ? "border-sky-400 bg-sky-50 text-sky-800"
+                    : "border-[var(--color-border)] bg-white text-[var(--color-text-dim)]"
+                )}
+              >
+                {courtLabelOf(m)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         Placez les 4 joueurs de cette manche (équipes changées en cours de session), puis
         encodez son score. La composition de base du match et la comptabilité ne changent pas.
