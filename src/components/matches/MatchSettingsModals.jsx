@@ -159,18 +159,23 @@ export function CourtSettingsMenu({
   onPickDelete,
   onPickComposition,
   dateOnly = false,
+  // Joueur (non-admin) dans « Dernier résultat » : seule l'entrée
+  // « Encoder un score » est proposée (uniquement quand le match n'a pas de score).
+  scoreOnly = false,
 }) {
   return (
     <Modal title={dateOnly ? "Reprogrammer ce match" : "Paramètres du terrain"} onClose={onClose}>
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onPickDateTime}
-          className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
-        >
-          <Icon.Calendar className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
-          Modifier la date et l'heure du match
-        </button>
+        {!scoreOnly && (
+          <button
+            type="button"
+            onClick={onPickDateTime}
+            className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+          >
+            <Icon.Calendar className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
+            Modifier la date et l'heure du match
+          </button>
+        )}
         {!dateOnly && (
           <>
             <button
@@ -179,9 +184,9 @@ export function CourtSettingsMenu({
               className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
             >
               <Icon.Trophy className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
-              Modifier le score du match
+              {scoreOnly ? "Encoder un score" : "Modifier le score du match"}
             </button>
-            {onPickComposition && (
+            {!scoreOnly && onPickComposition && (
               <button
                 type="button"
                 onClick={onPickComposition}
@@ -191,14 +196,16 @@ export function CourtSettingsMenu({
                 Remplacer un joueur
               </button>
             )}
-            <button
-              type="button"
-              onClick={onPickDelete}
-              className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 hover:border-rose-400 text-left text-sm font-semibold text-rose-700"
-            >
-              <Icon.Trash className="w-4 h-4 text-rose-600 shrink-0" />
-              Supprimer le match
-            </button>
+            {!scoreOnly && (
+              <button
+                type="button"
+                onClick={onPickDelete}
+                className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 hover:border-rose-400 text-left text-sm font-semibold text-rose-700"
+              >
+                <Icon.Trash className="w-4 h-4 text-rose-600 shrink-0" />
+                Supprimer le match
+              </button>
+            )}
           </>
         )}
       </div>
