@@ -60,7 +60,10 @@ function RankingHistoryModal({ player, matches, onClose }) {
               className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--color-surface-2)]"
             >
               <div className="min-w-0">
-                <p className="text-xs font-semibold truncate">{formatDateFR(match.date)}</p>
+                <p className="text-xs font-semibold truncate">
+                  {formatDateFR(match.date)}
+                  {match.isExtraRound ? ` · Manche ${match.roundIndex + 1}` : ""}
+                </p>
                 <p className="text-[10px] text-[var(--color-text-faint)]">
                   {entry.wasBootstrap
                     ? "Amorçage (1er match noté)"
