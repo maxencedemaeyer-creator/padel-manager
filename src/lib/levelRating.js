@@ -30,13 +30,19 @@
 //      donne le MÊME bonus (même extinction, même plafond) mais ne change ni
 //      la fiabilité ni rien d'autre : aucune victoire/défaite n'est comptée.
 //      Un joueur "Non classé" n'a pas de niveau de référence : rien pour lui.
+//   7. (v4, 25/09/2026) Manches supplémentaires d'une session (voir
+//      src/lib/rounds.js) : le bonus d'assiduité n'est versé qu'UNE SEULE FOIS
+//      par joueur et par session (sur sa première manche) ; le résultat de
+//      chaque manche 2, 3… compte avec un poids de 0,6 (la manche 1 : 1), sur
+//      le calcul ET sur la fiabilité.
 // ─────────────────────────────────────────────────────────────────────────
 import { LEVELS } from "./constants";
+import { expandRounds, roundIndexOf, roundWeight, sessionKeyOf } from "./rounds";
 
 // Numéro de version du calcul — à incrémenter à CHAQUE changement de règle
 // ci-dessous. L'admin compare ce numéro à celui du dernier recalcul appliqué
 // (stocké dans settings/appConfig) pour afficher "Recalcul conseillé".
-export const RANKING_ENGINE_VERSION = 3;
+export const RANKING_ENGINE_VERSION = 4;
 
 // ─── Constantes (voir §4.2, §4.4, §4.6, §13 de la spec — ajustées par
 // simulation, voir claude/feature-ranking-padel-manager.md §12 et
@@ -244,7 +250,7 @@ function teamContributions(teamStates, oppTeamStates) {
 // + bonus d'assiduité (lui aussi plafonné) → écrêtage 1..10. `delta` stocké
 // = variation TOTALE (bonus compris), pour que l'annulation d'une correction
 // (§4.8) retire exactement ce qui a été ajouté.
-function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById }) {
+function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById, weight = 1 }) {
   if (!teamA || !teamB || teamA.length !== 2 || teamB.length !== 2) return null;
 
   const statesA = teamA.map((p) => p.state);
@@ -271,11 +277,15 @@ function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById }) {
       if (state.hasRanking) {
         // Cas normal — §4.1 à §4.5 + règles v2 3, 4 et 5.
         const k = kFactor(state.reliability);
-        let delta = k * (resultat - expectedForTeam) * marginFactorValue;
+        let delta = k * (resultat - expectedForTeam) * marginFactorValue * weight;
         const { windowProgression, overStart } = progressionOf(state, contexts[playerId]);
         const capFactor = capFactorFromProgression(windowProgression);
         if (delta > 0) delta = delta * WIN_GAIN_MULTIPLIER * capFactor;
-        const bonus = attendanceBonusBase(state.score) * attendanceTaper(overStart) * capFactor;
+        // v4 : le bonus d'assiduité n'est versé qu'une fois par session.
+        const bonusDone = Boolean(contexts[playerId] && contexts[playerId].bonusDone);
+        const bonus = bonusDone
+          ? 0
+          : attendanceBonusBase(state.score) * attendanceTaper(overStart) * capFactor;
         delta += bonus;
         const apres = clamp(state.score + delta, RANKING_SCALE_MIN, RANKING_SCALE_MAX);
         entries[playerId] = {
@@ -288,12 +298,13 @@ function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById }) {
           bonus,
           facteurPlafond: capFactor,
           wasBootstrap: false,
+          poids: weight,
         };
       } else {
         // Amorçage (§4.7) — attendu fixé à 0.5, K(0) = K_max, fiabilité → 1.
         // Pas de plafond ni de bonus (aucun historique), gain ×1,2 comme
         // pour les autres joueurs.
-        let delta = kFactor(0) * (resultat - 0.5) * marginFactorValue;
+        let delta = kFactor(0) * (resultat - 0.5) * marginFactorValue * weight;
         if (delta > 0) delta *= WIN_GAIN_MULTIPLIER;
         const apres = clamp(anchorForTeam + delta, RANKING_SCALE_MIN, RANKING_SCALE_MAX);
         entries[playerId] = {
@@ -306,6 +317,7 @@ function computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById }) {
           bonus: 0,
           facteurPlafond: 1,
           wasBootstrap: true,
+          poids: weight,
           niveauAncre: anchorForTeam,
         };
       }
@@ -338,7 +350,7 @@ function cancelOneEntry(currentState, oldEntry) {
   const currentReliability = currentState.hasRanking ? currentState.reliability : 0;
   const newReliability = oldEntry.bonusOnly
     ? currentReliability
-    : Math.max(0, currentReliability - 1);
+    : Math.max(0, currentReliability - (typeof oldEntry.poids === "number" ? oldEntry.poids : 1));
   return { reverted: false, newScore, newReliability };
 }
 
@@ -396,6 +408,7 @@ export function computeFreshRankingForMatch({
   sets,
   winningTeam,
   contextById,
+  weight = 1,
 }) {
   if (
     !Array.isArray(teamAIds) ||
@@ -411,7 +424,7 @@ export function computeFreshRankingForMatch({
 
   const teamA = teamAIds.map((id) => ({ playerId: id, state: statesById[id] }));
   const teamB = teamBIds.map((id) => ({ playerId: id, state: statesById[id] }));
-  const levelDeltas = computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById });
+  const levelDeltas = computeFreshDeltas({ teamA, teamB, sets, winningTeam, contextById, weight });
   if (!levelDeltas) return null;
 
   const newStates = {};
@@ -420,7 +433,7 @@ export function computeFreshRankingForMatch({
     const prevState = statesById[id];
     newStates[id] = {
       score: entry.apres,
-      reliability: (entry.wasBootstrap ? 0 : prevState.reliability) + 1,
+      reliability: (entry.wasBootstrap ? 0 : prevState.reliability) + weight,
       hasRanking: true,
     };
   });
@@ -456,6 +469,8 @@ export function computeBonusOnlyForMatch({ teamAIds, teamBIds, statesById, conte
   allIds.forEach((id) => {
     const state = statesById[id];
     if (!state.hasRanking) return;
+    // v4 : bonus d'assiduité déjà versé plus tôt dans cette session.
+    if (contexts[id] && contexts[id].bonusDone) return;
     const { windowProgression, overStart } = progressionOf(state, contexts[id]);
     const capFactor = capFactorFromProgression(windowProgression);
     const bonus = attendanceBonusBase(state.score) * attendanceTaper(overStart) * capFactor;
@@ -487,33 +502,48 @@ function matchChronoKey(match) {
 // pour que le rejeu et la saisie en direct ordonnent les matchs pareil.
 export function compareMatchesChronologically(a, b) {
   const diff = matchChronoKey(a).localeCompare(matchChronoKey(b));
-  return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+  if (diff !== 0) return diff;
+  // v4 : à date/heure égales, la manche 1 (match de base) précède la manche 2…
+  const roundDiff = roundIndexOf(a) - roundIndexOf(b);
+  if (roundDiff !== 0) return roundDiff;
+  return String(a.id).localeCompare(String(b.id));
 }
 
-// Pour chaque joueur de `playerIds` : `{ history, startRef }` (voir
-// progressionOf). `history` = ses rankings APRÈS ses matchs officiels notés
-// (donc portant un `levelDeltas` à son nom) STRICTEMENT antérieurs au match
-// `currentMatch` (lui-même exclu), dans l'ordre chronologique. `startRef` =
-// ranking de son niveau officiel déclaré, ou — sans niveau déclaré ("Non
-// classé") — son ranking après son tout premier match noté.
+// Pour chaque joueur de `playerIds` : `{ history, startRef, bonusDone }` (voir
+// progressionOf). `history` = ses rankings APRÈS ses manches/matchs
+// (portant un `levelDeltas` à son nom) STRICTEMENT antérieurs au match
+// `currentMatch` (lui-même exclu), dans l'ordre chronologique — les manches
+// supplémentaires (voir rounds.js) sont incluses. `startRef` = ranking de son
+// niveau officiel déclaré, ou — sans niveau déclaré ("Non classé") — son
+// ranking après son tout premier match noté. `bonusDone` (v4) = true si le
+// joueur a déjà une entrée de niveau plus tôt dans la MÊME session : le bonus
+// d'assiduité ne doit alors pas être versé une deuxième fois.
 export function buildRankingContext({ playerIds, playersById, matches, currentMatch }) {
   const currentKey = currentMatch ? matchChronoKey(currentMatch) : null;
   const currentId = currentMatch ? currentMatch.id : null;
+  const currentRound = currentMatch ? roundIndexOf(currentMatch) : 0;
+  const currentSession = currentMatch ? sessionKeyOf(currentMatch) : null;
+  const all = expandRounds(matches);
   const contextById = {};
   playerIds.forEach((id) => {
-    const history = (matches || [])
-      .filter(
-        (m) =>
-          m.id !== currentId &&
-          m.levelDeltas &&
-          m.levelDeltas[id] &&
-          (currentKey === null || matchChronoKey(m) <= currentKey)
-      )
-      .sort(compareMatchesChronologically)
-      .map((m) => m.levelDeltas[id].apres)
-      .filter((v) => typeof v === "number");
+    const before = all
+      .filter((m) => {
+        if (m.id === currentId || !m.levelDeltas || !m.levelDeltas[id]) return false;
+        if (currentKey === null) return true;
+        const key = matchChronoKey(m);
+        if (key !== currentKey) return key < currentKey;
+        return roundIndexOf(m) <= currentRound;
+      })
+      .sort(compareMatchesChronologically);
+    const history = before.map((m) => m.levelDeltas[id].apres).filter((v) => typeof v === "number");
+    const bonusDone =
+      currentSession !== null && before.some((m) => sessionKeyOf(m) === currentSession);
     const base = getScoreBase(playersById[id] && playersById[id].levelSortValue);
-    contextById[id] = { history, startRef: base != null ? base : history.length ? history[0] : null };
+    contextById[id] = {
+      history,
+      startRef: base != null ? base : history.length ? history[0] : null,
+      bonusDone,
+    };
   });
   return contextById;
 }
@@ -592,6 +622,7 @@ export function computeRankingUpdateForMatch({
         sets,
         winningTeam,
         contextById,
+        weight: roundWeight(roundIndexOf(match)), // v4 : manche 2, 3… à 60 %
       });
   if (!fresh) return null;
 
@@ -706,7 +737,7 @@ export function suggestLevelForScore(internalScore) {
 // sont exclus — la sparkline et le "Dernier : ▲ +0,3" de "Mon profil" parlent
 // de vrais résultats. L'historique admin passe `includeBonusOnly = true`.
 export function getRecentLevelDeltaHistory(playerId, matches, limit = 10, includeBonusOnly = false) {
-  const relevant = (matches || [])
+  const relevant = expandRounds(matches)
     .filter(
       (m) =>
         m.levelDeltas &&
@@ -714,10 +745,6 @@ export function getRecentLevelDeltaHistory(playerId, matches, limit = 10, includ
         (includeBonusOnly || !m.levelDeltas[playerId].bonusOnly)
     )
     .map((m) => ({ match: m, entry: m.levelDeltas[playerId] }))
-    .sort((a, b) => {
-      const da = `${a.match.date || ""}T${a.match.time || "00:00"}`;
-      const db = `${b.match.date || ""}T${b.match.time || "00:00"}`;
-      return da.localeCompare(db);
-    });
+    .sort((a, b) => compareMatchesChronologically(a.match, b.match));
   return relevant.slice(-limit);
 }
