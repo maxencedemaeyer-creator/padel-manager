@@ -86,10 +86,16 @@ const STATUS_SOLID_CLASS = {
 // Bouton "Partager sur WhatsApp" en bas de la fenêtre (`canShare`) :
 // réservé à l'admin (et plus tard aux coachs — il suffira d'élargir
 // `canShareLists` dans AvailabilityButtons). La liste est envoyée sous forme
-// de TEXTE (titre, date · heure · club, joueurs numérotés, réserve) via un
+// de TEXTE (titre, date · heure · club, émoji + prénom de chaque joueur, réserve) via un
 // lien wa.me : WhatsApp s'ouvre (appli sur mobile, WhatsApp Web sur
 // ordinateur) et on choisit simplement le groupe ou la personne. Aucune
 // écriture Firestore, aucun coût.
+// Une ligne par joueur dans le message WhatsApp : émoji + prénom, sans
+// numéro devant.
+function formatShareLine(p) {
+  return `${p.emoji ? `${p.emoji} ` : ""}${getFirstName(p.name)}`;
+}
+
 function buildWhatsAppText({ title, sessionInfo, players, reservePlayers }) {
   const lines = [`*${title}*`];
   if (sessionInfo) lines.push(`📅 ${sessionInfo}`);
@@ -97,14 +103,10 @@ function buildWhatsAppText({ title, sessionInfo, players, reservePlayers }) {
   if (players.length === 0 && !(reservePlayers && reservePlayers.length)) {
     lines.push("Personne pour l'instant.");
   } else {
-    players.forEach((p, i) => {
-      lines.push(`${i + 1}. ${p.emoji ? `${p.emoji} ` : ""}${p.name}`);
-    });
+    players.forEach((p) => lines.push(formatShareLine(p)));
     if (reservePlayers && reservePlayers.length > 0) {
       lines.push("", "*Réserve*");
-      reservePlayers.forEach((p, i) => {
-        lines.push(`${i + 1}. ${p.emoji ? `${p.emoji} ` : ""}${p.name}`);
-      });
+      reservePlayers.forEach((p) => lines.push(formatShareLine(p)));
     }
   }
   return lines.join("\n");
