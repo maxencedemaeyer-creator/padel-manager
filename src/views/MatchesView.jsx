@@ -28,8 +28,8 @@ import { CreateMatchModal } from "../components/matches/CreateMatchModal";
 const UPCOMING_WINDOW_DAYS = 15;
 // Nombre de dates de match (sessions) à afficher dans "Prochains matchs".
 const UPCOMING_SESSIONS_COUNT = 2;
-// Nombre de jours après SON dernier match joué pendant lesquels le bloc
-// "Dernier match joué" reste visible pour un joueur donné.
+// Nombre de jours après la dernière session jouée pendant lesquels le bloc
+// "Dernier match joué" reste visible (pour tout le monde).
 const LAST_MATCH_WINDOW_DAYS = 15;
 // Nombre de sessions (dates de match) affichées d'un coup dans "Reste de la
 // saison", avant d'avoir besoin de cliquer sur "Charger plus". Les matchs
@@ -123,17 +123,24 @@ export function MatchesView() {
     );
     const nextGroup = upcomingWithinWindow.filter((m) => nextDates.includes(m.date));
 
-    // Dernier match joué : uniquement si LE JOUEUR CONNECTÉ a lui-même déjà
-    // joué un match terminé, et seulement tant que ce match date de moins
-    // de 15 jours calendrier — sinon le bloc disparaît pour lui (mais reste
-    // visible pour un autre joueur ayant, lui, joué plus récemment).
-    const myFinishedDesc = finishedDesc.filter((m) =>
-      (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
-    );
-    const myLastPlayed = myFinishedDesc[0];
+    // Dernier match joué : visible de TOUS les joueurs (modif du 25/09/2026),
+    // qu'ils aient joué ou non — on ne joue que le jeudi, donc tout le monde
+    // peut consulter les scores de la dernière session. Seule la session
+    // terminée la plus récente est affichée (jamais d'accumulation) et le
+    // bloc s'efface dès qu'une nouvelle session est en cours de jeu
+    // ("ongoing") ; il réapparaît, avec la nouvelle session, quand celle-ci
+    // est terminée. Sécurité : il disparaît aussi 15 jours calendrier après
+    // la session. Les anciens matchs restent consultables plus bas, dans
+    // les matchs terminés. Ne change RIEN aux droits d'ajout de manche /
+    // d'encodage / de modification de score (voir MatchResultBlock dans
+    // SessionCard.jsx).
+    const newSessionInProgress = datedMatches.some((m) => getMatchTiming(m, now) === "ongoing");
+    const lastPlayed = finishedDesc[0];
     const lastDate =
-      myLastPlayed && daysUntilMatch(myLastPlayed, now) > -LAST_MATCH_WINDOW_DAYS
-        ? myLastPlayed.date
+      lastPlayed &&
+      !newSessionInProgress &&
+      daysUntilMatch(lastPlayed, now) > -LAST_MATCH_WINDOW_DAYS
+        ? lastPlayed.date
         : null;
     const lastGroup = lastDate ? finishedDesc.filter((m) => m.date === lastDate) : [];
 
