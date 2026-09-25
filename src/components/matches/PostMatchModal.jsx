@@ -148,7 +148,19 @@ export function PostMatchModal({ match, onClose }) {
   // ce bouton rapporte le bonus d'assiduité).
   const noExploitableData = !hasMatchScore({ scores: sets });
 
+  // Garde-fou : un autre joueur de la session a pu encoder le score pendant que
+  // cette fenêtre était ouverte — on ne l'écrase jamais.
+  const alreadyEncoded = () => {
+    const latest = matches.find((m) => m.id === match.id);
+    return Boolean(latest && (hasMatchScore(latest) || latest.matchType === "Amical"));
+  };
+
   const submit = async () => {
+    if (alreadyEncoded()) {
+      alert("Un autre joueur vient d'encoder le score de ce match.");
+      onClose();
+      return;
+    }
     setSaving(true);
     try {
       await applyMatchAndRanking({
@@ -168,7 +180,15 @@ export function PostMatchModal({ match, onClose }) {
     }
   };
 
-  const noScore = async (teamsChanged) => {
+  // Un seul bouton « Pas de score » (fusion de « match amical » et « équipes
+  // ont changé », 25/09/2026) : le match reste fiable, les changements
+  // d'équipes se saisissent ensuite via « Ajouter une manche ».
+  const noScore = async () => {
+    if (alreadyEncoded()) {
+      alert("Un autre joueur vient d'encoder le score de ce match.");
+      onClose();
+      return;
+    }
     setSaving(true);
     try {
       await applyMatchAndRanking({
@@ -178,7 +198,7 @@ export function PostMatchModal({ match, onClose }) {
         sets: { set1: null, set2: null, set3: null },
         matchType: "Amical",
         winningTeam: null,
-        teamsUnreliable: teamsChanged,
+        teamsUnreliable: false,
       });
       onClose();
     } catch (error) {
@@ -288,7 +308,7 @@ export function PostMatchModal({ match, onClose }) {
       {noExploitableData && (
         <p className="text-[var(--color-text-faint)] text-[11px] mb-2">
           Aucun score exploitable saisi pour l'instant — le niveau ne sera pas mis à jour. Si le
-          match a bien été joué sans score, utilisez un des boutons « Pas de score » ci-dessous.
+          match a bien été joué sans score, utilisez le bouton « Pas de score » ci-dessous.
         </p>
       )}
 
@@ -296,22 +316,15 @@ export function PostMatchModal({ match, onClose }) {
         <Button
           variant="secondary"
           className="w-full !text-xs"
-          onClick={() => noScore(true)}
+          onClick={noScore}
           disabled={saving}
         >
-          Pas de score — Les équipes ont changé au cours du match
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-full !text-xs"
-          onClick={() => noScore(false)}
-          disabled={saving}
-        >
-          Pas de score — Match amical
+          Pas de score
         </Button>
         <p className="text-[var(--color-text-faint)] text-[11px] text-center">
           Un match joué sans score rapporte quand même un petit bonus de régularité à chaque
-          joueur qui a un niveau.
+          joueur qui a un niveau. Si les équipes ont changé en cours de route, vous pourrez
+          ajouter une manche ensuite depuis le bloc « Dernier résultat ».
         </p>
       </div>
 
