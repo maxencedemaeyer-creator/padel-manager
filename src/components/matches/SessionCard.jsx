@@ -20,6 +20,7 @@ import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } fr
 import { EndMatchModal } from "./EndMatchModal";
 import { RoundModal, deleteRoundAndRanking } from "./RoundModal";
 import { expandRounds, getRounds } from "../../lib/rounds";
+import { ReplacePlayerModal } from "./PickPlayerModal";
 import {
   AvailabilityButtons,
   RespondedPlayersPanel,
@@ -430,6 +431,7 @@ export function CompactMatchResult({ match, compact = false }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
   const [showEnd, setShowEnd] = useState(false);
+  const [showComposition, setShowComposition] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const teamA = (match.participants || []).filter((p) => p.team === "A");
@@ -517,6 +519,10 @@ export function CompactMatchResult({ match, compact = false }) {
             setShowMenu(false);
             setShowEnd(true);
           }}
+          onPickComposition={() => {
+            setShowMenu(false);
+            setShowComposition(true);
+          }}
           onPickDelete={() => {
             setShowMenu(false);
             setShowDeleteConfirm(true);
@@ -527,6 +533,9 @@ export function CompactMatchResult({ match, compact = false }) {
         <EditMatchDateTimeModal match={match} onClose={() => setShowDateTime(false)} />
       )}
       {showEnd && <EndMatchModal match={match} onClose={() => setShowEnd(false)} />}
+      {showComposition && (
+        <ReplacePlayerModal match={match} onClose={() => setShowComposition(false)} />
+      )}
       {showDeleteConfirm && (
         <DeleteMatchConfirmModal match={match} onClose={() => setShowDeleteConfirm(false)} />
       )}
