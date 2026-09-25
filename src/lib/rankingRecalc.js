@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { LEVELS } from "./constants";
 import { computeWinnerFromSets, hasMatchScore } from "./matchLogic";
+import { expandRounds, roundIndexOf, roundWeight, baseIdOf, sessionKeyOf } from "./rounds";
 import {
   getPlayerRatingState,
   getScoreBase,
@@ -45,9 +46,15 @@ function officialLevelValue(player) {
 //   une donnée change réellement. `unrank: true` = supprimer
 //   internalScore/internalScoreReliability (retour à "score de base" ou
 //   "Non classé").
-// - `matchWrites` : `[{ matchId, levelDeltas }]` — matchs à (ré)écrire.
-// - `matchClears` : ids de matchs qui portent un `levelDeltas` devenu sans
-//   objet (plus officiel, plus de score, composition incomplète) — à effacer.
+// - `matchWrites` : `[{ matchId, roundIndex, levelDeltas }]` — manches à
+//   (ré)écrire (`roundIndex` 0 = le match de base, 1+ = manches ajoutées, voir
+//   rounds.js — v4).
+// - `matchClears` : `[{ matchId, roundIndex }]` — manches qui portent un
+//   `levelDeltas` devenu sans objet (plus officiel, plus de score, composition
+//   incomplète) — à effacer.
+// - `matchOps` : la même chose, regroupée par document Firestore, prête à
+//   écrire : `[{ matchId, levelDeltas?: objet | null (null = supprimer le
+//   champ), rounds?: tableau complet des manches à réécrire }]`.
 // - `stats`.
 export function computeFullRecalculation({ players, matches }) {
   const statesById = {};
@@ -75,9 +82,13 @@ export function computeFullRecalculation({ players, matches }) {
   // score, confirmés par « Pas de score » (matchType "Amical", bonus seul).
   const isScoredOfficial = (m) => m.matchType === "Officiel" && hasMatchScore(m);
   const isBonusOnly = (m) => m.matchType === "Amical" && !hasMatchScore(m);
-  const eligible = (matches || [])
+  // v4 : les manches supplémentaires sont rejouées comme des matchs à part
+  // entière (`expandRounds`), juste après leur match de base.
+  const allRounds = expandRounds(matches);
+  const eligible = allRounds
     .filter((m) => isScoredOfficial(m) || isBonusOnly(m))
     .sort(compareMatchesChronologically);
+  const sessionEntries = new Set(); // "session|joueur" : bonus d'assiduité déjà versé
 
   const matchWrites = [];
   const replayedIds = new Set();
@@ -89,7 +100,13 @@ export function computeFullRecalculation({ players, matches }) {
     const teamBIds = (m.participants || []).filter((p) => p.team === "B").map((p) => p.playerId);
     const contextById = {};
     [...teamAIds, ...teamBIds].forEach((id) => {
-      if (statesById[id]) contextById[id] = { history: historyById[id], startRef: startById[id] };
+      if (statesById[id]) {
+        contextById[id] = {
+          history: historyById[id],
+          startRef: startById[id],
+          bonusDone: sessionEntries.has(`${sessionKeyOf(m)}|${id}`),
+        };
+      }
     });
     const fresh = bonusOnly
       ? computeBonusOnlyForMatch({ teamAIds, teamBIds, statesById, contextById })
@@ -100,6 +117,7 @@ export function computeFullRecalculation({ players, matches }) {
           sets: m.scores || {},
           winningTeam: computeWinnerFromSets(m.scores || {}),
           contextById,
+          weight: roundWeight(roundIndexOf(m)),
         });
     if (!fresh) {
       // Un match sans score à la composition incomplète est ignoré sans bruit
@@ -111,8 +129,13 @@ export function computeFullRecalculation({ players, matches }) {
     // Match sans score où aucun des 4 joueurs n'a de ranking : rien à écrire
     // (et un éventuel ancien levelDeltas de ce match sera effacé plus bas).
     if (Object.keys(fresh.levelDeltas).length === 0) return;
-    matchWrites.push({ matchId: m.id, levelDeltas: fresh.levelDeltas });
+    matchWrites.push({
+      matchId: baseIdOf(m),
+      roundIndex: roundIndexOf(m),
+      levelDeltas: fresh.levelDeltas,
+    });
     replayedIds.add(m.id);
+    Object.keys(fresh.levelDeltas).forEach((id) => sessionEntries.add(`${sessionKeyOf(m)}|${id}`));
     Object.entries(fresh.newStates).forEach(([id, state]) => {
       statesById[id] = state;
       historyById[id] = [...historyById[id], state.score];
@@ -122,9 +145,40 @@ export function computeFullRecalculation({ players, matches }) {
     });
   });
 
-  const matchClears = (matches || [])
+  const matchClears = allRounds
     .filter((m) => m.levelDeltas && !replayedIds.has(m.id))
-    .map((m) => m.id);
+    .map((m) => ({ matchId: baseIdOf(m), roundIndex: roundIndexOf(m) }));
+
+  // Regroupement par document Firestore (un match + ses manches = un document).
+  const opsById = new Map();
+  const opFor = (matchId) => {
+    if (!opsById.has(matchId)) opsById.set(matchId, { matchId, writes: {}, clears: new Set() });
+    return opsById.get(matchId);
+  };
+  matchWrites.forEach((w) => {
+    opFor(w.matchId).writes[w.roundIndex] = w.levelDeltas;
+  });
+  matchClears.forEach((c) => opFor(c.matchId).clears.add(c.roundIndex));
+  const matchesById = new Map((matches || []).map((m) => [m.id, m]));
+  const matchOps = [];
+  opsById.forEach((op) => {
+    const source = matchesById.get(op.matchId);
+    if (!source) return;
+    const out = { matchId: op.matchId };
+    if (op.writes[0]) out.levelDeltas = op.writes[0];
+    else if (op.clears.has(0)) out.levelDeltas = null;
+    const touchesRounds =
+      Object.keys(op.writes).some((k) => Number(k) > 0) ||
+      [...op.clears].some((k) => k > 0);
+    if (touchesRounds && Array.isArray(source.rounds)) {
+      out.rounds = source.rounds.map((r, i) => {
+        const idx = i + 1;
+        const { levelDeltas: _old, ...rest } = r || {};
+        return op.writes[idx] ? { ...rest, levelDeltas: op.writes[idx] } : rest;
+      });
+    }
+    matchOps.push(out);
+  });
 
   const playerRows = [];
   const playerWrites = {};
@@ -170,6 +224,7 @@ export function computeFullRecalculation({ players, matches }) {
     playerWrites,
     matchWrites,
     matchClears,
+    matchOps,
     stats: {
       matchesReplayed: matchWrites.length,
       matchesSkipped: skippedIncomplete,
