@@ -82,12 +82,66 @@ const STATUS_SOLID_CLASS = {
 //
 // Juste sous le titre, un rappel date · heure · club de la session
 // (`sessionInfo`) pour savoir d'un coup d'œil de quel match il s'agit.
-function PlayerListModal({ title, players, reservePlayers, capacity, sessionInfo, onClose }) {
+//
+// Bouton "Partager sur WhatsApp" en bas de la fenêtre (`canShare`) :
+// réservé à l'admin (et plus tard aux coachs — il suffira d'élargir
+// `canShareLists` dans AvailabilityButtons). La liste est envoyée sous forme
+// de TEXTE (titre, date · heure · club, joueurs numérotés, réserve) via un
+// lien wa.me : WhatsApp s'ouvre (appli sur mobile, WhatsApp Web sur
+// ordinateur) et on choisit simplement le groupe ou la personne. Aucune
+// écriture Firestore, aucun coût.
+function buildWhatsAppText({ title, sessionInfo, players, reservePlayers }) {
+  const lines = [`*${title}*`];
+  if (sessionInfo) lines.push(`📅 ${sessionInfo}`);
+  lines.push("");
+  if (players.length === 0 && !(reservePlayers && reservePlayers.length)) {
+    lines.push("Personne pour l'instant.");
+  } else {
+    players.forEach((p, i) => {
+      lines.push(`${i + 1}. ${p.emoji ? `${p.emoji} ` : ""}${p.name}`);
+    });
+    if (reservePlayers && reservePlayers.length > 0) {
+      lines.push("", "*Réserve*");
+      reservePlayers.forEach((p, i) => {
+        lines.push(`${i + 1}. ${p.emoji ? `${p.emoji} ` : ""}${p.name}`);
+      });
+    }
+  }
+  return lines.join("\n");
+}
+
+function PlayerListModal({
+  title,
+  players,
+  reservePlayers,
+  capacity,
+  sessionInfo,
+  canShare = false,
+  onClose,
+}) {
   const hasReserve = Boolean(reservePlayers && reservePlayers.length > 0);
   const isEmpty = players.length === 0 && !hasReserve;
 
+  const shareOnWhatsApp = () => {
+    const text = buildWhatsAppText({ title, sessionInfo, players, reservePlayers });
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  };
+
+  const footer = canShare ? (
+    <button
+      type="button"
+      onClick={shareOnWhatsApp}
+      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-[#25D366] text-white text-sm font-bold hover:brightness-105 active:scale-[0.98] transition-all shadow-[0_8px_20px_-8px_rgba(37,211,102,0.6)]"
+    >
+      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.4-.2Z" />
+      </svg>
+      Partager sur WhatsApp
+    </button>
+  ) : null;
+
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} footer={footer}>
       {sessionInfo && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-sky-900">
           <Icon.Calendar className="w-4 h-4 shrink-0 text-sky-600" />
@@ -319,6 +373,11 @@ export function AvailabilityButtons({ sessionMatches }) {
   ]
     .filter(Boolean)
     .join(" · ");
+
+  // Bouton "Partager sur WhatsApp" des listes de joueurs : admin uniquement
+  // pour l'instant. Le jour où un rôle "coach" existera, il suffira d'ajouter
+  // ici `|| connectedPlayer.isCoach` (ou l'équivalent retenu).
+  const canShareLists = isAdmin;
   const lockMessage = isPostMatchLocked
     ? "Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
     : isPreMatchFrozen
@@ -525,6 +584,7 @@ export function AvailabilityButtons({ sessionMatches }) {
             reservePlayers={openList === "present" ? presentReserve : undefined}
             capacity={capacity}
             sessionInfo={sessionInfo}
+            canShare={canShareLists}
             onClose={() => setOpenList(null)}
           />
         )}
