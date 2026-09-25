@@ -2,7 +2,7 @@
 // Cartes de session : SessionCard (un ou plusieurs terrains, vue complète),
 // et les variantes compactes utilisées pour "Dernier match joué".
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
 import { hasMatchScore, getSetDisplay, getMatchTiming, useNow } from "../../lib/matchLogic";
 import { isCompositionPublished, setCompositionPublished } from "../../lib/composition";
@@ -18,6 +18,8 @@ import { Card, Badge, Modal } from "../ui";
 import { CourtPanel } from "./CourtPanel";
 import { EditMatchDateTimeModal, CourtSettingsMenu, DeleteMatchConfirmModal } from "./MatchSettingsModals";
 import { EndMatchModal } from "./EndMatchModal";
+import { RoundModal, deleteRoundAndRanking } from "./RoundModal";
+import { expandRounds, getRounds } from "../../lib/rounds";
 import {
   AvailabilityButtons,
   RespondedPlayersPanel,
@@ -532,13 +534,199 @@ export function CompactMatchResult({ match, compact = false }) {
   );
 }
 
+// Une manche supplémentaire (voir lib/rounds.js) dans le bloc de résultat : même
+// présentation qu'un résultat de terrain, avec l'étiquette « Manche N » (le match
+// de base est la manche 1). Pour l'admin, la roulette ⚙️ permet de modifier ou
+// de supprimer la manche en cas d'erreur.
+function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) {
+  const { isAdmin, players } = useAppData();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const round = expandRounds([match])[roundIndex];
+  if (!round) return null;
+
+  const nameOf = (p) => players.find((pl) => pl.id === p.playerId)?.name || p.name;
+  const labelOf = (team) => {
+    const list = (round.participants || []).filter((p) => p.team === team);
+    return list.length ? list.map((p) => getFirstName(nameOf(p))).join(" & ") : "—";
+  };
+  const scoreEntered = hasMatchScore(round);
+  const scoreText = ["set1", "set2", "set3"]
+    .map((k) => getSetDisplay(round.scores?.[k]))
+    .filter(Boolean)
+    .join(" · ");
+  const aWon = round.winningTeam === "A";
+  const bWon = round.winningTeam === "B";
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await deleteRoundAndRanking({ match, roundIndex, players });
+      setShowDelete(false);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 border-b border-amber-200/70 last:border-b-0",
+        compact ? "py-1.5" : "py-2.5"
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">
+          Manche {roundIndex + 1}
+        </p>
+        <p
+          className={cn(
+            "truncate",
+            compact ? "text-xs" : "text-sm",
+            aWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
+          )}
+        >
+          {aWon && "🏆 "}
+          {labelOf("A")}
+        </p>
+        <p
+          className={cn(
+            "truncate",
+            compact ? "text-xs" : "text-sm",
+            bWon ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
+          )}
+        >
+          {bWon && "🏆 "}
+          {labelOf("B")}
+        </p>
+      </div>
+      <div className="shrink-0 flex items-center gap-2">
+        {scoreEntered ? (
+          <span className={cn("pm-mono font-bold text-amber-900", compact ? "text-xs" : "text-sm")}>
+            {scoreText}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
+        )}
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowMenu(true)}
+            aria-label="Paramètres de la manche"
+            className="p-1.5 rounded-full bg-white border border-amber-200 text-amber-700 hover:border-amber-400 shrink-0"
+          >
+            <Icon.Settings className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {showMenu && (
+        <Modal title={`Paramètres de la manche ${roundIndex + 1}`} onClose={() => setShowMenu(false)}>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowMenu(false);
+                setShowEdit(true);
+              }}
+              className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
+            >
+              Modifier la composition ou le score
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMenu(false);
+                setShowDelete(true);
+              }}
+              className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-left text-sm font-medium text-rose-700"
+            >
+              Supprimer cette manche
+            </button>
+          </div>
+        </Modal>
+      )}
+      {showEdit && (
+        <RoundModal
+          match={match}
+          sessionMatches={sessionMatches}
+          roundIndex={roundIndex}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
+      {showDelete && (
+        <Modal title="Supprimer cette manche ?" onClose={() => setShowDelete(false)}>
+          <p className="text-sm text-[var(--color-text-dim)] mb-4">
+            La manche {roundIndex + 1} sera supprimée et son effet sur le niveau des joueurs sera
+            annulé. La composition de base du match et la comptabilité ne sont pas touchées.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setShowDelete(false)}
+              disabled={busy}
+              className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm font-semibold"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="px-4 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {busy ? "Suppression..." : "Supprimer"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// Bouton « Ajouter une manche » sous le résultat d'un terrain (voir
+// RoundModal.jsx) — visible par les joueurs de ce terrain et par l'admin, une
+// fois le match de base encodé (score ou « Pas de score ») pour que le bonus
+// d'assiduité soit versé dans le bon ordre.
+function AddRoundButton({ match, sessionMatches, compact }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cn(
+          "w-full mt-1.5 mb-1 rounded-xl border border-dashed border-amber-300 bg-white/60 font-semibold text-amber-800 hover:bg-amber-50 active:scale-[0.99] transition-all",
+          compact ? "py-1.5 text-[11px]" : "py-2 text-xs"
+        )}
+      >
+        + Ajouter une manche
+      </button>
+      {open && (
+        <RoundModal match={match} sessionMatches={sessionMatches} onClose={() => setOpen(false)} />
+      )}
+    </>
+  );
+}
+
 // Bloc "score" réutilisable — accent doré, une ligne de titre + la date +
 // le(s) résultat(s) compact(s). Utilisé en taille normale pour la carte
 // "Dernier match joué", et en taille réduite (compact = true) pour les
 // matchs terminés de "Reste de la saison" (affichage direct ou dans la
 // petite fenêtre de résultat).
 export function MatchResultBlock({ sessionMatches, compact = false, label = "Résultat" }) {
+  const { isAdmin, connectedPlayer } = useAppData();
   const first = sessionMatches[0];
+  // Ajout d'une manche : joueurs du terrain + admin, une fois le match de base
+  // encodé (score ou « Pas de score »).
+  const canAddRound = (m) =>
+    (hasMatchScore(m) || m.matchType === "Amical") &&
+    (isAdmin || (m.participants || []).some((p) => p.playerId === connectedPlayer?.id));
   return (
     <div
       className={cn(
@@ -562,7 +750,21 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
       </p>
       <div className="flex flex-col">
         {sessionMatches.map((m) => (
-          <CompactMatchResult key={m.id} match={m} compact={compact} />
+          <Fragment key={m.id}>
+            <CompactMatchResult match={m} compact={compact} />
+            {getRounds(m).map((_, i) => (
+              <RoundResultRow
+                key={`${m.id}#r${i + 1}`}
+                match={m}
+                sessionMatches={sessionMatches}
+                roundIndex={i + 1}
+                compact={compact}
+              />
+            ))}
+            {canAddRound(m) && (
+              <AddRoundButton match={m} sessionMatches={sessionMatches} compact={compact} />
+            )}
+          </Fragment>
         ))}
       </div>
     </div>
