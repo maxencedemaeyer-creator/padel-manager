@@ -84,8 +84,8 @@ const STATUS_SOLID_CLASS = {
 // (`sessionInfo`) pour savoir d'un coup d'œil de quel match il s'agit.
 //
 // Bouton "Partager sur WhatsApp" en bas de la fenêtre (`canShare`) :
-// réservé à l'admin (et plus tard aux coachs — il suffira d'élargir
-// `canShareLists` dans AvailabilityButtons). La liste est envoyée sous forme
+// disponible pour tous les joueurs (voir `canShareLists` dans
+// AvailabilityButtons). La liste est envoyée sous forme
 // de TEXTE (titre, date · heure · club, émoji + prénom de chaque joueur, réserve) via un
 // lien wa.me : WhatsApp s'ouvre (appli sur mobile, WhatsApp Web sur
 // ordinateur) et on choisit simplement le groupe ou la personne. Aucune
@@ -376,10 +376,9 @@ export function AvailabilityButtons({ sessionMatches }) {
     .filter(Boolean)
     .join(" · ");
 
-  // Bouton "Partager sur WhatsApp" des listes de joueurs : admin uniquement
-  // pour l'instant. Le jour où un rôle "coach" existera, il suffira d'ajouter
-  // ici `|| connectedPlayer.isCoach` (ou l'équivalent retenu).
-  const canShareLists = isAdmin;
+  // Bouton "Partager sur WhatsApp" des listes de joueurs : ouvert à tous
+  // les joueurs connectés (simple partage de texte, aucune donnée modifiée).
+  const canShareLists = true;
   const lockMessage = isPostMatchLocked
     ? "Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
     : isPreMatchFrozen
