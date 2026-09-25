@@ -698,14 +698,16 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
   const { isAdmin, connectedPlayer } = useAppData();
   const [showAddRound, setShowAddRound] = useState(false);
   const first = sessionMatches[0];
-  // Ajout d'une manche (bouton « + » rond en haut à droite, un seul par bloc) :
-  // terrains où le joueur a joué (tous pour l'admin), une fois le match de base
-  // encodé (score ou « Pas de score »).
-  const addRoundCourts = sessionMatches.filter(
-    (m) =>
-      (hasMatchScore(m) || m.matchType === "Amical") &&
-      (isAdmin || (m.participants || []).some((p) => p.playerId === connectedPlayer?.id))
-  );
+  // Ajout d'une manche (bouton « + » rond en haut à droite, un seul par bloc,
+  // toujours visible) : ouvert à tous les joueurs de la session (ayant joué sur
+  // l'un des terrains) et à l'admin ; la fenêtre propose tous les terrains de
+  // la session.
+  const canAddRound =
+    isAdmin ||
+    sessionMatches.some((m) =>
+      (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
+    );
+  const addRoundCourts = canAddRound ? sessionMatches : [];
   return (
     <div
       className={cn(
