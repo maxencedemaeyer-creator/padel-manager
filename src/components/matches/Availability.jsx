@@ -17,7 +17,7 @@
 // et même après le match), avec possibilité de réinitialiser une réponse.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { cn, formatDateFR, getFirstName } from "../../lib/utils";
+import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
 import { useNow, getMatchTiming } from "../../lib/matchLogic";
 import {
   AVAILABILITY_STATUSES,
@@ -79,12 +79,23 @@ const STATUS_SOLID_CLASS = {
 // la liste, sous un sous-titre "Réserve", pour que tout le monde voie
 // d'emblée qu'il y a plus de présents que de places, et qui est en attente
 // d'un désistement.
-function PlayerListModal({ title, players, reservePlayers, capacity, onClose }) {
+//
+// Juste sous le titre, un rappel date · heure · club de la session
+// (`sessionInfo`) pour savoir d'un coup d'œil de quel match il s'agit.
+function PlayerListModal({ title, players, reservePlayers, capacity, sessionInfo, onClose }) {
   const hasReserve = Boolean(reservePlayers && reservePlayers.length > 0);
   const isEmpty = players.length === 0 && !hasReserve;
 
   return (
     <Modal title={title} onClose={onClose}>
+      {sessionInfo && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-sky-900">
+          <Icon.Calendar className="w-4 h-4 shrink-0 text-sky-600" />
+          <p className="text-xs font-semibold leading-snug min-w-0">
+            {sessionInfo}
+          </p>
+        </div>
+      )}
       {hasReserve && (
         <p className="text-xs text-[var(--color-text-dim)] mb-3">
           Cette session compte <strong>{capacity}</strong> place
@@ -293,6 +304,21 @@ export function AvailabilityButtons({ sessionMatches }) {
     isPresenceFrozen(sessionMatches?.[0], now, presenceLockHours);
 
   const isLocked = isPostMatchLocked || isPreMatchFrozen;
+
+  // Rappel "date · heure · club" affiché sous le titre des listes de joueurs
+  // (Présents / Absents / En attente). Plusieurs clubs possibles si les
+  // terrains de la session sont répartis sur plusieurs sites.
+  const firstMatch = sessionMatches?.[0] || {};
+  const sessionClubs = [
+    ...new Set((sessionMatches || []).map((m) => clubNameOnly(m.location)).filter(Boolean)),
+  ];
+  const sessionInfo = [
+    formatDateFR(firstMatch.date),
+    formatTimeFR(firstMatch.time),
+    sessionClubs.join(" / "),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const lockMessage = isPostMatchLocked
     ? "Le match a commencé — votre présence n'est plus modifiable. Contactez l'administrateur si besoin."
     : isPreMatchFrozen
@@ -498,6 +524,7 @@ export function AvailabilityButtons({ sessionMatches }) {
             }
             reservePlayers={openList === "present" ? presentReserve : undefined}
             capacity={capacity}
+            sessionInfo={sessionInfo}
             onClose={() => setOpenList(null)}
           />
         )}
