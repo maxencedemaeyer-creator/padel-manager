@@ -176,6 +176,9 @@ function courtLabelOf(m) {
 }
 
 // `match` : le match (terrain) qui reçoit la manche — obligatoire pour modifier.
+// `scoreOnly` : un joueur (non-admin) qui corrige le score d'une manche
+// existante depuis « Dernier résultat » — la composition est alors figée (seul
+// le score change).
 // `courtChoices` : pour un ajout depuis le bouton « + » du bloc résultat, la
 // liste des terrains possibles ; si elle en compte plusieurs, la fenêtre
 // demande sur quel terrain se fait la manche (celui du joueur connecté est
@@ -185,9 +188,10 @@ export function RoundModal({
   courtChoices = null,
   sessionMatches,
   roundIndex = null,
+  scoreOnly = false,
   onClose,
 }) {
-  const { players, matches, connectedPlayer } = useAppData();
+  const { players, matches, connectedPlayer, isAdmin } = useAppData();
   const choices = courtChoices && courtChoices.length > 0 ? courtChoices : [matchProp];
   const [courtId, setCourtId] = useState(() => {
     const mine = choices.find((m) =>
@@ -242,8 +246,10 @@ export function RoundModal({
       courtSide: d.side,
     }));
 
+  // Un joueur ne peut qu'encoder le score d'une manche qui n'en a pas encore.
+  const playerBlocked = scoreOnly && !isAdmin && hasMatchScore(existing || {});
   const save = async (matchType, scoreSets) => {
-    if (!allFilled) return;
+    if (!allFilled || playerBlocked) return;
     setSaving(true);
     try {
       await saveRoundAndRanking({
@@ -280,7 +286,13 @@ export function RoundModal({
 
   return (
     <Modal
-      title={isEdit ? `Modifier la manche ${roundIndex + 1}` : "Ajouter une manche"}
+      title={
+        scoreOnly
+          ? `Encoder le score de la manche ${roundIndex + 1}`
+          : isEdit
+            ? `Modifier la manche ${roundIndex + 1}`
+            : "Ajouter une manche"
+      }
       onClose={onClose}
       wide
       footer={
@@ -290,7 +302,7 @@ export function RoundModal({
           </Button>
           <Button
             onClick={() => save("Officiel", sets)}
-            disabled={saving || !allFilled || noExploitableData}
+            disabled={saving || !allFilled || noExploitableData || playerBlocked}
           >
             {saving ? "Enregistrement..." : "Enregistrer"}
           </Button>
@@ -322,8 +334,9 @@ export function RoundModal({
         </>
       )}
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        Placez les 4 joueurs de cette manche (équipes changées en cours de session), puis
-        encodez son score. La composition de base du match et la comptabilité ne changent pas.
+        {scoreOnly
+          ? "Encodez le score de cette manche. La composition ne peut pas être modifiée ici."
+          : "Placez les 4 joueurs de cette manche (équipes changées en cours de session), puis encodez son score. La composition de base du match et la comptabilité ne changent pas."}
       </p>
 
       <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-2">
@@ -336,7 +349,8 @@ export function RoundModal({
             <button
               key={def.key}
               type="button"
-              onClick={() => setPickSlot(def.key)}
+              onClick={() => !scoreOnly && setPickSlot(def.key)}
+              disabled={scoreOnly}
               className={cn(
                 "flex flex-col items-stretch p-3 rounded-2xl border-2 min-h-[76px] text-left transition-all",
                 playerId
@@ -421,18 +435,25 @@ export function RoundModal({
       )}
 
       <div className="flex flex-col gap-2 mt-3">
-        <Button
-          variant="secondary"
-          className="w-full !text-xs"
-          onClick={() => save("Amical", { set1: null, set2: null, set3: null })}
-          disabled={saving || !allFilled}
-        >
-          Pas de score
-        </Button>
+        {!scoreOnly && (
+          <Button
+            variant="secondary"
+            className="w-full !text-xs"
+            onClick={() => save("Amical", { set1: null, set2: null, set3: null })}
+            disabled={saving || !allFilled}
+          >
+            Pas de score
+          </Button>
+        )}
         <p className="text-[var(--color-text-faint)] text-[11px] text-center">
           Le bonus de régularité n'est versé qu'une fois par session ; le résultat d'une manche
           supplémentaire compte un peu moins que celui du match de base.
         </p>
+        {scoreOnly && (
+          <p className="text-[var(--color-text-faint)] text-[10px] text-center">
+            Pour modifier un score, contactez l'admin.
+          </p>
+        )}
       </div>
 
       {pickSlot && (
