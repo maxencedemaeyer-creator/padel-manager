@@ -39,6 +39,7 @@ export function EditPlayerModal({ player, onClose }) {
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
   const [isTest, setIsTest] = useState(player.isTest === true);
   const [isOccasional, setIsOccasional] = useState(player.isOccasional === true);
+  const [isGuest, setIsGuest] = useState(player.isGuest === true);
   const [secondaryTestCode, setSecondaryTestCode] = useState("");
   const [secondaryTestPlayerId, setSecondaryTestPlayerId] = useState("");
   const [clearSecondary, setClearSecondary] = useState(false);
@@ -148,6 +149,7 @@ export function EditPlayerModal({ player, onClose }) {
         isCreditor,
         isTest,
         isOccasional,
+        isGuest,
       };
 
       // Ranking — recalibrage §4.6 : uniquement si le niveau officiel change
@@ -395,6 +397,22 @@ export function EditPlayerModal({ player, onClose }) {
             />
             Joueur occasionnel
           </label>
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={isGuest}
+              onChange={(e) => setIsGuest(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Profil « Invité » (jamais compté dans le calcul du Niveau)
+          </label>
+          {isGuest && (
+            <p className="text-[11px] text-[var(--color-text-faint)] -mt-1 ml-6">
+              Pour un joueur de passage qui remplace quelqu'un : les autres joueurs
+              du match sont notés normalement, mais aucun niveau n'est jamais
+              enregistré pour ce profil.
+            </p>
+          )}
           {isOccasional && (
             <p className="text-[11px] text-[var(--color-text-faint)] -mt-1 ml-6">
               Masqué par défaut sur l'écran de connexion (accessible via le
