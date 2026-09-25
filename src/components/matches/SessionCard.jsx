@@ -689,31 +689,6 @@ function RoundResultRow({ match, sessionMatches, roundIndex, compact = false }) 
   );
 }
 
-// Bouton « Ajouter une manche » sous le résultat d'un terrain (voir
-// RoundModal.jsx) — visible par les joueurs de ce terrain et par l'admin, une
-// fois le match de base encodé (score ou « Pas de score ») pour que le bonus
-// d'assiduité soit versé dans le bon ordre.
-function AddRoundButton({ match, sessionMatches, compact }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "w-full mt-1.5 mb-1 rounded-xl border border-dashed border-amber-300 bg-white/60 font-semibold text-amber-800 hover:bg-amber-50 active:scale-[0.99] transition-all",
-          compact ? "py-1.5 text-[11px]" : "py-2 text-xs"
-        )}
-      >
-        + Ajouter une manche
-      </button>
-      {open && (
-        <RoundModal match={match} sessionMatches={sessionMatches} onClose={() => setOpen(false)} />
-      )}
-    </>
-  );
-}
-
 // Bloc "score" réutilisable — accent doré, une ligne de titre + la date +
 // le(s) résultat(s) compact(s). Utilisé en taille normale pour la carte
 // "Dernier match joué", et en taille réduite (compact = true) pour les
@@ -721,12 +696,16 @@ function AddRoundButton({ match, sessionMatches, compact }) {
 // petite fenêtre de résultat).
 export function MatchResultBlock({ sessionMatches, compact = false, label = "Résultat" }) {
   const { isAdmin, connectedPlayer } = useAppData();
+  const [showAddRound, setShowAddRound] = useState(false);
   const first = sessionMatches[0];
-  // Ajout d'une manche : joueurs du terrain + admin, une fois le match de base
+  // Ajout d'une manche (bouton « + » rond en haut à droite, un seul par bloc) :
+  // terrains où le joueur a joué (tous pour l'admin), une fois le match de base
   // encodé (score ou « Pas de score »).
-  const canAddRound = (m) =>
-    (hasMatchScore(m) || m.matchType === "Amical") &&
-    (isAdmin || (m.participants || []).some((p) => p.playerId === connectedPlayer?.id));
+  const addRoundCourts = sessionMatches.filter(
+    (m) =>
+      (hasMatchScore(m) || m.matchType === "Amical") &&
+      (isAdmin || (m.participants || []).some((p) => p.playerId === connectedPlayer?.id))
+  );
   return (
     <div
       className={cn(
@@ -744,6 +723,20 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
         >
           {label}
         </p>
+        {addRoundCourts.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAddRound(true)}
+            aria-label="Ajouter une manche"
+            title="Ajouter une manche"
+            className={cn(
+              "ml-auto shrink-0 rounded-full border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 active:scale-95 transition-all flex items-center justify-center",
+              compact ? "w-6 h-6" : "w-8 h-8"
+            )}
+          >
+            <Icon.Plus className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
+          </button>
+        )}
       </div>
       <p className={cn("font-semibold text-amber-900 mb-1", compact ? "text-xs" : "text-sm")}>
         {formatDateFR(first.date)}
@@ -761,12 +754,16 @@ export function MatchResultBlock({ sessionMatches, compact = false, label = "Ré
                 compact={compact}
               />
             ))}
-            {canAddRound(m) && (
-              <AddRoundButton match={m} sessionMatches={sessionMatches} compact={compact} />
-            )}
           </Fragment>
         ))}
       </div>
+      {showAddRound && (
+        <RoundModal
+          courtChoices={addRoundCourts}
+          sessionMatches={sessionMatches}
+          onClose={() => setShowAddRound(false)}
+        />
+      )}
     </div>
   );
 }
