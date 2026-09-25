@@ -617,6 +617,16 @@ export function computeRankingUpdateForMatch({
   const statesAfterCancel = statesAfterCancellation(allIds, playersById, previousLevelDeltas);
   const statesById = Object.fromEntries(allIds.map((id) => [id, statesAfterCancel.get(id)]));
 
+  // Joueur « Invité » (25/09/2026) : une personne différente à chaque fois,
+  // donc jamais de Niveau. Il est calculé comme « Non classé » (les 3 autres
+  // joueurs sont notés normalement, comme avec n'importe quel joueur sans
+  // niveau) mais rien n'est jamais écrit à son nom — ni sur sa fiche, ni dans
+  // `levelDeltas` du match.
+  const isGuest = (id) => Boolean(playersById[id] && playersById[id].isGuest === true);
+  allIds.forEach((id) => {
+    if (isGuest(id)) statesById[id] = { score: null, reliability: 0, hasRanking: false };
+  });
+
   const contextById = buildRankingContext({
     playerIds: allIds,
     playersById,
@@ -641,7 +651,15 @@ export function computeRankingUpdateForMatch({
   // ancien ajustement de ce match vient d'être annulé (retour éventuel à
   // "Non classé" après annulation d'un amorçage).
   const playerUpdates = {};
+  const levelDeltas = { ...fresh.levelDeltas };
   allIds.forEach((id) => {
+    if (isGuest(id)) {
+      // Jamais de niveau pour un invité ; s'il en portait un d'un ancien
+      // calcul de ce match, on le remet à « Non classé ».
+      delete levelDeltas[id];
+      if (previousLevelDeltas && previousLevelDeltas[id]) playerUpdates[id] = UNRANK_PLAYER;
+      return;
+    }
     if (fresh.newStates[id]) {
       playerUpdates[id] = stateToPlayerUpdate(fresh.newStates[id]);
     } else if (previousLevelDeltas && previousLevelDeltas[id]) {
@@ -649,7 +667,7 @@ export function computeRankingUpdateForMatch({
     }
   });
 
-  return { levelDeltas: fresh.levelDeltas, playerUpdates };
+  return { levelDeltas, playerUpdates };
 }
 
 // Cas "le match devient/reste sans donnée exploitable" (§4.8.B, §5) alors
