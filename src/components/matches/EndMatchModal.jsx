@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Modale "Ajouter un score" : grille de sets par équipe, vainqueur déduit
-// automatiquement, ou "pas de score" pour un match amical / équipes changées.
+// automatiquement, ou "Pas de score" (un seul bouton depuis le 25/09/2026 : les
+// anciens boutons « match amical » et « équipes changées » sont fusionnés — si
+// les équipes ont changé, on ajoute une manche, voir RoundModal.jsx).
 //
 // Depuis le 18/09/2026 (voir claude/feature-ranking-padel-manager.md) : toute
 // écriture d'un score exploitable (premier encodage OU correction d'un score
@@ -133,8 +135,8 @@ export function EndMatchModal({ match, onClose }) {
   // ce bouton rapporte le bonus d'assiduité).
   const noExploitableData = !hasMatchScore({ scores: sets });
 
-  // Un score saisi ici correspond toujours à un match officiel — les deux
-  // boutons "Pas de score" ci-dessous couvrent déjà les autres cas.
+  // Un score saisi ici correspond toujours à un match officiel — le bouton
+  // "Pas de score" ci-dessous couvre l'autre cas.
   const submit = async () => {
     setSaving(true);
     try {
@@ -155,9 +157,11 @@ export function EndMatchModal({ match, onClose }) {
     }
   };
 
-  // Les deux cas "pas de score" enregistrent et referment immédiatement,
-  // sans passer par le bouton principal.
-  const noScore = async (teamsChanged) => {
+  // "Pas de score" enregistre et referme immédiatement, sans passer par le
+  // bouton principal. Le match reste "fiable" (teamsUnreliable false) : la
+  // composition de base a bien été jouée au début ; les changements d'équipes
+  // se saisissent via « Ajouter une manche ».
+  const noScore = async () => {
     setSaving(true);
     try {
       await applyMatchAndRanking({
@@ -167,7 +171,7 @@ export function EndMatchModal({ match, onClose }) {
         sets: { set1: null, set2: null, set3: null },
         matchType: "Amical",
         winningTeam: null,
-        teamsUnreliable: teamsChanged,
+        teamsUnreliable: false,
       });
       onClose();
     } catch (error) {
@@ -254,7 +258,7 @@ export function EndMatchModal({ match, onClose }) {
       {noExploitableData && (
         <p className="text-[var(--color-text-faint)] text-[11px] mb-2">
           Aucun score exploitable saisi pour l'instant — le niveau ne sera pas mis à jour. Si le
-          match a bien été joué sans score, utilisez un des boutons « Pas de score » ci-dessous.
+          match a bien été joué sans score, utilisez le bouton « Pas de score » ci-dessous.
         </p>
       )}
 
@@ -262,22 +266,15 @@ export function EndMatchModal({ match, onClose }) {
         <Button
           variant="secondary"
           className="w-full !text-xs"
-          onClick={() => noScore(true)}
+          onClick={noScore}
           disabled={saving}
         >
-          Pas de score — Les équipes ont changé au cours du match
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-full !text-xs"
-          onClick={() => noScore(false)}
-          disabled={saving}
-        >
-          Pas de score — Match amical
+          Pas de score
         </Button>
         <p className="text-[var(--color-text-faint)] text-[11px] text-center">
           Un match joué sans score rapporte quand même un petit bonus de régularité à chaque
-          joueur qui a un niveau.
+          joueur qui a un niveau. Si les équipes ont changé en cours de route, vous pourrez
+          ajouter une manche ensuite depuis le bloc « Dernier résultat ».
         </p>
       </div>
     </Modal>
