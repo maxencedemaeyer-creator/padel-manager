@@ -135,7 +135,9 @@ export function computeFullRecalculation({ players, matches }) {
       levelDeltas: fresh.levelDeltas,
     });
     replayedIds.add(m.id);
-    Object.keys(fresh.levelDeltas).forEach((id) => sessionEntries.add(`${sessionKeyOf(m)}|${id}`));
+    Object.entries(fresh.levelDeltas).forEach(([id, entry]) => {
+      if (entry.bonus > 0) sessionEntries.add(`${sessionKeyOf(m)}|${id}`);
+    });
     Object.entries(fresh.newStates).forEach(([id, state]) => {
       statesById[id] = state;
       historyById[id] = [...historyById[id], state.score];
