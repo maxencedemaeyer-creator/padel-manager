@@ -536,8 +536,18 @@ export function buildRankingContext({ playerIds, playersById, matches, currentMa
       })
       .sort(compareMatchesChronologically);
     const history = before.map((m) => m.levelDeltas[id].apres).filter((v) => typeof v === "number");
+    // Bonus déjà versé dans cette session (par une AUTRE manche, avant ou après :
+    // une manche peut être ajoutée avant que le score de base ne soit encodé).
     const bonusDone =
-      currentSession !== null && before.some((m) => sessionKeyOf(m) === currentSession);
+      currentSession !== null &&
+      all.some(
+        (m) =>
+          m.id !== currentId &&
+          sessionKeyOf(m) === currentSession &&
+          m.levelDeltas &&
+          m.levelDeltas[id] &&
+          m.levelDeltas[id].bonus > 0
+      );
     const base = getScoreBase(playersById[id] && playersById[id].levelSortValue);
     contextById[id] = {
       history,
