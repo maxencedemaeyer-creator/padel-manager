@@ -9,7 +9,9 @@ import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
 import { useMvpVotes } from "../hooks/useFirestoreData";
 import { computeMvpWinner } from "../lib/mvp";
-import { computePlayerStats } from "../lib/stats";
+import { participantsOf } from "../lib/stats";
+import { expandRounds, sessionKeyOf } from "../lib/rounds";
+import { getMatchTiming } from "../lib/matchLogic";
 import { getPlayerRatingState } from "../lib/levelRating";
 import { cn, getFirstName } from "../lib/utils";
 import Icon from "../components/icons/Icon";
@@ -25,7 +27,8 @@ import { AddPlayerModal } from "../components/players/AddPlayerModal";
 //                pas visible pour les joueurs (même règle que la pastille)
 // - mvp        : nombre de fois élu "homme du match", du plus au moins
 // - rank       : Classement officiel, de P1000 à P50, les non classés en bas
-// - regularity : nombre de matchs joués, du plus au moins
+// - regularity : nombre de SESSIONS jouées (1 session = 1 entraînement,
+//                quel que soit son nombre de manches), du plus au moins
 const SORT_OPTIONS = [
   { id: "name", label: "Nom" },
   { id: "level", label: "Niveau" },
@@ -77,17 +80,29 @@ export function PlayersView() {
   // uniquement), voir feature "joueurs occasionnels".
   const [showOccasional, setShowOccasional] = useState(false);
 
-  // Matchs joués par joueur (même nombre que celui affiché sur chaque carte)
-  // — calculé seulement quand le tri "Régularité" est actif, pour ne rien
-  // ajouter au coût de l'écran dans les autres cas.
-  const playedCounts = useMemo(() => {
-    if (activeSort !== "regularity") return null;
+  // Sessions jouées par joueur — 1 session = 1 entraînement, quel que soit le
+  // nombre de manches jouées (corrigé le 26/09/2026 : depuis les manches
+  // supplémentaires, compter les matchs faussait la régularité). Une session
+  // = même date + même heure + même club ; on la compte une seule fois pour
+  // un joueur dès qu'il figure dans une de ses manches (base ou ajoutée),
+  // uniquement pour les sessions terminées. Sert au tri "Régularité" ET au
+  // nombre affiché sur chaque carte joueur (prop `sessionCount`).
+  const sessionCounts = useMemo(() => {
+    const sessionsByPlayer = {};
+    expandRounds(matches).forEach((m) => {
+      if (getMatchTiming(m) !== "finished") return;
+      const key = sessionKeyOf(m);
+      participantsOf(m).forEach((part) => {
+        if (!part?.playerId) return;
+        (sessionsByPlayer[part.playerId] ||= new Set()).add(key);
+      });
+    });
     const counts = {};
     players.forEach((p) => {
-      counts[p.id] = computePlayerStats(p.id, matches).played;
+      counts[p.id] = sessionsByPlayer[p.id]?.size || 0;
     });
     return counts;
-  }, [activeSort, players, matches]);
+  }, [players, matches]);
 
   // Applique le tri choisi. Chaque critère est décroissant (le "meilleur" en
   // haut) ; toute égalité est départagée par l'ordre alphabétique des
@@ -106,13 +121,13 @@ export function PlayersView() {
         case "mvp":
           return mvpCounts[p.id] || 0;
         case "regularity":
-          return playedCounts ? playedCounts[p.id] || 0 : 0;
+          return sessionCounts[p.id] || 0;
         default:
           return 0;
       }
     };
     return (list) => [...list].sort((a, b) => metric(b) - metric(a) || compareByName(a, b));
-  }, [activeSort, mvpCounts, playedCounts]);
+  }, [activeSort, mvpCounts, sessionCounts]);
 
   const sorted = useMemo(
     () => sortPlayers(players.filter((p) => (isAdmin || !p.isTest) && !p.isOccasional)),
@@ -183,7 +198,12 @@ export function PlayersView() {
               plus rien à quoi s'aligner sur mobile. */}
           <div className="flex flex-col gap-2">
             {sorted.map((p) => (
-              <PlayerRow key={p.id} player={p} mvpCount={mvpCounts[p.id] || 0} />
+              <PlayerRow
+                key={p.id}
+                player={p}
+                mvpCount={mvpCounts[p.id] || 0}
+                sessionCount={sessionCounts[p.id] || 0}
+              />
             ))}
           </div>
         </>
@@ -215,7 +235,12 @@ export function PlayersView() {
               </div>
               <div className="flex flex-col gap-2">
                 {occasionalPlayers.map((p) => (
-                  <PlayerRow key={p.id} player={p} mvpCount={mvpCounts[p.id] || 0} />
+                  <PlayerRow
+                    key={p.id}
+                    player={p}
+                    mvpCount={mvpCounts[p.id] || 0}
+                    sessionCount={sessionCounts[p.id] || 0}
+                  />
                 ))}
               </div>
             </>
