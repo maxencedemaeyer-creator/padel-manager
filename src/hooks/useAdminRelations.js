@@ -1,85 +1,204 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Préférences / incompatibilités entre joueurs (outil "Liens entre joueurs"
-// de l'Administration). Ces données sont des confidences faites à l'admin :
-// elles ne passent JAMAIS par Firestore côté navigateur, mais par la fonction
-// serveur api/admin-relations.js, qui vérifie que la personne connectée est
-// bien administrateur (voir le commentaire de ce fichier). Tout est donc lu et
-// écrit sur Firebase, jamais en local, et invisible pour les autres joueurs.
+// Préférences et incompatibilités entre joueurs — outil "Liens entre
+// joueurs" du centre Administration (voir claude/spec-outil-liens-joueurs-
+// simulateur-2026-09-19.md dans le projet Claude).
 //
-// Chargement à la demande : `enabled` reste faux tant que le volet est replié,
-// pour ne rien demander au serveur tant que l'admin n'ouvre pas l'outil.
+// Ces informations sont des CONFIDENCES faites à l'administrateur (ex. "Adrien
+// ne veut plus jouer avec Jean") : personne d'autre ne doit jamais pouvoir les
+// lire. Or les règles Firestore ne savent pas distinguer un administrateur
+// d'un joueur (tout le monde est connecté de façon anonyme, voir
+// firestore.rules). Elles sont donc stockées dans une collection totalement
+// verrouillée côté navigateur (`adminRelations`, `allow read, write: if
+// false`) et n'existent que via CETTE fonction serveur, qui vérifie à chaque
+// appel que le jeton de session appartient bien à un administrateur
+// (`isAdmin` relu en base, jamais lu dans le jeton) — même mécanique que
+// api/manage-pin.js.
+//
+// Deux actions, toutes en POST avec { action, actingToken, ... } :
+//   - "get"  : → { ok, players }  (toutes les préférences, par id de joueur)
+//   - "save" : { playerId, prefs } → { ok, prefs }  (remplace la fiche de ce
+//       joueur ; les autres joueurs ne sont pas touchés)
+//
+// Format d'une fiche (tout est facultatif, valeurs par défaut ci-dessous) :
+//   {
+//     mode: "indifferent" | "varied" | "stable",   // défaut "indifferent"
+//     modeSince: "AAAA-MM-JJ" | null,               // début du mode Stable
+//     favorites: [playerId, ...],                   // partenaires souhaités
+//     avoid: [{ playerId, alsoOpponent, since }],   // joueurs à éviter
+//   }
+//
+// Deux actions ouvertes à N'IMPORTE QUEL joueur connecté, mais uniquement pour
+// SA PROPRE fiche (l'identité vient du jeton de session, jamais du corps de
+// la requête) et uniquement pour le champ "mode" (Choix de partenaire) :
+//   - "getMine"    : → { ok, mode }
+//   - "saveMyMode" : { mode } → { ok, mode }
+// Les partenaires souhaités et les joueurs à éviter restent réservés à
+// l'administrateur, et un joueur ne peut jamais lire ceux des autres.
+//
+// Ce fichier est purement consultatif : il n'écrit JAMAIS dans `matches`,
+// dans les présences ni dans la composition des équipes.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useAppData } from "../context/AppContext";
+import { FieldPath } from "firebase-admin/firestore";
+import { getAdminDb, verifySessionToken } from "./_firebaseAdmin.js";
 
-async function callAdminRelations(payload) {
-  const response = await fetch("/api/admin-relations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  let data = null;
-  try {
-    data = await response.json();
-  } catch (e) {
-    throw new Error(
-      "Le serveur ne répond pas à cette fonction. Vérifiez que le fichier api/admin-relations.js a bien été ajouté sur GitHub et que Vercel a fini de se redéployer."
-    );
-  }
-  if (!data || !data.ok) throw new Error((data && data.error) || "Erreur serveur.");
-  return data;
+const MODES = ["indifferent", "varied", "stable"];
+const MAX_LIST = 30;
+
+// Date du jour au format AAAA-MM-JJ, à l'heure de Bruxelles (et non en UTC,
+// pour ne pas glisser sur la veille passé minuit).
+function todayBrussels() {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Brussels" });
 }
 
-export function useAdminRelations(enabled) {
-  const { sessionToken } = useAppData();
-  const [relations, setRelations] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [loaded, setLoaded] = useState(false);
-  const started = useRef(false);
+function isId(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 128;
+}
 
-  const load = useCallback(async () => {
-    if (!sessionToken) {
-      setError("Session expirée : déconnectez-vous puis reconnectez-vous avec votre code.");
+function uniqueIds(list, selfId) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  list.forEach((value) => {
+    if (isId(value) && value !== selfId && !out.includes(value) && out.length < MAX_LIST) {
+      out.push(value);
+    }
+  });
+  return out;
+}
+
+// Nettoie ce que le navigateur envoie et complète ce que seul le serveur doit
+// décider (dates de début), en s'appuyant sur la fiche précédente.
+function sanitizePrefs(input, playerId, previous) {
+  const raw = input && typeof input === "object" ? input : {};
+  const mode = MODES.includes(raw.mode) ? raw.mode : "indifferent";
+  const today = todayBrussels();
+
+  let modeSince = null;
+  if (mode === "stable") {
+    modeSince =
+      previous && previous.mode === "stable" && typeof previous.modeSince === "string"
+        ? previous.modeSince
+        : today;
+  }
+
+  const previousAvoid = new Map(
+    (previous && Array.isArray(previous.avoid) ? previous.avoid : [])
+      .filter((entry) => entry && isId(entry.playerId))
+      .map((entry) => [entry.playerId, entry])
+  );
+  const avoid = [];
+  (Array.isArray(raw.avoid) ? raw.avoid : []).forEach((entry) => {
+    if (!entry || !isId(entry.playerId) || entry.playerId === playerId) return;
+    if (avoid.some((a) => a.playerId === entry.playerId) || avoid.length >= MAX_LIST) return;
+    const before = previousAvoid.get(entry.playerId);
+    avoid.push({
+      playerId: entry.playerId,
+      alsoOpponent: entry.alsoOpponent === true,
+      since: before && typeof before.since === "string" ? before.since : today,
+    });
+  });
+
+  return {
+    mode,
+    modeSince,
+    favorites: uniqueIds(raw.favorites, playerId),
+    avoid,
+  };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Méthode non autorisée." });
+    return;
+  }
+
+  try {
+    const body = req.body || {};
+    const session = verifySessionToken(body.actingToken);
+    if (!session) {
+      res.status(403).json({ ok: false, error: "Session invalide ou expirée. Reconnectez-vous." });
       return;
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await callAdminRelations({ action: "get", actingToken: sessionToken });
-      setRelations(data.players || {});
-      setLoaded(true);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+
+    const db = getAdminDb();
+    const ref = db.collection("adminRelations").doc("config");
+
+    // ── Actions d'un joueur sur SA propre fiche (Choix de partenaire) ──
+    if (body.action === "getMine") {
+      const snap = await ref.get();
+      const mine =
+        snap.exists && snap.data().players ? snap.data().players[session.playerId] : null;
+      const mode = mine && MODES.includes(mine.mode) ? mine.mode : "indifferent";
+      res.status(200).json({ ok: true, mode });
+      return;
     }
-  }, [sessionToken]);
 
-  useEffect(() => {
-    if (enabled && !started.current) {
-      started.current = true;
-      load();
+    if (body.action === "saveMyMode") {
+      if (!MODES.includes(body.mode)) {
+        res.status(400).json({ ok: false, error: "Choix invalide." });
+        return;
+      }
+      const snap = await ref.get();
+      const previous =
+        snap.exists && snap.data().players ? snap.data().players[session.playerId] : null;
+      const modeSince =
+        body.mode === "stable"
+          ? previous && previous.mode === "stable" && typeof previous.modeSince === "string"
+            ? previous.modeSince
+            : todayBrussels()
+          : null;
+      // On ne touche QUE mode et modeSince : les partenaires souhaités et les
+      // joueurs à éviter éventuellement encodés par l'admin restent intacts.
+      if (snap.exists) {
+        await ref.update(
+          new FieldPath("players", session.playerId, "mode"),
+          body.mode,
+          new FieldPath("players", session.playerId, "modeSince"),
+          modeSince
+        );
+      } else {
+        await ref.set({ players: { [session.playerId]: { mode: body.mode, modeSince } } });
+      }
+      res.status(200).json({ ok: true, mode: body.mode });
+      return;
     }
-  }, [enabled, load]);
 
-  // Enregistre la fiche complète d'UN joueur (mode, partenaires souhaités,
-  // joueurs à éviter). Lève une exception en cas d'échec pour que l'appelant
-  // puisse afficher l'erreur.
-  const savePrefs = useCallback(
-    async (playerId, prefs) => {
-      if (!sessionToken) throw new Error("Session expirée : reconnectez-vous.");
-      const data = await callAdminRelations({
-        action: "save",
-        actingToken: sessionToken,
-        playerId,
-        prefs,
-      });
-      setRelations((prev) => ({ ...prev, [playerId]: data.prefs }));
-      return data.prefs;
-    },
-    [sessionToken]
-  );
+    const actingSnap = await db.collection("players").doc(session.playerId).get();
+    if (!actingSnap.exists || actingSnap.data().isAdmin !== true) {
+      res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
+      return;
+    }
 
-  return { relations, loading, error, loaded, reload: load, savePrefs };
+    if (body.action === "get") {
+      const snap = await ref.get();
+      const data = snap.exists ? snap.data() : {};
+      res.status(200).json({ ok: true, players: data.players || {} });
+      return;
+    }
+
+    if (body.action === "save") {
+      const { playerId, prefs } = body;
+      if (!isId(playerId)) {
+        res.status(400).json({ ok: false, error: "playerId manquant." });
+        return;
+      }
+      const snap = await ref.get();
+      const previous = snap.exists && snap.data().players ? snap.data().players[playerId] : null;
+      const clean = sanitizePrefs(prefs, playerId, previous);
+      // Chemin imbriqué (et non un objet entier) : seule la fiche de CE joueur
+      // est réécrite, les autres restent intactes même si deux sauvegardes
+      // se croisent.
+      if (snap.exists) {
+        await ref.update(new FieldPath("players", playerId), clean);
+      } else {
+        await ref.set({ players: { [playerId]: clean } });
+      }
+      res.status(200).json({ ok: true, prefs: clean });
+      return;
+    }
+
+    res.status(400).json({ ok: false, error: "Action inconnue." });
+  } catch (error) {
+    console.error("admin-relations error:", error);
+    res.status(500).json({ ok: false, error: "Erreur serveur." });
+  }
 }
