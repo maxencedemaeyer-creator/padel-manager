@@ -38,6 +38,7 @@ import Icon from "../components/icons/Icon";
 import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
 import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
+import { PartnerChoiceCard } from "../components/players/PartnerChoiceCard";
 
 // Le face-à-face n'est plus affiché (carte jugée peu prioritaire face à la
 // densité de l'écran "Mon profil") — le code reste en place, prêt à être
@@ -1017,6 +1018,10 @@ export function StatsView() {
             onClose={() => setShowMyPayments(false)}
           />
         )}
+
+        {/* Choix de partenaire — tout en bas : Indifférent / Varié / Stable,
+            modifiable à tout moment (voir PartnerChoiceCard). */}
+        <PartnerChoiceCard sessionToken={sessionToken} />
       </div>
     </div>
   );
