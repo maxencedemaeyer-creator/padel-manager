@@ -102,7 +102,7 @@ function PrefsEditor({ ctx, playerId, prefs, links, nameOf, onSave }) {
     <div className="mt-2 p-3 rounded-2xl bg-[var(--color-surface-2)] flex flex-col gap-4">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
-          Envie de partenaires
+          Choix de partenaire
         </p>
         <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1 w-fit max-w-full">
           {PARTNER_MODES.map((m) => (
