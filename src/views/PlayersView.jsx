@@ -8,7 +8,7 @@
 import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
 import { useMvpVotes } from "../hooks/useFirestoreData";
-import { computeMvpWinner } from "../lib/mvp";
+import { buildMvpResults } from "../lib/mvp";
 import { participantsOf } from "../lib/stats";
 import { expandRounds, sessionKeyOf } from "../lib/rounds";
 import { getMatchTiming } from "../lib/matchLogic";
@@ -66,14 +66,15 @@ export function PlayersView() {
   const { mvpVotes } = useMvpVotes();
   const mvpCounts = useMemo(() => {
     const counts = {};
-    mvpVotes.forEach((voteDoc) => {
-      const { winnerIds } = computeMvpWinner(voteDoc.votes || {});
+    // Résultat calculé par SESSION (tous terrains confondus) et seulement
+    // une fois le vote clôturé — même règle que "Mon profil" (lib/mvp.js).
+    buildMvpResults(mvpVotes, matches, new Date(), true).forEach(({ winnerIds }) => {
       winnerIds.forEach((playerId) => {
         counts[playerId] = (counts[playerId] || 0) + 1;
       });
     });
     return counts;
-  }, [mvpVotes]);
+  }, [mvpVotes, matches]);
   // Joueurs occasionnels : gardent toutes leurs stats mais restent masqués
   // par défaut de cette liste (moins de bruit visuel) — un bouton en bas
   // permet de les charger à la demande, pour tout le monde (pas admin
