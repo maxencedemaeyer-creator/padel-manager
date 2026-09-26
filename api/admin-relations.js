@@ -27,6 +27,14 @@
 //     avoid: [{ playerId, alsoOpponent, since }],   // joueurs à éviter
 //   }
 //
+// Deux actions ouvertes à N'IMPORTE QUEL joueur connecté, mais uniquement pour
+// SA PROPRE fiche (l'identité vient du jeton de session, jamais du corps de
+// la requête) et uniquement pour le champ "mode" (Choix de partenaire) :
+//   - "getMine"    : → { ok, mode }
+//   - "saveMyMode" : { mode } → { ok, mode }
+// Les partenaires souhaités et les joueurs à éviter restent réservés à
+// l'administrateur, et un joueur ne peut jamais lire ceux des autres.
+//
 // Ce fichier est purement consultatif : il n'écrit JAMAIS dans `matches`,
 // dans les présences ni dans la composition des équipes.
 // ─────────────────────────────────────────────────────────────────────────
@@ -112,13 +120,53 @@ export default async function handler(req, res) {
     }
 
     const db = getAdminDb();
+    const ref = db.collection("adminRelations").doc("config");
+
+    // ── Actions d'un joueur sur SA propre fiche (Choix de partenaire) ──
+    if (body.action === "getMine") {
+      const snap = await ref.get();
+      const mine =
+        snap.exists && snap.data().players ? snap.data().players[session.playerId] : null;
+      const mode = mine && MODES.includes(mine.mode) ? mine.mode : "indifferent";
+      res.status(200).json({ ok: true, mode });
+      return;
+    }
+
+    if (body.action === "saveMyMode") {
+      if (!MODES.includes(body.mode)) {
+        res.status(400).json({ ok: false, error: "Choix invalide." });
+        return;
+      }
+      const snap = await ref.get();
+      const previous =
+        snap.exists && snap.data().players ? snap.data().players[session.playerId] : null;
+      const modeSince =
+        body.mode === "stable"
+          ? previous && previous.mode === "stable" && typeof previous.modeSince === "string"
+            ? previous.modeSince
+            : todayBrussels()
+          : null;
+      // On ne touche QUE mode et modeSince : les partenaires souhaités et les
+      // joueurs à éviter éventuellement encodés par l'admin restent intacts.
+      if (snap.exists) {
+        await ref.update(
+          new FieldPath("players", session.playerId, "mode"),
+          body.mode,
+          new FieldPath("players", session.playerId, "modeSince"),
+          modeSince
+        );
+      } else {
+        await ref.set({ players: { [session.playerId]: { mode: body.mode, modeSince } } });
+      }
+      res.status(200).json({ ok: true, mode: body.mode });
+      return;
+    }
+
     const actingSnap = await db.collection("players").doc(session.playerId).get();
     if (!actingSnap.exists || actingSnap.data().isAdmin !== true) {
       res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
       return;
     }
-
-    const ref = db.collection("adminRelations").doc("config");
 
     if (body.action === "get") {
       const snap = await ref.get();
