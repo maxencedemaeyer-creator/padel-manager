@@ -30,7 +30,8 @@ import {
   getPlayerPayments,
   getPlayerDebts,
 } from "../lib/stats";
-import { countMvpWins } from "../lib/mvp";
+import { fetchMyMvpWins } from "../lib/mvp";
+import { MvpWinsModal } from "../components/games/MvpNotesModals";
 import { getPlayerRatingState, getRecentLevelDeltaHistory } from "../lib/levelRating";
 import { useAppData } from "../context/AppContext";
 import { Card, Badge, Field, inputClass, Modal, Button } from "../components/ui";
@@ -555,14 +556,20 @@ export function StatsView() {
   // élu, toute la saison confondue. Rien n'est affiché s'il n'a jamais été
   // élu (voir lib/mvp.js → countMvpWins).
   const [mvpWins, setMvpWins] = useState(0);
+  // Fenêtre "liste de mes titres + messages reçus" (ouverte en touchant la
+  // carte dorée, voir MvpNotesModals.jsx).
+  const [showMvpWins, setShowMvpWins] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    countMvpWins(connectedPlayer.id).then((count) => {
-      if (!cancelled) setMvpWins(count);
-    });
+    fetchMyMvpWins(connectedPlayer.id, matches)
+      .then((wins) => {
+        if (!cancelled) setMvpWins(wins.length);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectedPlayer.id]);
 
   const formStyle = {
@@ -680,16 +687,25 @@ export function StatsView() {
 
       <div className="px-4">
         {mvpWins > 0 && (
-          <Card className="p-4 mb-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-amber-100/80 border-amber-200/70">
-            <span className="text-3xl leading-none">🥇</span>
-            <div>
-              <p className="pm-display font-extrabold text-2xl leading-none">{mvpWins}</p>
-              <p className="text-xs text-amber-800 mt-1">
-                fois élu homme du match
-              </p>
-            </div>
-          </Card>
+          <button
+            type="button"
+            onClick={() => setShowMvpWins(true)}
+            aria-label="Voir mes titres d'homme du match et les messages reçus"
+            className="block w-full text-left mb-4 active:scale-[0.99] transition-transform"
+          >
+            <Card className="p-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-amber-100/80 border-amber-200/70">
+              <span className="text-3xl leading-none">🥇</span>
+              <div className="flex-1">
+                <p className="pm-display font-extrabold text-2xl leading-none">{mvpWins}</p>
+                <p className="text-xs text-amber-800 mt-1">
+                  fois élu homme du match
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-amber-800/80 shrink-0">Voir ›</span>
+            </Card>
+          </button>
         )}
+        {showMvpWins && <MvpWinsModal onClose={() => setShowMvpWins(false)} />}
 
         {/* Bloc "Statistiques" — tout tient désormais sur une seule ligne :
             à gauche la colonne Niveau (pastille identique à celle de l'onglet
