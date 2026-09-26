@@ -27,9 +27,9 @@ export const MODE_LABELS = {
 };
 
 export const MODE_HELP = {
-  indifferent: "N'a rien demandé : joueur souple, placé en dernier dans le classement.",
-  varied: "Veut changer de partenaire.",
-  stable: "Veut retrouver les mêmes partenaires.",
+  indifferent: "J'aime bien jouer avec tout le monde.",
+  varied: "J'aime bien changer régulièrement de coéquipier.",
+  stable: "J'aime bien jouer avec les mêmes coéquipiers.",
 };
 
 // ─── Comptage des liens ───────────────────────────────────────────────────
