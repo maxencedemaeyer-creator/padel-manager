@@ -126,7 +126,7 @@ function LetterInfoModal({ title, description, options, abbrevFn, currentValue, 
   );
 }
 
-export function PlayerRow({ player, mvpCount = 0 }) {
+export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   const { isAdmin, matches, rankingEnabled } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const [showRankingHistory, setShowRankingHistory] = useState(false);
@@ -161,11 +161,14 @@ export function PlayerRow({ player, mvpCount = 0 }) {
   // jamais l'accès admin à l'historique.
   const showHistoryCell = isAdmin && rankingState.hasRanking;
 
+  // Le nombre affiché est celui des SESSIONS (1 session = 1 entraînement, quel
+  // que soit son nombre de manches), le même que pour le tri "Régularité"
+  // (modif. 26/09/2026) — calculé une fois par PlayersView et passé en prop.
   const levelLabel = levelInfo && levelInfo.value > 0 ? levelInfo.label : "/";
   const statsLine =
-    playerStats.played === 0
+    playerStats.played === 0 && sessionCount === 0
       ? "Aucune statistique"
-      : `${playerStats.played} match${playerStats.played > 1 ? "s" : ""} · ${playerStats.wins}V${
+      : `${sessionCount} session${sessionCount > 1 ? "s" : ""} · ${playerStats.wins}V${
           playerStats.draws > 0 ? `-${playerStats.draws}N` : ""
         }-${playerStats.losses}D · ${playerStats.winRate}%`;
 
