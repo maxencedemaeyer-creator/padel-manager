@@ -1,12 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Sélecteur d'avatar compact : aperçu + bouton, se déplie pour choisir un
-// émoji et une couleur de fond (voir la fiche joueur pour son usage).
-//
-// Les photos de profil ont été retirées (20/09/2026) pour rester dans les
-// quotas gratuits Firebase (forfait Spark, sans Cloud Storage). Le champ
-// `avatarPhotoUrl` déjà présent sur d'anciennes fiches n'est ni lu ni effacé :
-// il reste simplement inutilisé en base, prêt à servir si les photos
-// reviennent un jour.
+// Sélecteur d'avatar compact : aperçu + bouton, se déplie pour choisir
+// l'émoji et la couleur de fond (voir la fiche joueur pour son usage).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn } from "../../lib/utils";
@@ -16,7 +10,9 @@ import { Field } from "../ui";
 
 export function AvatarPicker({ emoji, color, onEmojiChange, onColorChange }) {
   const [open, setOpen] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
   const bg = color || AVATAR_COLOR_CHOICES[0];
+  const isCustomEmoji = Boolean(emoji) && !EMOJI_CHOICES.includes(emoji);
 
   return (
     <Field label="Avatar">
@@ -26,13 +22,13 @@ export function AvatarPicker({ emoji, color, onEmojiChange, onColorChange }) {
         className="flex items-center gap-3 w-full p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-left"
       >
         <span
-          className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border border-[var(--color-border)] overflow-hidden"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border border-[var(--color-border)]"
           style={{ backgroundColor: bg }}
         >
           {emoji || "🎾"}
         </span>
         <span className="flex-1 text-xs font-semibold text-[var(--color-text-dim)]">
-          {open ? "Choisir ci-dessous" : "Modifier l'icône ou la couleur"}
+          {open ? "Choisir ci-dessous" : "Modifier l'icône et la couleur"}
         </span>
         <Icon.Chevron className={cn("w-4 h-4 text-[var(--color-text-faint)] transition-transform", open && "rotate-90")} />
       </button>
@@ -47,7 +43,10 @@ export function AvatarPicker({ emoji, color, onEmojiChange, onColorChange }) {
               <button
                 key={e}
                 type="button"
-                onClick={() => onEmojiChange(e)}
+                onClick={() => {
+                  onEmojiChange(e);
+                  setShowCustom(false);
+                }}
                 className={cn(
                   "w-9 h-9 rounded-lg flex items-center justify-center text-base border transition-all",
                   emoji === e
@@ -58,7 +57,40 @@ export function AvatarPicker({ emoji, color, onEmojiChange, onColorChange }) {
                 {e}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowCustom((s) => !s)}
+              aria-label="Choisir un autre emoji"
+              className={cn(
+                "w-9 h-9 rounded-lg flex items-center justify-center text-base font-bold border transition-all",
+                isCustomEmoji || showCustom
+                  ? "border-[var(--color-lime)] bg-[var(--color-lime)]/15 text-[var(--color-text)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-faint)]"
+              )}
+            >
+              •••
+            </button>
           </div>
+
+          {showCustom && (
+            <div className="mb-3 p-2.5 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]">
+              <input
+                type="text"
+                maxLength={12}
+                value={isCustomEmoji ? emoji : ""}
+                onChange={(e) => onEmojiChange(e.target.value)}
+                placeholder="🙂"
+                autoFocus
+                className="w-full text-center text-2xl px-3 py-2 rounded-lg bg-white border border-[var(--color-border)] focus:outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+              />
+              <p className="text-[10px] text-[var(--color-text-faint)] mt-1.5 leading-snug">
+                Ouvre le clavier emoji de l'appareil pour choisir n'importe quel emoji officiel,
+                puis tape-le ou colle-le ici. Sur mobile : la touche 😀 du clavier. Sur PC :
+                touche Windows + « . » (point). Sur Mac : Cmd + Ctrl + Espace.
+              </p>
+            </div>
+          )}
+
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
             Couleur de fond
           </p>
