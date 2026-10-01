@@ -26,6 +26,7 @@ import { CreditorAccountingModal } from "../components/accounting/CreditorAccoun
 import { ManageClubsModal } from "../components/clubs/ManageClubsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
+import { PlayerPinsCard } from "../components/admin/PlayerPinsCard";
 
 // Carte "Game Center" — interrupteur pour rendre l'onglet accessible à tous
 // les joueurs (par défaut, réservé à l'admin). Écrit directement dans
@@ -1153,6 +1154,7 @@ export function AdminView() {
           joué avec / contre qui, préférences confidentielles, simulateur de
           répartition. Ne modifie jamais une composition. */}
       <PlayerLinksCard players={players} matches={matches} />
+      <PlayerPinsCard players={players} />
 
       <MaintenanceSettingCard enabled={maintenanceEnabled} />
       <GameCenterSettingCard enabled={gameCenterEnabled} />
