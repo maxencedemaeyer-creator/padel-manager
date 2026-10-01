@@ -69,6 +69,25 @@ export default async function handler(req, res) {
       }
     }
 
+    // Consultation des codes PIN par l'administrateur (ajout du 01/10/2026) :
+    // renvoie { codes: { [playerId]: "1234" } }. Réservé aux admins (vérifié
+    // en base, pas dans le jeton). Coût : une lecture par joueur, seulement
+    // quand l'admin ouvre le volet "Codes PIN" dans l'onglet Administration.
+    if (body.action === "list") {
+      if (!session) {
+        res.status(403).json({ ok: false, error: "Session invalide ou expirée. Reconnectez-vous." });
+        return;
+      }
+      const actingSnap = await db.collection("players").doc(session.playerId).get();
+      if (!actingSnap.exists || actingSnap.data().isAdmin !== true) {
+        res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
+        return;
+      }
+      const codes = await collectAllCodes(db);
+      res.status(200).json({ ok: true, codes: Object.fromEntries(codes) });
+      return;
+    }
+
     if (body.action === "check") {
       const { code, excludePlayerId } = body;
       if (!code || code.length !== 4) {
