@@ -21,6 +21,19 @@ export function PlayerPinsCard({ players }) {
   const [error, setError] = useState("");
   const [revealed, setRevealed] = useState({});
   const [search, setSearch] = useState("");
+  const [resetting, setResetting] = useState(null); // id du joueur en cours de réinitialisation
+  const [justReset, setJustReset] = useState({}); // joueurs dont le code vient d'être réinitialisé
+
+  const callPinApi = async (payload) => {
+    const response = await fetch("/api/manage-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, actingToken: sessionToken }),
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || "Erreur serveur.");
+    return data;
+  };
 
   const load = async () => {
     setLoading(true);
@@ -50,6 +63,7 @@ export function PlayerPinsCard({ players }) {
       setRevealed({});
       setSearch("");
       setError("");
+      setJustReset({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -64,16 +78,44 @@ export function PlayerPinsCard({ players }) {
 
   const toggle = (id) => setRevealed((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  // Ouvre WhatsApp avec le message déjà rédigé (lien wa.me, comme le bouton
-  // "Partager sur WhatsApp" des listes de présence). Aucun numéro n'est
-  // stocké dans l'app : l'admin choisit simplement le contact dans WhatsApp,
-  // puis appuie sur "Envoyer". Aucun coût, aucune lecture Firestore.
+  // Réinitialisation : le serveur tire un nouveau code libre (jamais déjà
+  // utilisé par un autre joueur), puis l'enregistre pour ce joueur. L'ancien
+  // code cesse de fonctionner immédiatement. Le nouveau est affiché dans la
+  // ligne pour pouvoir l'envoyer ensuite par WhatsApp.
+  const resetPin = async (player) => {
+    const ok = window.confirm(
+      `Générer un nouveau code PIN pour ${player.name} ?\nL'ancien code ne fonctionnera plus.`
+    );
+    if (!ok) return;
+    setResetting(player.id);
+    setError("");
+    try {
+      const { code } = await callPinApi({ action: "generate", excludePlayerId: player.id });
+      await callPinApi({ action: "set", playerId: player.id, accessCode: code });
+      setCodes((prev) => ({ ...(prev || {}), [player.id]: code }));
+      setRevealed((prev) => ({ ...prev, [player.id]: true }));
+      setJustReset((prev) => ({ ...prev, [player.id]: true }));
+    } catch (e) {
+      alert("Réinitialisation impossible : " + (e.message || "erreur"));
+    } finally {
+      setResetting(null);
+    }
+  };
+
+  // Ouvre WhatsApp avec le message déjà rédigé (lien wa.me). Aucun numéro
+  // n'est stocké dans l'app : l'admin choisit le contact dans WhatsApp, puis
+  // appuie sur "Envoyer". Le texte ne dit jamais que l'admin peut voir les
+  // codes : après une réinitialisation, il parle d'un "nouveau code".
   const sendOnWhatsApp = (player, code) => {
     const firstName = (player.name || "").trim().split(" ")[0];
+    const intro = justReset[player.id]
+      ? `Voici un nouveau code PIN pour Padel Manager : ${code}`
+      : `Voici ton code PIN pour Padel Manager : ${code}`;
     const text =
       `Salut ${firstName} ! 👋\n` +
-      `Voici ton code PIN pour Padel Manager : ${code}\n` +
-      `Tu peux te connecter ici : ${window.location.origin}`;
+      `${intro}\n` +
+      `N'hésite pas à le changer toi-même dans l'onglet « Mon profil ».\n` +
+      `Connexion : ${window.location.origin}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
   };
 
@@ -129,31 +171,38 @@ export function PlayerPinsCard({ players }) {
                   const code = codes[p.id];
                   const shown = !!revealed[p.id];
                   return (
-                    <li key={p.id} className="flex items-center gap-3 py-2.5">
-                      <span className="flex-1 min-w-0 text-sm font-medium truncate">{p.name}</span>
-                      {code ? (
-                        <>
-                          <span className="font-mono text-base tracking-widest tabular-nums w-16 text-right">
-                            {shown ? code : "••••"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => toggle(p.id)}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-black/5 active:scale-95 transition"
-                          >
-                            {shown ? "Masquer" : "Afficher"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => sendOnWhatsApp(p, code)}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-green-100 text-green-700 active:scale-95 transition"
-                            title="Envoyer le code par WhatsApp"
-                          >
-                            WhatsApp
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-[var(--color-text-faint)]">Aucun code</span>
+                    <li key={p.id} className="flex flex-wrap items-center gap-x-2 gap-y-2 py-2.5">
+                      <span className="flex-1 min-w-[7rem] text-sm font-medium truncate">{p.name}</span>
+                      <span className="font-mono text-base tracking-widest tabular-nums w-16 text-right">
+                        {code ? (shown ? code : "••••") : "—"}
+                      </span>
+                      {code && (
+                        <button
+                          type="button"
+                          onClick={() => toggle(p.id)}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-full bg-black/5 active:scale-95 transition"
+                        >
+                          {shown ? "Masquer" : "Afficher"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => resetPin(p)}
+                        disabled={resetting === p.id}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-full bg-amber-100 text-amber-800 active:scale-95 transition disabled:opacity-50"
+                        title="Générer un nouveau code PIN"
+                      >
+                        {resetting === p.id ? "…" : "Réinitialiser"}
+                      </button>
+                      {code && (
+                        <button
+                          type="button"
+                          onClick={() => sendOnWhatsApp(p, code)}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-full bg-green-100 text-green-700 active:scale-95 transition"
+                          title="Envoyer le code par WhatsApp"
+                        >
+                          WhatsApp
+                        </button>
                       )}
                     </li>
                   );
