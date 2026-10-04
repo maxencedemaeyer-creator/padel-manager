@@ -631,7 +631,7 @@ function RoundResultRow({
     >
       <div className="min-w-0 flex-1">
         <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">
-          Manche {roundIndex + 1}
+          Manche supplémentaire
         </p>
         <p
           className={cn(
@@ -673,7 +673,7 @@ function RoundResultRow({
       </div>
 
       {showMenu && (
-        <Modal title={`Paramètres de la manche ${roundIndex + 1}`} onClose={() => setShowMenu(false)}>
+        <Modal title={"Paramètres de la manche supplémentaire"} onClose={() => setShowMenu(false)}>
           <div className="flex flex-col gap-2">
             <button
               type="button"
@@ -712,7 +712,7 @@ function RoundResultRow({
       {showDelete && (
         <Modal title="Supprimer cette manche ?" onClose={() => setShowDelete(false)}>
           <p className="text-sm text-[var(--color-text-dim)] mb-4">
-            La manche {roundIndex + 1} sera supprimée et son effet sur le niveau des joueurs sera
+            Cette manche supplémentaire sera supprimée et son effet sur le niveau des joueurs sera
             annulé. La composition de base du match et la comptabilité ne sont pas touchées.
           </p>
           <div className="flex gap-2 justify-end">
@@ -827,17 +827,12 @@ export function MatchResultBlock({
       </div>
       <p className={cn("font-semibold text-amber-900", compact ? "text-xs" : "text-sm", showBody && "mb-1")}>
         {formatDateFR(first.date)}
-        {!showBody && (
-          <span className="font-normal text-amber-700">
-            {" "}· {totalRounds} manche{totalRounds > 1 ? "s" : ""}
-          </span>
-        )}
       </p>
       {showBody && (
       <div className="flex flex-col">
         {/* Ordre d'affichage : toutes les manches 1 (un résultat par terrain)
             d'abord, puis toutes les manches 2, etc., quel que soit le terrain.
-            « Manche 1 » n'est affiché que si la session a au moins 2 manches. */}
+            « Manche principale » n'est affiché que si la session a au moins 2 manches. */}
         {Array.from({ length: totalRounds }, (_, r) =>
           sessionMatches.map((m) => {
             if (r === 0) {
@@ -846,7 +841,7 @@ export function MatchResultBlock({
                   key={m.id}
                   match={m}
                   compact={compact}
-                  roundLabel={totalRounds > 1 ? "Manche 1" : null}
+                  roundLabel={totalRounds > 1 ? "Manche principale" : null}
                   canEditScore={canEditScore}
                 />
               );
