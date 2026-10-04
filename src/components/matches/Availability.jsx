@@ -281,6 +281,27 @@ function ClaimSlotModal({ saving, onConfirm, onClose }) {
   );
 }
 
+// Fenêtre d'information : le joueur vient de répondre "Présent" mais la
+// session est déjà complète. Sa présence est enregistrée, il est en réserve.
+function ReserveNoticeModal({ onClose }) {
+  return (
+    <Modal title="Terrain complet" onClose={onClose}>
+      <p className="text-sm text-[var(--color-text-dim)] mb-4 leading-snug">
+        Toutes les places de cette session sont déjà prises. Votre présence
+        est bien enregistrée, mais vous êtes placé <strong>en réserve</strong>{" "}
+        : si un joueur se désiste, vous pourrez prendre sa place.
+      </p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 active:scale-[0.98] transition-all"
+      >
+        OK, compris
+      </button>
+    </Modal>
+  );
+}
+
 // Bouton/compteur RSVP pour le joueur connecté (admin ou non). Avant réponse :
 // 3 boutons de choix. Après réponse : un rectangle plein affichant la
 // réponse du joueur (cliquable → petite fenêtre de changement) + 3
@@ -300,6 +321,13 @@ export function AvailabilityButtons({ sessionMatches }) {
   const [openList, setOpenList] = useState(null); // "present" | "absent" | "pending" | null
   const [showChangeModal, setShowChangeModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
+  // Fenêtre d'information affichée UNIQUEMENT quand un joueur répond "Présent"
+  // alors que la session est déjà complète (il reste présent mais en réserve).
+  const [showReserveNotice, setShowReserveNotice] = useState(false);
+  // Vrai pendant et juste après une réponse "Présent" : le temps que le
+  // placement sur le terrain soit enregistré et reçu, on ne montre pas le
+  // bandeau "Une place est libre" (sinon il clignote un instant à tort).
+  const [placing, setPlacing] = useState(false);
   // Convocation (voir lib/convocation.js) : tant qu'elle n'est pas ouverte
   // pour cette session (fenêtre automatique pas encore atteinte, ou
   // fermeture forcée par l'admin), un joueur qui n'a pas encore répondu ne
@@ -421,6 +449,7 @@ export function AvailabilityButtons({ sessionMatches }) {
     sessionTiming === "upcoming" &&
     !isPlacedInSession &&
     !isEngagedElsewhereToday &&
+    !placing &&
     getFreeSlotCount(sessionMatches) > 0;
 
   const claimSlot = async () => {
@@ -444,15 +473,23 @@ export function AvailabilityButtons({ sessionMatches }) {
 
   const respond = async (status) => {
     setSaving(true);
+    if (status === "present") setPlacing(true);
     try {
       await setSessionAvailability(sessionMatches, connectedPlayer.id, status);
       if (status === "present") {
-        await autoPlacePresentPlayer(sessionMatches, matches, connectedPlayer);
+        const result = await autoPlacePresentPlayer(sessionMatches, matches, connectedPlayer);
+        // Seul cas où l'on prévient le joueur : la session est complète, il
+        // est donc présent mais placé en réserve. Si une place était libre,
+        // il est simplement placé, sans aucun message.
+        if (result === "full") setShowReserveNotice(true);
       }
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
       setSaving(false);
+      if (status === "present") {
+        setTimeout(() => setPlacing(false), 2500);
+      }
     }
   };
 
@@ -596,6 +633,10 @@ export function AvailabilityButtons({ sessionMatches }) {
             onConfirm={claimSlot}
             onClose={() => setShowClaimModal(false)}
           />
+        )}
+
+        {showReserveNotice && (
+          <ReserveNoticeModal onClose={() => setShowReserveNotice(false)} />
         )}
 
         {showChangeModal && !isLocked && (
