@@ -34,52 +34,194 @@ import { EditPlayerModal } from "./EditPlayerModal";
 import { PlayerAvatar } from "./PlayerAvatar";
 
 // Modale "Historique de niveau — [nom]" (anciennement "Historique de ranking",
-// renommé le 21/09/2026) — réservée à l'admin (voir §6 de
-// claude/feature-ranking-padel-manager.md). Liste du plus récent au plus
-// ancien, avec la fiabilité actuelle du joueur en en-tête pour donner le
-// contexte (un joueur récent ou récemment recalibré varie plus fort).
+// renommé le 21/09/2026). Refonte d'affichage du 04/10/2026 : regroupée par
+// session (jeudi), textes en clair (plus de "Marge ×0.90"), niveaux avec
+// virgule française, et lignes remises dans l'ORDRE RÉEL DU CALCUL : si une
+// manche 2 a été encodée avant la manche 1, on l'affiche d'abord pour que la
+// chaîne "Avant → Après" se suive (un recalcul admin remet l'ordre
+// chronologique). Aucune lecture ni écriture Firebase en plus.
+const EPS = 1e-6;
+
+function fmtLevel(value, decimals = 2) {
+  return typeof value === "number" ? value.toFixed(decimals).replace(".", ",") : "—";
+}
+function fmtDelta(entry) {
+  const decimals = entry.bonusOnly ? 3 : 2;
+  const sign = entry.delta > 0 ? "+" : entry.delta < 0 ? "−" : "";
+  return `${sign}${Math.abs(entry.delta).toFixed(decimals).replace(".", ",")}`;
+}
+
+// Toutes les permutations d'un petit tableau (une session a rarement plus de 4 manches).
+function permutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const out = [];
+  arr.forEach((item, i) => {
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+    permutations(rest).forEach((perm) => out.push([item, ...perm]));
+  });
+  return out;
+}
+
+// Ordonne les entrées d'UNE session pour que chaque "Avant" suive le "Après"
+// précédent. Si l'ordre chronologique est déjà cohérent, il est conservé.
+function orderSessionByChain(items) {
+  if (items.length < 2 || items.length > 5) return { items, reordered: false };
+  const linkScore = (list) =>
+    list.reduce((acc, cur, i) => {
+      if (i === 0) return acc;
+      const prev = list[i - 1].entry;
+      return acc + (typeof cur.entry.avant === "number" && Math.abs(cur.entry.avant - prev.apres) < EPS ? 1 : 0);
+    }, 0);
+  let best = items;
+  let bestScore = linkScore(items);
+  permutations(items).forEach((perm) => {
+    const sc = linkScore(perm);
+    if (sc > bestScore) {
+      best = perm;
+      bestScore = sc;
+    }
+  });
+  return { items: best, reordered: best !== items };
+}
+
+function buildSessions(history) {
+  // `history` : du plus ancien au plus récent.
+  const groups = [];
+  history.forEach((item) => {
+    const key = `${item.match.date}|${item.match.time}`;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(item);
+    else groups.push({ key, date: item.match.date, items: [item] });
+  });
+  return groups
+    .map((g) => {
+      const { items, reordered } = orderSessionByChain(g.items);
+      const first = items[0].entry;
+      const last = items[items.length - 1].entry;
+      const startValue = typeof first.avant === "number" ? first.avant : first.apres - first.delta;
+      return { ...g, items, reordered, net: last.apres - startValue };
+    })
+    .reverse(); // session la plus récente en haut
+}
+
+function resultBadge(entry) {
+  if (entry.wasBootstrap) return { label: "Premier niveau", cls: "bg-sky-100 text-sky-700" };
+  if (entry.bonusOnly) return { label: "Présence", cls: "bg-slate-100 text-slate-600" };
+  if (entry.resultat === 1) return { label: "Victoire", cls: "bg-emerald-100 text-emerald-700" };
+  if (entry.resultat === 0) return { label: "Défaite", cls: "bg-rose-100 text-rose-700" };
+  return { label: "Égalité", cls: "bg-amber-100 text-amber-700" };
+}
+
 function RankingHistoryModal({ player, matches, onClose }) {
   const state = getPlayerRatingState(player);
   // `true` : inclut aussi les matchs joués sans score (bonus d'assiduité seul).
-  const history = getRecentLevelDeltaHistory(player.id, matches, 200, true).slice().reverse();
+  const history = getRecentLevelDeltaHistory(player.id, matches, 200, true);
+  const sessions = buildSessions(history);
 
   return (
     <Modal title={`Historique de niveau — ${player.name}`} onClose={onClose} wide>
-      <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        Fiabilité actuelle : <span className="font-semibold">{state.reliability.toFixed(1)}</span>
-      </p>
-      {history.length === 0 ? (
+      <div className="flex items-center gap-3 mb-4 p-3 rounded-2xl bg-[var(--color-surface-2)]">
+        <div className="flex-1">
+          <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+            Niveau actuel
+          </p>
+          <p className="pm-mono text-2xl font-bold leading-tight">
+            {state.hasRanking ? fmtLevel(state.score) : "—"}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+            Fiabilité
+          </p>
+          <p className="pm-mono text-lg font-semibold leading-tight">
+            {state.reliability.toFixed(1).replace(".", ",")}
+          </p>
+        </div>
+      </div>
+
+      {sessions.length === 0 ? (
         <p className="text-sm text-[var(--color-text-faint)] italic">
           Aucun ajustement de niveau enregistré pour ce joueur.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {history.map(({ match, entry }) => (
-            <div
-              key={match.id}
-              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--color-surface-2)]"
-            >
-              <div className="min-w-0">
-                <p className="text-xs font-semibold truncate">
-                  {formatDateFR(match.date)}
-                  {match.isExtraRound ? ` · Manche ${match.roundIndex + 1}` : ""}
-                </p>
-                <p className="text-[10px] text-[var(--color-text-faint)]">
-                  {entry.wasBootstrap
-                    ? "Amorçage (1er match noté)"
-                    : entry.bonusOnly
-                    ? `Avant ${entry.avant.toFixed(2)} · Match sans score : bonus d'assiduité seul`
-                    : `Avant ${entry.avant.toFixed(2)} · Attendu ${entry.attendu.toFixed(2)} · Marge ×${entry.facteurMarge.toFixed(2)}`}
-                </p>
+        <div className="flex flex-col gap-4">
+          {sessions.map((session) => (
+            <div key={session.key}>
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <p className="text-xs font-bold capitalize">{formatDateFR(session.date)}</p>
+                <span
+                  className={`pm-mono text-xs font-bold ${
+                    session.net > 0.0005
+                      ? "text-emerald-600"
+                      : session.net < -0.0005
+                      ? "text-rose-600"
+                      : "text-[var(--color-text-dim)]"
+                  }`}
+                >
+                  {session.net > 0.0005 ? "+" : session.net < -0.0005 ? "−" : ""}
+                  {Math.abs(session.net).toFixed(2).replace(".", ",")} sur la soirée
+                </span>
               </div>
-              <span
-                className={`pm-mono text-sm font-bold shrink-0 ${
-                  entry.delta > 0 ? "text-emerald-600" : entry.delta < 0 ? "text-rose-600" : "text-[var(--color-text-dim)]"
-                }`}
-              >
-                {entry.delta > 0 ? "+" : ""}
-                {entry.delta.toFixed(entry.bonusOnly ? 3 : 2)} → {entry.apres.toFixed(entry.bonusOnly ? 3 : 2)}
-              </span>
+              <div className="flex flex-col gap-1.5">
+                {[...session.items].reverse().map(({ match, entry }) => {
+                  const badge = resultBadge(entry);
+                  const positive = entry.delta > 0;
+                  const negative = entry.delta < 0;
+                  return (
+                    <div
+                      key={match.id}
+                      className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--color-surface-2)]"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${badge.cls}`}
+                          >
+                            {badge.label}
+                          </span>
+                          <span className="text-xs font-semibold">
+                            {match.isExtraRound ? `Manche ${match.roundIndex + 1}` : "Manche 1"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[var(--color-text-faint)] mt-1">
+                          {entry.wasBootstrap
+                            ? "Niveau fixé d'après ce premier match"
+                            : entry.bonusOnly
+                            ? "Match sans score : petit bonus de présence"
+                            : `Chances de victoire estimées : ${Math.round((entry.attendu ?? 0.5) * 100)} %`}
+                          {!entry.bonusOnly && !entry.wasBootstrap && entry.bonus > 0
+                            ? ` · dont présence +${entry.bonus.toFixed(3).replace(".", ",")}`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p
+                          className={`pm-mono text-sm font-bold ${
+                            positive
+                              ? "text-emerald-600"
+                              : negative
+                              ? "text-rose-600"
+                              : "text-[var(--color-text-dim)]"
+                          }`}
+                        >
+                          {fmtDelta(entry)}
+                        </p>
+                        <p className="pm-mono text-[10px] text-[var(--color-text-faint)]">
+                          {typeof entry.avant === "number" ? `${fmtLevel(entry.avant)} → ` : ""}
+                          {fmtLevel(entry.apres, entry.bonusOnly ? 3 : 2)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {session.reordered && (
+                <p className="text-[10px] italic text-amber-700 mt-1.5 px-1">
+                  ⚠️ Les manches de cette soirée ont été encodées dans un ordre inhabituel : elles
+                  sont affichées dans l'ordre du calcul. Un « Recalcul du niveau » (Administration)
+                  remet tout dans l'ordre chronologique.
+                </p>
+              )}
             </div>
           ))}
         </div>
