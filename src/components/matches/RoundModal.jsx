@@ -31,6 +31,7 @@ import {
   UNRANK_PLAYER,
 } from "../../lib/levelRating";
 import { getRounds } from "../../lib/rounds";
+import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Button } from "../ui";
@@ -129,11 +130,21 @@ async function saveRoundAndRanking({
   const batch = writeBatch(db);
   batch.update(doc(db, "matches", match.id), { rounds: newRounds });
   applyPlayerUpdates(batch, rankingResult);
+  // Remise en ordre de la soirée (voir src/lib/sessionResync.js).
+  addSessionResyncToBatch({
+    batch,
+    matches,
+    players,
+    matchId: match.id,
+    roundIndex: targetIdx + 1,
+    matchPatch: { rounds: newRounds },
+    rankingResult,
+  });
   await batch.commit();
 }
 
 // Supprime une manche (admin) et annule son effet sur le niveau.
-export async function deleteRoundAndRanking({ match, roundIndex, players }) {
+export async function deleteRoundAndRanking({ match, roundIndex, players, matches }) {
   const rounds = getRounds(match);
   const target = rounds[roundIndex - 1];
   if (!target) return;
@@ -147,6 +158,19 @@ export async function deleteRoundAndRanking({ match, roundIndex, players }) {
     rounds: newRounds.length > 0 ? newRounds : deleteField(),
   });
   applyPlayerUpdates(batch, rankingResult);
+  // Les manches suivantes de la soirée sont recalculées dans l'ordre
+  // (seulement si `matches` est fourni — voir src/lib/sessionResync.js).
+  if (Array.isArray(matches)) {
+    addSessionResyncToBatch({
+      batch,
+      matches,
+      players,
+      matchId: match.id,
+      roundIndex,
+      matchPatch: { rounds: newRounds.length > 0 ? newRounds : null },
+      rankingResult,
+    });
+  }
   await batch.commit();
 }
 
