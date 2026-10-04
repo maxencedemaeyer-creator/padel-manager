@@ -27,6 +27,15 @@ import Icon from "../icons/Icon";
 const UPCOMING_WINDOW_DAYS = 15;
 const UPCOMING_SESSIONS_COUNT = 2;
 
+// "Club VG — Terrain 2" → "Club VG (T2)" : version courte pour que la phrase
+// "Vous jouez ..." tienne sur une seule ligne dans le bandeau "Bonjour".
+function shortCourt(location) {
+  if (!location) return location;
+  const m = location.match(/^(.*?)\s*[-—]\s*Terrain\s*(\d+)\s*$/i);
+  if (!m) return location;
+  return m[1] ? `${m[1].trim()} (T${m[2]})` : `T${m[2]}`;
+}
+
 export function MyMatchSummary({ now }) {
   const { connectedPlayer, players, matches, isAdmin, presenceWindowDays } = useAppData();
   // (19/09/2026) Le lien "Voir mon ranking →" a été retiré de ce bandeau :
@@ -93,7 +102,7 @@ export function MyMatchSummary({ now }) {
       (m.participants || []).some((p) => p.playerId === connectedPlayer.id)
     );
     if (myMatch) {
-      myUpcoming = { date: myMatch.date, time: myMatch.time, location: myMatch.location };
+      myUpcoming = { date: myMatch.date, time: myMatch.time, location: shortCourt(myMatch.location) };
       break;
     }
     if (getSessionAvailability(session)[connectedPlayer.id] === "present") {
@@ -241,10 +250,10 @@ export function MyMatchSummary({ now }) {
         )}
 
         {myUpcoming && (
-          <p className="text-sm">
+          <p className="text-[11px] leading-4">
             📅 Vous jouez <span className="font-semibold">{formatDateFR(myUpcoming.date)}</span> à{" "}
             {formatTimeFR(myUpcoming.time)}
-            {myUpcoming.location ? ` (${myUpcoming.location})` : ""}.
+            {myUpcoming.location ? ` – ${myUpcoming.location}` : ""}.
           </p>
         )}
 
