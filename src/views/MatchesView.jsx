@@ -217,7 +217,7 @@ export function MatchesView() {
           </div>
         </div>
 
-        {nextGroup.length === 0 && otherSessions.length === 0 ? (
+        {(filter === "done" || nextGroup.length === 0) && otherSessions.length === 0 ? (
           <EmptyState
             icon={<Icon.Calendar className="w-6 h-6" />}
             title={
@@ -239,7 +239,7 @@ export function MatchesView() {
           />
         ) : (
           <div className="flex flex-col gap-4">
-            {nextSessions.map((session) => {
+            {filter === "upcoming" && nextSessions.map((session) => {
               const key = `next|${session[0].date}|${session[0].time}`;
               // La disposition du terrain (qui joue où) ne s'affiche plus
               // automatiquement : elle reste masquée aux joueurs tant que
