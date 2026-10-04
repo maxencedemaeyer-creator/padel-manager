@@ -40,12 +40,14 @@ import { PlayerAvatar } from "./PlayerAvatar";
 // manche 2 a été encodée avant la manche 1, on l'affiche d'abord pour que la
 // chaîne "Avant → Après" se suive (un recalcul admin remet l'ordre
 // chronologique). Aucune lecture ni écriture Firebase en plus.
+//
 // Fiabilité en pourcentage (décidé le 21/09/2026). Le chiffre brut stocké est
 // un compteur (+1 par match noté) sans maximum : peu parlant. On le traduit
 // avec la MÊME courbe que le moteur (le facteur K : le niveau bouge beaucoup
-// au début, puis de moins en moins). Repère : 100 % = une saison complète de
-// matchs notés (RELIABILITY_FULL_AT). Seul ce repère est un choix d'affichage.
-const RELIABILITY_FULL_AT = 40;
+// au début, puis de moins en moins). Repère : 100 % = RELIABILITY_FULL_AT
+// matchs notés (20 depuis le 04/10/2026, c'était 40 avant). Seul ce repère est
+// un choix d'affichage ; le calcul du niveau n'est pas modifié.
+const RELIABILITY_FULL_AT = 20;
 function reliabilityPercent(reliability) {
   const kStart = kFactor(0);
   const kEnd = kFactor(1e9);
@@ -162,7 +164,7 @@ function RankingHistoryModal({ player, matches, onClose }) {
 
       <p className="text-[10px] text-[var(--color-text-faint)] -mt-2 mb-4 px-1">
         Plus la fiabilité est élevée, plus le niveau est stable : il bouge moins à chaque match.
-        100 % correspond à une saison complète (environ {RELIABILITY_FULL_AT} matchs notés).
+        100 % correspond à environ {RELIABILITY_FULL_AT} matchs notés.
       </p>
 
       {sessions.length === 0 ? (
