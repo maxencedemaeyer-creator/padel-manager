@@ -208,7 +208,7 @@ function RankingHistoryModal({ player, matches, onClose }) {
                             {badge.label}
                           </span>
                           <span className="text-xs font-semibold">
-                            {match.isExtraRound ? `Manche ${match.roundIndex + 1}` : "Manche 1"}
+                            {match.isExtraRound ? "Manche supplémentaire" : "Manche principale"}
                           </span>
                         </div>
                         <p className="text-[10px] text-[var(--color-text-faint)] mt-1">
