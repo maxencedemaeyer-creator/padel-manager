@@ -11,6 +11,7 @@ import { cn, formatDateFR, formatTimeFR } from "../../lib/utils";
 import { COURT_SLOT_DEFS } from "../../lib/constants";
 import { getCourtSlots, computeWinnerFromSets, hasMatchScore } from "../../lib/matchLogic";
 import { computeRankingUpdateForMatch, cancelRankingForMatch, UNRANK_PLAYER } from "../../lib/levelRating";
+import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Modal, Button } from "../ui";
@@ -84,6 +85,28 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
       }
     });
   }
+
+  // Remise en ordre de la soirée : si une manche POSTÉRIEURE a déjà son niveau
+  // calculé (saisie dans le désordre), on rejoue la soirée dans l'ordre (0
+  // écriture en plus dans le cas normal) — voir src/lib/sessionResync.js.
+  addSessionResyncToBatch({
+    batch,
+    matches,
+    players,
+    matchId: match.id,
+    roundIndex: 0,
+    matchPatch: {
+      scores: sets,
+      matchType,
+      winningTeam,
+      teamsUnreliable,
+      levelDeltas:
+        rankingResult && rankingResult.levelDeltas && Object.keys(rankingResult.levelDeltas).length > 0
+          ? rankingResult.levelDeltas
+          : null,
+    },
+    rankingResult,
+  });
 
   await batch.commit();
 }
