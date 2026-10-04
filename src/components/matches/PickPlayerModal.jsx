@@ -11,6 +11,7 @@ import { useAppData } from "../../context/AppContext";
 import { hasMatchScore, getCourtSlots } from "../../lib/matchLogic";
 import { COURT_SLOT_DEFS } from "../../lib/constants";
 import { getRounds } from "../../lib/rounds";
+import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { PlayerSlotCard } from "./PlayerSlotCard";
 import {
   computeRankingUpdateForMatch,
@@ -162,6 +163,7 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
       const newParticipants = [...remaining, newParticipant];
       const matchUpdate = { participants: newParticipants };
       let playerUpdates = {};
+      let plainLevelDeltas = null; // même valeur que matchUpdate.levelDeltas, sans le marqueur deleteField()
 
       const isReplacement = currentParticipant && currentParticipant.playerId !== player.id;
       // Manches supplémentaires (voir lib/rounds.js) : elles ont leur propre
@@ -195,6 +197,7 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
           return;
         }
         matchUpdate.levelDeltas = result.levelDeltas || deleteField();
+        plainLevelDeltas = result.levelDeltas || null;
         playerUpdates = result.playerUpdates;
       }
 
@@ -211,6 +214,23 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
           batch.update(playerRef, update);
         }
       });
+      // Remplacement d'un joueur déjà noté : si une manche POSTÉRIEURE de la
+      // soirée a déjà son niveau calculé, on rejoue la soirée dans l'ordre
+      // (voir src/lib/sessionResync.js — 0 écriture en plus dans le cas normal).
+      if (isReplacement && hasLevelImpact) {
+        addSessionResyncToBatch({
+          batch,
+          matches,
+          players,
+          matchId: match.id,
+          roundIndex: 0,
+          matchPatch: {
+            participants: newParticipants,
+            levelDeltas: plainLevelDeltas,
+          },
+          rankingResult: { playerUpdates },
+        });
+      }
       await batch.commit();
       onClose();
     } catch (error) {
