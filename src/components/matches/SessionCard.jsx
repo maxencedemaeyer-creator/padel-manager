@@ -422,6 +422,39 @@ export function AvailabilitySessionCard({ sessionMatches, restOfSeason = false, 
   );
 }
 
+// Score affiché « en colonnes » (ajout du 04/10/2026) : un set par colonne, le
+// score de l'équipe du haut au-dessus de celui de l'équipe du bas — chaque
+// ligne s'aligne ainsi sur le nom de son équipe, comme dans l'encodage du
+// score. Même taille de texte et même hauteur de ligne que les deux lignes de
+// noms : le bloc ne prend donc pas plus de hauteur qu'avant (et moins de
+// largeur). Le vainqueur de chaque set est en gras.
+function StackedScore({ scores, compact = false }) {
+  const sets = ["set1", "set2", "set3"]
+    .map((k) => getSetDisplay(scores?.[k]))
+    .filter(Boolean)
+    .map((txt) => {
+      const [a, b] = String(txt).split("-").map((v) => v.trim());
+      return { a, b, aWon: Number(a) > Number(b), bWon: Number(b) > Number(a) };
+    });
+  const size = compact ? "text-xs" : "text-sm";
+  const cell = (won) =>
+    cn(
+      "pm-mono text-center min-w-[1.1rem]",
+      size,
+      won ? "font-bold text-amber-900" : "font-medium text-[var(--color-text-dim)]"
+    );
+  return (
+    <div className="flex gap-2">
+      {sets.map((st, i) => (
+        <div key={i} className="flex flex-col">
+          <span className={cell(st.aWon)}>{st.a}</span>
+          <span className={cell(st.bWon)}>{st.b}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Résultat compact d'un terrain — juste les noms et le score, pour la carte
 // "Dernier match joué" (purement informative, pas besoin des détails), et,
 // en version "compact" (encore plus petite), pour les matchs terminés de
@@ -457,10 +490,6 @@ export function CompactMatchResult({
   const teamBLabel = labelOf(teamB.length ? teamB : untracked.slice(2, 4));
 
   const scoreEntered = hasMatchScore(match);
-  const scoreText = ["set1", "set2", "set3"]
-    .map((k) => getSetDisplay(match.scores?.[k]))
-    .filter(Boolean)
-    .join(" · ");
   const aWon = match.winningTeam === "A";
   const bWon = match.winningTeam === "B";
 
@@ -500,14 +529,7 @@ export function CompactMatchResult({
       </div>
       <div className="shrink-0 flex items-center gap-2">
         {scoreEntered ? (
-          <span
-            className={cn(
-              "pm-mono font-bold text-amber-900",
-              compact ? "text-xs" : "text-sm"
-            )}
-          >
-            {scoreText}
-          </span>
+          <StackedScore scores={match.scores} compact={compact} />
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
@@ -585,10 +607,6 @@ function RoundResultRow({
     return list.length ? list.map((p) => getFirstName(nameOf(p))).join(" & ") : "—";
   };
   const scoreEntered = hasMatchScore(round);
-  const scoreText = ["set1", "set2", "set3"]
-    .map((k) => getSetDisplay(round.scores?.[k]))
-    .filter(Boolean)
-    .join(" · ");
   const aWon = round.winningTeam === "A";
   const bWon = round.winningTeam === "B";
 
@@ -638,9 +656,7 @@ function RoundResultRow({
       </div>
       <div className="shrink-0 flex items-center gap-2">
         {scoreEntered ? (
-          <span className={cn("pm-mono font-bold text-amber-900", compact ? "text-xs" : "text-sm")}>
-            {scoreText}
-          </span>
+          <StackedScore scores={round.scores} compact={compact} />
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
