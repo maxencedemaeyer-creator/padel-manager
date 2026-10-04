@@ -26,7 +26,7 @@ import {
 } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS } from "../../lib/constants";
 import { computePlayerStats } from "../../lib/stats";
-import { getPlayerRatingState, getRecentLevelDeltaHistory } from "../../lib/levelRating";
+import { getPlayerRatingState, getRecentLevelDeltaHistory, kFactor } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Modal } from "../ui";
@@ -40,6 +40,20 @@ import { PlayerAvatar } from "./PlayerAvatar";
 // manche 2 a été encodée avant la manche 1, on l'affiche d'abord pour que la
 // chaîne "Avant → Après" se suive (un recalcul admin remet l'ordre
 // chronologique). Aucune lecture ni écriture Firebase en plus.
+// Fiabilité en pourcentage (décidé le 21/09/2026). Le chiffre brut stocké est
+// un compteur (+1 par match noté) sans maximum : peu parlant. On le traduit
+// avec la MÊME courbe que le moteur (le facteur K : le niveau bouge beaucoup
+// au début, puis de moins en moins). Repère : 100 % = une saison complète de
+// matchs notés (RELIABILITY_FULL_AT). Seul ce repère est un choix d'affichage.
+const RELIABILITY_FULL_AT = 40;
+function reliabilityPercent(reliability) {
+  const kStart = kFactor(0);
+  const kEnd = kFactor(1e9);
+  const settled = (r) => (kStart - kFactor(r)) / (kStart - kEnd);
+  const share = settled(reliability) / settled(RELIABILITY_FULL_AT);
+  return Math.max(0, Math.min(100, Math.round(share * 100)));
+}
+
 const EPS = 1e-6;
 
 function fmtLevel(value, decimals = 2) {
@@ -114,6 +128,7 @@ function resultBadge(entry) {
 
 function RankingHistoryModal({ player, matches, onClose }) {
   const state = getPlayerRatingState(player);
+  const reliabilityPct = reliabilityPercent(state.reliability);
   // `true` : inclut aussi les matchs joués sans score (bonus d'assiduité seul).
   const history = getRecentLevelDeltaHistory(player.id, matches, 200, true);
   const sessions = buildSessions(history);
@@ -129,15 +144,26 @@ function RankingHistoryModal({ player, matches, onClose }) {
             {state.hasRanking ? fmtLevel(state.score) : "—"}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
-            Fiabilité
-          </p>
-          <p className="pm-mono text-lg font-semibold leading-tight">
-            {state.reliability.toFixed(1).replace(".", ",")}
-          </p>
+        <div className="w-28">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+              Fiabilité
+            </p>
+            <p className="pm-mono text-lg font-semibold leading-tight">{`${reliabilityPct}\u00a0%`}</p>
+          </div>
+          <div className="h-1.5 rounded-full bg-white mt-1 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[var(--color-lime)]"
+              style={{ width: `${reliabilityPct}%` }}
+            />
+          </div>
         </div>
       </div>
+
+      <p className="text-[10px] text-[var(--color-text-faint)] -mt-2 mb-4 px-1">
+        Plus la fiabilité est élevée, plus le niveau est stable : il bouge moins à chaque match.
+        100 % correspond à une saison complète (environ {RELIABILITY_FULL_AT} matchs notés).
+      </p>
 
       {sessions.length === 0 ? (
         <p className="text-sm text-[var(--color-text-faint)] italic">
