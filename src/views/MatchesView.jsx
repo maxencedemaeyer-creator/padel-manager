@@ -192,49 +192,9 @@ export function MatchesView() {
       )}
 
       <div className="mb-6">
-        <h3 className="font-semibold text-sm text-white mb-2">
-          Prochains matchs
-        </h3>
-        {nextGroup.length > 0 ? (
-          <div className="flex flex-col gap-4">
-            {nextSessions.map((session) => {
-              const key = `${session[0].date}|${session[0].time}`;
-              // La disposition du terrain (qui joue où) ne s'affiche plus
-              // automatiquement : elle reste masquée aux joueurs tant que
-              // l'administrateur n'a pas cliqué sur "Publier la
-              // composition" pour cette session — lui, garde toujours la
-              // vue complète pour pouvoir composer les équipes tranquillement.
-              const showComposition = isAdmin || isCompositionPublished(session);
-              return showComposition ? (
-                <SessionCard key={key} sessionMatches={session} now={now} />
-              ) : (
-                <AvailabilitySessionCard key={key} sessionMatches={session} />
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyState
-            icon={<Icon.Calendar className="w-6 h-6" />}
-            title={
-              notFinished.length > 0
-                ? "Aucun match dans les 15 prochains jours"
-                : "Aucun match à venir"
-            }
-            subtitle={
-              notFinished.length > 0
-                ? "Le prochain match programmé a lieu dans plus de 15 jours."
-                : isAdmin
-                ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
-                : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
-            }
-          />
-        )}
-      </div>
-
-      <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-sm text-white">
-            Reste de la saison
+            Prochains matchs
           </h3>
           <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1">
             {[
@@ -257,18 +217,44 @@ export function MatchesView() {
           </div>
         </div>
 
-        {otherSessions.length === 0 ? (
+        {nextGroup.length === 0 && otherSessions.length === 0 ? (
           <EmptyState
             icon={<Icon.Calendar className="w-6 h-6" />}
             title={
-              filter === "upcoming" ? "Aucun autre match à venir" : "Aucun autre match terminé"
+              filter === "done"
+                ? "Aucun match terminé"
+                : notFinished.length > 0
+                ? "Aucun match dans les 15 prochains jours"
+                : "Aucun match à venir"
             }
-            subtitle="Le reste de la saison apparaîtra ici."
+            subtitle={
+              filter === "done"
+                ? "Les matchs terminés apparaîtront ici."
+                : notFinished.length > 0
+                ? "Le prochain match programmé a lieu dans plus de 15 jours."
+                : isAdmin
+                ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
+                : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
+            }
           />
         ) : (
           <div className="flex flex-col gap-4">
+            {nextSessions.map((session) => {
+              const key = `next|${session[0].date}|${session[0].time}`;
+              // La disposition du terrain (qui joue où) ne s'affiche plus
+              // automatiquement : elle reste masquée aux joueurs tant que
+              // l'administrateur n'a pas cliqué sur "Publier la
+              // composition" pour cette session — lui, garde toujours la
+              // vue complète pour pouvoir composer les équipes tranquillement.
+              const showComposition = isAdmin || isCompositionPublished(session);
+              return showComposition ? (
+                <SessionCard key={key} sessionMatches={session} now={now} />
+              ) : (
+                <AvailabilitySessionCard key={key} sessionMatches={session} />
+              );
+            })}
             {visibleOtherSessions.map((session) => {
-              const key = `${session[0].date}|${session[0].time}`;
+              const key = `other|${session[0].date}|${session[0].time}`;
               // Un match déjà terminé garde son affichage résultat habituel
               // (score compact) quel que soit l'état de publication — la
               // publication ne concerne que la composition d'un match à
