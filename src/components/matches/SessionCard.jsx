@@ -570,7 +570,7 @@ function RoundResultRow({
   compact = false,
   canEditScore = false,
 }) {
-  const { isAdmin, players } = useAppData();
+  const { isAdmin, players, matches } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -595,7 +595,7 @@ function RoundResultRow({
   const remove = async () => {
     setBusy(true);
     try {
-      await deleteRoundAndRanking({ match, roundIndex, players });
+      await deleteRoundAndRanking({ match, roundIndex, players, matches });
       setShowDelete(false);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
