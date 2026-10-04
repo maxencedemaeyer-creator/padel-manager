@@ -312,10 +312,10 @@ export function RoundModal({
     <Modal
       title={
         scoreOnly
-          ? `Encoder le score de la manche ${roundIndex + 1}`
+          ? "Encoder le score de la manche supplémentaire"
           : isEdit
-            ? `Modifier la manche ${roundIndex + 1}`
-            : "Ajouter une manche"
+            ? "Modifier la manche supplémentaire"
+            : "Ajouter une manche supplémentaire"
       }
       onClose={onClose}
       wide
