@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
 import { cn, formatDateFR, formatTimeFR, clubNameOnly, getFirstName } from "../../lib/utils";
-import { hasMatchScore, getSetDisplay, getMatchTiming, useNow } from "../../lib/matchLogic";
+import { hasMatchScore, getSetDisplay, getMatchTiming, getMatchStart, useNow } from "../../lib/matchLogic";
 import { isCompositionPublished, setCompositionPublished } from "../../lib/composition";
 import {
   getConvocationOverride,
@@ -735,9 +735,18 @@ export function MatchResultBlock({
   compact = false,
   label = "Résultat",
   allowScoreEdit = false,
+  // Ajout du 04/10/2026 : si `collapsible` est vrai, un petit bouton (chevron)
+  // permet de replier / déplier la liste des manches (le bandeau devenait très
+  // long quand il y a beaucoup de manches). `defaultOpen` fixe l'état au
+  // premier affichage. L'état choisi par le joueur n'est PAS sauvegardé
+  // (aucune écriture Firebase) : il repart de `defaultOpen` à chaque visite.
+  collapsible = false,
+  defaultOpen = true,
 }) {
   const { isAdmin, connectedPlayer } = useAppData();
   const [showAddRound, setShowAddRound] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const showBody = !collapsible || open;
   const first = sessionMatches[0];
   // Ajout d'une manche (bouton « + » rond en haut à droite, un seul par bloc,
   // toujours visible) : ouvert à tous les joueurs de la session (ayant joué sur
@@ -784,10 +793,31 @@ export function MatchResultBlock({
             <Icon.Plus className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
           </button>
         )}
+        {collapsible && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? "Replier les résultats" : "Déplier les résultats"}
+            title={open ? "Replier" : "Déplier"}
+            className={cn(
+              "shrink-0 rounded-full border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 active:scale-95 transition-all flex items-center justify-center w-8 h-8",
+              addRoundCourts.length === 0 && "ml-auto"
+            )}
+          >
+            <Icon.Chevron className={cn("w-4 h-4 transition-transform", open ? "-rotate-90" : "rotate-90")} />
+          </button>
+        )}
       </div>
-      <p className={cn("font-semibold text-amber-900 mb-1", compact ? "text-xs" : "text-sm")}>
+      <p className={cn("font-semibold text-amber-900", compact ? "text-xs" : "text-sm", showBody && "mb-1")}>
         {formatDateFR(first.date)}
+        {!showBody && (
+          <span className="font-normal text-amber-700">
+            {" "}· {totalRounds} manche{totalRounds > 1 ? "s" : ""}
+          </span>
+        )}
       </p>
+      {showBody && (
       <div className="flex flex-col">
         {/* Ordre d'affichage : toutes les manches 1 (un résultat par terrain)
             d'abord, puis toutes les manches 2, etc., quel que soit le terrain.
@@ -819,6 +849,7 @@ export function MatchResultBlock({
           })
         )}
       </div>
+      )}
       {showAddRound && (
         <RoundModal
           courtChoices={addRoundCourts}
@@ -832,8 +863,24 @@ export function MatchResultBlock({
 
 // Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
 // et volontairement simplifiée : juste la date, les noms et le score.
+//
+// Ajout du 04/10/2026 : bandeau repliable. Déplié par défaut pendant les 48 h
+// qui suivent le DÉBUT de la session (heure de début du 1er terrain), replié
+// ensuite — le joueur peut toujours le déplier / replier d'un clic.
+const LAST_RESULT_OPEN_HOURS = 48;
 export function LastMatchCard({ sessionMatches }) {
+  const now = useNow();
+  const sessionStart = Math.min(...sessionMatches.map((m) => getMatchStart(m).getTime()));
+  const [defaultOpen] = useState(
+    () => now.getTime() - sessionStart < LAST_RESULT_OPEN_HOURS * 3600 * 1000
+  );
   return (
-    <MatchResultBlock sessionMatches={sessionMatches} label="Dernier résultat" allowScoreEdit />
+    <MatchResultBlock
+      sessionMatches={sessionMatches}
+      label="Dernier résultat"
+      allowScoreEdit
+      collapsible
+      defaultOpen={defaultOpen}
+    />
   );
 }
