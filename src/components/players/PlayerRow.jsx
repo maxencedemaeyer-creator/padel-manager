@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Une carte de la liste Équipe : avatar à gauche, puis 3 lignes (nom +
 // badges, stats, homme du match), et à droite un bloc 2x2 (main / côté /
-// classement officiel / historique de niveau) suivi du bouton modifier (admin).
+// classement officiel / historique de niveau, visible par tous depuis le
+// 09/10/2026) suivi du bouton modifier (admin).
 // Vocabulaire (21/09/2026) : "Niveau" = le nombre calculé de 1 à 10 (pastille
 // "🎾 4,2", ex-"Ranking") ; "Classement" = P100, P200… (classement officiel).
 // Le solde d'un créancier ne s'affiche plus ici — il vit uniquement dans
@@ -129,6 +130,7 @@ function resultBadge(entry) {
 }
 
 function RankingHistoryModal({ player, matches, onClose }) {
+  const { isAdmin } = useAppData();
   const state = getPlayerRatingState(player);
   const reliabilityPct = reliabilityPercent(state.reliability);
   // `true` : inclut aussi les matchs joués sans score (bonus d'assiduité seul).
@@ -243,7 +245,9 @@ function RankingHistoryModal({ player, matches, onClose }) {
                   );
                 })}
               </div>
-              {session.reordered && (
+              {/* Message technique : réservé à l'admin (seul à pouvoir lancer le
+                  « Recalcul du niveau »). Les joueurs voient l'historique sans ce texte. */}
+              {session.reordered && isAdmin && (
                 <p className="text-[10px] italic text-amber-700 mt-1.5 px-1">
                   ⚠️ Les manches de cette soirée ont été encodées dans un ordre inhabituel : elles
                   sont affichées dans l'ordre du calcul. Un « Recalcul du niveau » (Administration)
@@ -323,13 +327,13 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   // que les autres, avec "N.C." à la place du nombre (modif. 21/09/2026).
   const showRanking = isAdmin || rankingEnabled;
   const rankingState = getPlayerRatingState(player);
-  // Historique de niveau (icône admin) : reste visible pour l'admin dès
-  // qu'un joueur a un niveau, quel que soit l'état du switch
-  // `rankingEnabled` — confirmé explicitement par Max (19/09/2026), même
-  // comportement que l'ancienne version. Ce switch ne contrôle que la
-  // visibilité du Niveau pour les autres joueurs (badge dans la ligne 1),
-  // jamais l'accès admin à l'historique.
-  const showHistoryCell = isAdmin && rankingState.hasRanking;
+  // Historique de niveau (icône horloge) : désormais visible par TOUS les
+  // joueurs (09/10/2026, c'était réservé à l'admin). Il suit la même règle que
+  // le Niveau lui-même (`showRanking`) : l'admin le voit toujours, les autres
+  // joueurs seulement quand le switch `rankingEnabled` est activé — inutile
+  // d'afficher l'historique d'un niveau qu'on ne voit pas. Il faut aussi que le
+  // joueur ait déjà un niveau.
+  const showHistoryCell = showRanking && rankingState.hasRanking;
 
   // Le nombre affiché est celui des SESSIONS (1 session = 1 entraînement, quel
   // que soit son nombre de manches), le même que pour le tri "Régularité"
