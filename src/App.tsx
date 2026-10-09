@@ -15,6 +15,7 @@ import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
+import { LevelHistoryIntro } from "./components/players/LevelHistoryIntro";
 import Icon from "./components/icons/Icon";
 // "Matchs" est importé normalement (pas en chargement à la demande) — voir
 // le commentaire détaillé plus bas, juste avant les 5 autres onglets qui
@@ -302,6 +303,9 @@ function MainApp() {
         </Suspense>
         <BottomNav view={view} setView={changeView} />
         <PostMatchPrompt />
+        {/* Fenêtre "Nouveau : historique de niveau" (une seule fois par joueur,
+            mémorisée sur Firebase) — voir players/LevelHistoryIntro.jsx. */}
+        <LevelHistoryIntro />
       </div>
     </AppDataContext.Provider>
   );
