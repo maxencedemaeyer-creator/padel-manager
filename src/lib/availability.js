@@ -18,6 +18,7 @@ import { db } from "../firebase";
 import { COURT_SLOT_DEFS } from "./constants";
 import { normalizeSide } from "./utils";
 import { getMatchStart, getMatchTiming } from "./matchLogic";
+import { getInvitedPlayerIds } from "./convocation";
 
 export const AVAILABILITY_STATUSES = ["present", "absent", "unknown"];
 
@@ -114,8 +115,14 @@ function getPlacedPlayerIds(sessionMatches) {
 // (présent, absent, ou même "je ne sais pas encore"), ils rentrent dans les
 // groupes exactement comme n'importe quel autre joueur. Voir feature
 // "joueurs occasionnels".
+//
+// Ajout du 10/10/2026 : un joueur occasionnel CONVOQUÉ par l'admin pour cette
+// session (voir getInvitedPlayerIds dans convocation.js) rentre lui aussi dans
+// les groupes, même sans réponse — il apparaît alors dans "En attente" jusqu'à
+// ce qu'il réponde.
 export function getAvailabilityGroups(sessionMatches, players) {
   const availability = getSessionAvailability(sessionMatches);
+  const invitedIds = getInvitedPlayerIds(sessionMatches);
   const placedPlayerIds = getPlacedPlayerIds(sessionMatches);
   const present = [];
   const presentTitulaires = [];
@@ -126,7 +133,7 @@ export function getAvailabilityGroups(sessionMatches, players) {
 
   (players || []).forEach((p) => {
     const status = availability[p.id];
-    if (p.isOccasional && !status) return;
+    if (p.isOccasional && !status && !invitedIds.has(p.id)) return;
     if (status === "present" || status === RESERVE_STATUS) {
       present.push(p);
       if (placedPlayerIds.has(p.id)) presentTitulaires.push(p);
