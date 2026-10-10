@@ -898,10 +898,11 @@ export function MatchResultBlock({
 // Carte "Dernier match joué" — mise en évidence visuellement (accent doré),
 // et volontairement simplifiée : juste la date, les noms et le score.
 //
-// Ajout du 04/10/2026 : bandeau repliable. Déplié par défaut pendant les 48 h
+// Ajout du 04/10/2026 : bandeau repliable. Déplié par défaut pendant les 24 h
 // qui suivent le DÉBUT de la session (heure de début du 1er terrain), replié
 // ensuite — le joueur peut toujours le déplier / replier d'un clic.
-const LAST_RESULT_OPEN_HOURS = 48;
+// (Passé de 48 h à 24 h le 10/10/2026.)
+const LAST_RESULT_OPEN_HOURS = 24;
 export function LastMatchCard({ sessionMatches }) {
   const now = useNow();
   const sessionStart = Math.min(...sessionMatches.map((m) => getMatchStart(m).getTime()));
