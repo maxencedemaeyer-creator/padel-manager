@@ -15,7 +15,7 @@ import {
   isPlayerMatchCreditor,
 } from "../../lib/matchLogic";
 import { getSessionAvailability } from "../../lib/availability";
-import { isConvocationOpen } from "../../lib/convocation";
+import { isConvocationOpen, getInvitedPlayerIds } from "../../lib/convocation";
 import { computePlayerStats } from "../../lib/stats";
 import { findRecentMvpWin } from "../../lib/mvp";
 import { useAppData } from "../../context/AppContext";
@@ -145,13 +145,18 @@ export function MyMatchSummary({ now }) {
   // le filtre `dateTBD` ci-dessus (voir fix-rappel-presence-faux-positif-
   // matchs-tbd.md) : le joueur n'a alors aucun bouton pour répondre, un
   // rappel serait donc trompeur.
-  const needsPresenceReminder =
-    !connectedPlayer.isOccasional &&
-    nextSessions.some((session) => {
-      const availability = getSessionAvailability(session);
-      if (availability[connectedPlayer.id] !== undefined) return false;
-      return isConvocationOpen(session, now, presenceWindowDays);
-    });
+  //
+  // Ajout du 10/10/2026 : un joueur (occasionnel) CONVOQUÉ par l'admin pour
+  // une session reçoit lui aussi les boutons de réponse — le rappel s'affiche
+  // donc pour cette session tant qu'il n'a pas répondu, même hors fenêtre de
+  // convocation (voir getInvitedPlayerIds dans lib/convocation.js).
+  const needsPresenceReminder = nextSessions.some((session) => {
+    const availability = getSessionAvailability(session);
+    if (availability[connectedPlayer.id] !== undefined) return false;
+    if (getInvitedPlayerIds(session).has(connectedPlayer.id)) return true;
+    if (connectedPlayer.isOccasional) return false;
+    return isConvocationOpen(session, now, presenceWindowDays);
+  });
 
   const myLastFinished = [...matches]
     .filter(
