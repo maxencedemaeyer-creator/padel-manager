@@ -23,6 +23,7 @@ import {
   AVAILABILITY_STATUSES,
   RESERVE_STATUS,
   getAvailabilityGroups,
+  getSessionAvailability,
   setSessionAvailability,
   resetSessionAvailability,
   autoPlacePresentPlayer,
@@ -33,6 +34,8 @@ import {
   getConvocationOverride,
   getAutoOpenDate,
   isConvocationOpen,
+  getInvitedPlayerIds,
+  setInvitedPlayers,
 } from "../../lib/convocation";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -339,6 +342,12 @@ export function AvailabilityButtons({ sessionMatches }) {
   // n'est pas entré dans le gel avant match — voir isLocked ci-dessous.
   const convocationOpen = isConvocationOpen(sessionMatches, now, presenceWindowDays);
 
+  // Convocation ponctuelle (ajout du 10/10/2026, voir lib/convocation.js →
+  // getInvitedPlayerIds) : un joueur — en pratique un joueur occasionnel —
+  // que l'admin a convoqué pour CETTE session reçoit les 3 boutons de
+  // réponse, même si la fenêtre de convocation n'est pas encore ouverte.
+  const isInvited = getInvitedPlayerIds(sessionMatches).has(connectedPlayer.id);
+
   // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
   // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
   // connexion (AuthGate) et l'onglet Joueurs (PlayersView).
@@ -426,7 +435,8 @@ export function AvailabilityButtons({ sessionMatches }) {
   // - match pas encore commencé ("upcoming") ; le gel de présence avant match
   //   ne s'applique volontairement pas ici : il empêche de se DÉSISTER tard,
   //   pas de combler une place libre à la dernière minute ;
-  // - pas un joueur occasionnel (c'est l'admin qui gère sa présence).
+  // - pas un joueur occasionnel (c'est l'admin qui gère sa présence), sauf
+  //   s'il a été convoqué par l'admin pour cette session (isInvited).
   // Premier arrivé, premier servi : si deux joueurs cliquent en même temps
   // pour une seule place, la transaction de autoPlacePresentPlayer n'en
   // place qu'un — l'autre reçoit un message "place déjà prise".
@@ -445,7 +455,7 @@ export function AvailabilityButtons({ sessionMatches }) {
     );
   const canClaimSlot =
     myStatus === "present" &&
-    !connectedPlayer.isOccasional &&
+    (!connectedPlayer.isOccasional || isInvited) &&
     sessionTiming === "upcoming" &&
     !isPlacedInSession &&
     !isEngagedElsewhereToday &&
@@ -658,7 +668,11 @@ export function AvailabilityButtons({ sessionMatches }) {
   // cette session, `hasAnswered` devient vrai et il retrouve exactement le
   // même bloc (rectangle + compteurs, cliquable) que n'importe quel joueur —
   // rien d'autre à faire ici.
-  if (connectedPlayer.isOccasional) {
+  //
+  // Ajout du 10/10/2026 : si l'admin l'a CONVOQUÉ pour cette session
+  // (isInvited), il reçoit directement les 3 boutons de réponse (bloc tout en
+  // bas), sans attendre que l'admin réponde à sa place.
+  if (connectedPlayer.isOccasional && !isInvited) {
     return (
       <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3 text-center">
         <p className="text-[11px] font-semibold text-[var(--color-text-dim)]">
@@ -673,7 +687,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   // lib/convocation.js) : pas de boutons pour un joueur qui n'a pas encore
   // répondu — seul l'admin garde la main (via "Gérer les présences") pour
   // répondre à sa place si besoin avant l'ouverture.
-  if (!isAdmin && !convocationOpen) {
+  if (!isAdmin && !convocationOpen && !isInvited) {
     const forcedClosed = getConvocationOverride(sessionMatches) === "closed";
     const autoOpenDate = forcedClosed
       ? null
@@ -872,6 +886,7 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
   const [savingId, setSavingId] = useState(null);
 
   const { availability } = getAvailabilityGroups(sessionMatches, players);
+  const invitedIds = getInvitedPlayerIds(sessionMatches);
 
   const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -953,6 +968,11 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
                       Occasionnel
                     </span>
                   )}
+                  {p.isOccasional && invitedIds.has(p.id) && !status && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-700 bg-sky-100 border border-sky-200 rounded-full px-1.5 py-0.5">
+                      Convoqué
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   {ADMIN_STATUS_BUTTONS.map((s) => {
@@ -998,6 +1018,94 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
           })
         )}
       </div>
+    </Modal>
+  );
+}
+
+// Modale admin "Convoquer un joueur occasionnel" (ajout du 10/10/2026) — liste
+// les joueurs occasionnels du club et permet de convoquer (ou de retirer la
+// convocation d') chacun pour CETTE session uniquement. Un joueur convoqué voit
+// alors les 3 boutons Présent / Absent / Je ne sais pas pour ce match (même
+// hors fenêtre de convocation), apparaît "en attente" tant qu'il n'a pas
+// répondu et reçoit le rappel de présence. Voir lib/convocation.js. Un joueur
+// qui a déjà une réponse pour la session n'a plus besoin d'être convoqué : sa
+// réponse est simplement rappelée, sans bouton. Retirer une convocation ne
+// supprime jamais une réponse déjà donnée.
+export function InvitePlayersModal({ sessionMatches, onClose }) {
+  const { players } = useAppData();
+  const [savingId, setSavingId] = useState(null);
+
+  const invitedIds = getInvitedPlayerIds(sessionMatches);
+  const availability = getSessionAvailability(sessionMatches);
+  const occasionalPlayers = players
+    .filter((p) => p.isOccasional)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const toggleInvite = async (playerId) => {
+    setSavingId(playerId);
+    try {
+      const next = new Set(invitedIds);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      await setInvitedPlayers(sessionMatches, [...next]);
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <Modal title="Convoquer un joueur occasionnel" onClose={onClose}>
+      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+        Un joueur convoqué peut répondre Présent / Absent / Je ne sais pas à ce
+        match uniquement, même si la convocation n'est pas encore ouverte. Il
+        apparaît « en attente » tant qu'il n'a pas répondu.
+      </p>
+
+      {occasionalPlayers.length === 0 ? (
+        <p className="text-xs text-[var(--color-text-faint)] italic py-2">
+          Aucun joueur occasionnel pour l'instant. Pour en créer un : onglet
+          Équipe → modifier le joueur → case « Joueur occasionnel ».
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
+          {occasionalPlayers.map((p) => {
+            const status = availability[p.id];
+            const invited = invitedIds.has(p.id);
+            const busy = savingId === p.id;
+            return (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              >
+                <span className="flex-1 min-w-0 truncate text-sm font-medium">
+                  {p.emoji} {p.name}
+                </span>
+                {status ? (
+                  <span className="shrink-0 text-[11px] font-semibold text-[var(--color-text-dim)]">
+                    A répondu : {STATUS_META[status]?.label || status}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => toggleInvite(p.id)}
+                    className={cn(
+                      "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50",
+                      invited
+                        ? "bg-white border border-sky-300 text-sky-700 hover:bg-sky-50"
+                        : "bg-sky-500 text-white hover:bg-sky-600"
+                    )}
+                  >
+                    {busy ? "…" : invited ? "Convoqué · Retirer" : "Convoquer"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Modal>
   );
 }
