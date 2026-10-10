@@ -25,6 +25,7 @@ import {
   AvailabilityButtons,
   RespondedPlayersPanel,
   ManagePresenceModal,
+  InvitePlayersModal,
 } from "./Availability";
 
 // Bandeau admin permettant de contrôler la convocation d'une session — qui a
@@ -218,10 +219,14 @@ function PublishCompositionBar({ sessionMatches }) {
 }
 
 export function SessionCard({ sessionMatches, now }) {
-  const { isAdmin } = useAppData();
+  const { isAdmin, players } = useAppData();
   // Admin : modale permettant de modifier la présence (la sienne ou celle
   // d'un autre joueur) sans passer par le placement sur le terrain.
   const [showManagePresence, setShowManagePresence] = useState(false);
+  // Admin : modale "Convoquer un joueur occasionnel" (ajout du 10/10/2026) —
+  // le bouton n'apparaît que s'il existe au moins un joueur occasionnel.
+  const [showInvitePlayers, setShowInvitePlayers] = useState(false);
+  const hasOccasionalPlayers = players.some((p) => p.isOccasional);
   // Admin : le volet "préparation" (bandeau publier/dépublier, lien
   // "Modifier une présence", tableau des réponses de présence, ET la grille
   // des terrains/compositions elle-même) est replié par défaut — l'admin
@@ -287,7 +292,19 @@ export function SessionCard({ sessionMatches, now }) {
 
           <PublishCompositionBar sessionMatches={sessionMatches} />
 
-          <div className="flex items-center justify-end mb-1">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            {hasOccasionalPlayers ? (
+              <button
+                type="button"
+                onClick={() => setShowInvitePlayers(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-sky-500 text-white hover:bg-sky-600 active:scale-[0.98] transition-all"
+              >
+                <Icon.Bell className="w-3.5 h-3.5" />
+                Convoquer un joueur occasionnel
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               type="button"
               onClick={() => setShowManagePresence(true)}
@@ -320,6 +337,12 @@ export function SessionCard({ sessionMatches, now }) {
         <ManagePresenceModal
           sessionMatches={sessionMatches}
           onClose={() => setShowManagePresence(false)}
+        />
+      )}
+      {showInvitePlayers && (
+        <InvitePlayersModal
+          sessionMatches={sessionMatches}
+          onClose={() => setShowInvitePlayers(false)}
         />
       )}
     </Card>
