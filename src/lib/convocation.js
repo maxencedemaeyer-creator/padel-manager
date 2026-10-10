@@ -65,6 +65,56 @@ export function getAutoOpenDate(sessionMatches, presenceWindowDays) {
   return toLocalISODate(openDate);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Convocation ponctuelle d'un joueur OCCASIONNEL (ajout du 10/10/2026).
+//
+// Un joueur occasionnel n'a normalement aucun bouton Présent / Absent / Je ne
+// sais pas (c'est l'admin qui répond pour lui, voir ManagePresenceModal).
+// Pour lui permettre de répondre lui-même à UN match précis, l'admin le
+// "convoque" depuis la carte du match : son identifiant est alors ajouté à la
+// liste `convocationInvites` (tableau d'identifiants de joueurs), écrite sur
+// CHAQUE terrain de la session à la fois — même mécanique que
+// `convocationOverride` et `compositionPublished`.
+//
+// Effets d'une convocation (voir Availability.jsx, availability.js et
+// MyMatchSummary.jsx) :
+// - le joueur voit les 3 boutons de réponse pour cette session, même si la
+//   fenêtre de convocation n'est pas encore ouverte ;
+// - il apparaît dans "En attente de réponse" tant qu'il n'a pas répondu ;
+// - il reçoit le rappel "N'oubliez pas d'indiquer votre présence".
+// Retirer la convocation ne supprime JAMAIS une réponse déjà donnée : le joueur
+// garde sa réponse, il redevient simplement invisible s'il n'avait pas encore
+// répondu. Coût Firebase : 1 écriture par terrain, uniquement quand l'admin
+// convoque ou retire une convocation — aucune lecture en plus.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Ensemble des identifiants des joueurs convoqués pour cette session
+// (réunion des listes de tous les terrains, tolérante à une éventuelle
+// désynchronisation entre terrains).
+export function getInvitedPlayerIds(sessionMatches) {
+  const ids = new Set();
+  (sessionMatches || []).forEach((m) => {
+    if (Array.isArray(m.convocationInvites)) {
+      m.convocationInvites.forEach((id) => ids.add(id));
+    }
+  });
+  return ids;
+}
+
+// Remplace la liste des joueurs convoqués sur TOUS les terrains de la session.
+// Liste vide → le champ est supprimé (retour à l'état d'origine). Ne touche
+// jamais `availability` ni `participants`.
+export async function setInvitedPlayers(sessionMatches, playerIds) {
+  const list = [...new Set(playerIds || [])];
+  await Promise.all(
+    (sessionMatches || []).map((m) =>
+      updateDoc(doc(db, "matches", m.id), {
+        convocationInvites: list.length > 0 ? list : deleteField(),
+      })
+    )
+  );
+}
+
 // Écrit (ou efface, si `override` est `null` — retour au mode automatique)
 // la dérogation admin sur TOUS les terrains de la session en une fois, pour
 // rester cohérent qu'il y ait un ou plusieurs terrains ce jour-là — même
