@@ -11,6 +11,7 @@ import { usePresenceAutoAbsentWatcher } from "./lib/presenceWatcher";
 import { AppDataContext, useAppData } from "./context/AppContext";
 import { Spinner, BounceLoader, Button } from "./components/ui";
 import { authReady } from "./firebase";
+import { SplashHold, SplashDone } from "./lib/splash";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
@@ -256,20 +257,21 @@ function MainApp() {
     return (
       <AppDataContext.Provider value={contextValue}>
         <MaintenanceScreen />
+        <SplashDone />
       </AppDataContext.Provider>
     );
   }
 
   // Juste après la connexion (choix du profil + code PIN), les toutes
   // premières données (matchs) sont encore en train d'arriver de Firebase :
-  // plutôt que d'afficher l'en-tête et la barre de navigation autour d'un
-  // simple spinner dans le contenu, on affiche un écran de chargement plein
-  // écran (balle qui rebondit) le temps de cette unique pause, puis on
-  // révèle l'app complète d'un coup, déjà prête et rapide.
+  // l'écran d'ouverture (logo sur fond bleu foncé, voir index.html et
+  // lib/splash.js) reste affiché, puis le logo "se rapproche" et on révèle
+  // l'app complète d'un coup, déjà prête. (Remplace depuis le 19/10/2026
+  // l'ancien écran "Préparation de votre espace...".)
   if (matchesHook.loading) {
     return (
       <AppDataContext.Provider value={contextValue}>
-        <BounceLoader fullScreen label="Préparation de votre espace..." />
+        <SplashHold />
       </AppDataContext.Provider>
     );
   }
@@ -306,6 +308,8 @@ function MainApp() {
         {/* Fenêtre "Nouveau : historique de niveau" (une seule fois par joueur,
             mémorisée sur Firebase) — voir players/LevelHistoryIntro.jsx. */}
         <LevelHistoryIntro />
+        {/* L'app est prête : fin de l'écran d'ouverture (effet de zoom). */}
+        <SplashDone />
       </div>
     </AppDataContext.Provider>
   );
@@ -330,7 +334,9 @@ export default function PadelManagerApp() {
     // chaque étape (ici / AuthGate.jsx / App.tsx-MainApp) permet de savoir
     // précisément laquelle des 3 étapes est concernée si ça se reproduit —
     // aucun changement de comportement, seulement le texte affiché.
-    return <BounceLoader fullScreen label="Connexion en cours..." />;
+    // (19/10/2026) Pendant cette attente, l'écran d'ouverture (logo) reste
+    // affiché : voir index.html et lib/splash.js.
+    return <SplashHold />;
   }
 
   return (
