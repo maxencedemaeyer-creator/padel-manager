@@ -4,6 +4,9 @@
 // de trier par Niveau, Homme du match, Classement ou Régularité (ajouté le
 // 21/09/2026). Chaque tri est toujours départagé par l'ordre alphabétique
 // des prénoms, puis par le nom en cas de prénoms identiques.
+// 19/10/2026 : la mention "Trier par" passe juste sous le titre "Équipe" et
+// les boutons deviennent une barre segmentée dans un seul cadre, tous sur
+// UNE ligne, de même largeur (même sur petit téléphone).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useMemo } from "react";
 import { useAppData } from "../context/AppContext";
@@ -32,7 +35,8 @@ import { AddPlayerModal } from "../components/players/AddPlayerModal";
 const SORT_OPTIONS = [
   { id: "name", label: "Nom" },
   { id: "level", label: "Niveau" },
-  { id: "mvp", label: "Homme du match" },
+  // Sur 2 lignes : c'est le seul libellé trop long pour une case étroite.
+  { id: "mvp", label: "Homme du match", lines: ["Homme", "du match"] },
   { id: "rank", label: "Classement" },
   { id: "regularity", label: "Régularité" },
 ];
@@ -144,8 +148,15 @@ export function PlayersView() {
     <div className="px-4 pt-4 pb-28">
       <ClubRankingBanner players={players} matches={matches} />
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="pm-display font-bold text-xl text-white">Équipe</h2>
+      {/* Titre "Équipe" + petite mention "Trier par" collée juste dessous ;
+          le bouton "Ajouter" (admin) reste à droite. */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col">
+          <h2 className="pm-display font-bold text-xl text-white leading-none">Équipe</h2>
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/60 leading-none">
+            Trier par
+          </span>
+        </div>
         {isAdmin && (
           <Button variant="secondary" className="!py-2 !px-3" onClick={() => setShowAdd(true)}>
             <span className="flex items-center gap-1.5">
@@ -155,15 +166,16 @@ export function PlayersView() {
         )}
       </div>
 
-      {/* Boutons de tri — passent à la ligne sur petit écran pour que tous
-          restent visibles sans défilement. Le bouton actif est plein vert,
-          les autres sont blancs (lisibles quel que soit le fond). */}
+      {/* Barre de tri segmentée : un seul cadre, toutes les cases de même
+          largeur et de même hauteur, sur UNE seule ligne quel que soit
+          l'écran. La case active est pleine (vert lime), les autres restent
+          transparentes sur le cadre. "Homme du match" s'écrit sur 2 lignes. */}
       <div
         role="group"
         aria-label="Trier les joueurs"
-        className="flex flex-wrap items-center gap-2 mb-4"
+        className="grid gap-0.5 p-1 mb-4 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-sm"
+        style={{ gridTemplateColumns: `repeat(${sortOptions.length}, minmax(0, 1fr))` }}
       >
-        <span className="text-[11px] font-semibold text-white/70">Trier par</span>
         {sortOptions.map((option) => {
           const active = option.id === activeSort;
           return (
@@ -172,14 +184,21 @@ export function PlayersView() {
               type="button"
               onClick={() => setSortId(option.id)}
               aria-pressed={active}
+              aria-label={`Trier par ${option.label}`}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95",
+                "h-10 px-0 rounded-xl flex flex-col items-center justify-center text-center",
+                "text-[10px] min-[390px]:text-[11px] sm:text-xs font-semibold leading-[1.15] tracking-tight whitespace-nowrap",
+                "transition-all active:scale-95",
                 active
-                  ? "bg-[var(--color-lime)] text-white border-transparent shadow-sm"
-                  : "bg-white/90 text-[var(--color-text-dim)] border-white/70 hover:bg-white"
+                  ? "bg-[var(--color-lime)] text-white shadow-md"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
               )}
             >
-              {option.label}
+              {(option.lines || [option.label]).map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
             </button>
           );
         })}
