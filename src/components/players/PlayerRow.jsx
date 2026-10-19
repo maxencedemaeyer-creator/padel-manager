@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Une carte de la liste Équipe : avatar à gauche, puis 3 lignes (nom +
-// badges, stats, homme du match), et à droite un bloc 2x2 (main / côté /
-// classement officiel / historique de niveau, visible par tous depuis le
-// 09/10/2026) suivi du bouton modifier (admin).
+// badges, stats, homme du match), et à droite le Niveau 🎾 avec le bouton
+// historique en dessous (19/10/2026 : main, côté et classement officiel ne
+// sont plus visibles des joueurs ; l'admin les retrouve via le bouton "i"),
+// suivi du bouton modifier (admin).
 // Vocabulaire (21/09/2026) : "Niveau" = le nombre calculé de 1 à 10 (pastille
 // "🎾 4,2", ex-"Ranking") ; "Classement" = P100, P200… (classement officiel).
 // Le solde d'un créancier ne s'affiche plus ici — il vit uniquement dans
@@ -18,14 +19,8 @@
 // désormais cliquables et ouvrent une pop-up d'explication.
 // ─────────────────────────────────────────────────────────────────────────
 import { useState } from "react";
-import {
-  isPlayerAdmin,
-  handAbbrev,
-  sideAbbrev,
-  normalizeSide,
-  formatDateFR,
-} from "../../lib/utils";
-import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS } from "../../lib/constants";
+import { isPlayerAdmin, normalizeSide, formatDateFR } from "../../lib/utils";
+import { LEVELS, levelDisplayLabel } from "../../lib/constants";
 import { computePlayerStats } from "../../lib/stats";
 import { getPlayerRatingState, getRecentLevelDeltaHistory, kFactor } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
@@ -262,40 +257,50 @@ function RankingHistoryModal({ player, matches, onClose }) {
   );
 }
 
-// Petite modale d'explication générique pour les pastilles "Main" et "Côté"
-// — met en évidence la valeur actuelle du joueur parmi les options
-// possibles, avec la même lettre que celle affichée sur la carte.
-function LetterInfoModal({ title, description, options, abbrevFn, currentValue, onClose }) {
+// Fiche "infos" d'un joueur — RÉSERVÉE À L'ADMIN (19/10/2026). Depuis cette
+// date, les joueurs ne voient plus la main dominante, le côté préféré ni le
+// classement officiel des autres sur la carte Équipe ; l'admin les retrouve
+// tous ici, d'un seul bouton "i". Aucune lecture ni écriture Firebase.
+function PlayerInfoModal({ player, onClose }) {
+  const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
+  const rows = [
+    { emoji: "👋", label: "Main dominante", value: player.dominantHand || "Non renseigné" },
+    {
+      emoji: "📍",
+      label: "Côté préféré",
+      value: normalizeSide(player.preferredSide) || "Non renseigné",
+    },
+    {
+      emoji: "🎖️",
+      label: "Classement officiel",
+      value: levelDisplayLabel(levelInfo?.label || player.level),
+    },
+    {
+      emoji: "🏛️",
+      label: "Fédération",
+      value: player.federation && player.federation !== "Aucune" ? player.federation : "Aucune",
+    },
+  ];
   return (
-    <Modal title={title} onClose={onClose}>
-      <p className="text-sm text-[var(--color-text-dim)]">{description}</p>
-      <div className="flex flex-col gap-2 mt-3">
-        {options.map((opt) => {
-          const active = normalizeSide(currentValue) === opt;
-          return (
-            <div
-              key={opt}
-              className={`flex items-center gap-3 p-2.5 rounded-xl border ${
-                active
-                  ? "bg-[var(--color-lime)]/10 border-[var(--color-lime)]/40"
-                  : "bg-[var(--color-surface-2)] border-[var(--color-border)]"
-              }`}
-            >
-              <span
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                  active
-                    ? "bg-[var(--color-lime)] text-white"
-                    : "bg-white border border-[var(--color-border)] text-[var(--color-text-dim)]"
-                }`}
-              >
-                {abbrevFn(opt)}
-              </span>
-              <span className="text-sm font-medium flex-1">{opt}</span>
-              {active && <Icon.Check className="w-4 h-4 text-[var(--color-lime)] shrink-0" />}
-            </div>
-          );
-        })}
+    <Modal title={`Infos — ${player.name}`} onClose={onClose}>
+      <div className="flex flex-col gap-2">
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            className="flex items-center gap-3 p-2.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
+          >
+            <span className="w-8 h-8 rounded-lg bg-white border border-[var(--color-border)] flex items-center justify-center text-base shrink-0">
+              {r.emoji}
+            </span>
+            <span className="text-xs text-[var(--color-text-dim)] flex-1">{r.label}</span>
+            <span className="text-sm font-bold text-right">{r.value}</span>
+          </div>
+        ))}
       </div>
+      <p className="text-[10px] text-[var(--color-text-faint)] mt-3">
+        Visible uniquement par l'admin. Les joueurs peuvent toujours trier l'équipe par
+        classement, sans le voir affiché.
+      </p>
     </Modal>
   );
 }
@@ -304,9 +309,8 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   const { isAdmin, matches, rankingEnabled } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const [showRankingHistory, setShowRankingHistory] = useState(false);
-  // 'hand' | 'side' | null — quelle pop-up d'explication est ouverte.
-  const [infoModal, setInfoModal] = useState(null);
-  const levelInfo = LEVELS.find((l) => l.value === player.levelSortValue);
+  // Fiche "infos" (main, côté, classement, fédération) — admin uniquement.
+  const [showInfo, setShowInfo] = useState(false);
   // Seul l'admin peut ouvrir la fiche complète depuis "Équipe" — un joueur
   // modifie désormais son propre code PIN depuis "Mon profil".
   const canEdit = isAdmin;
@@ -338,7 +342,6 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   // Le nombre affiché est celui des SESSIONS (1 session = 1 entraînement, quel
   // que soit son nombre de manches), le même que pour le tri "Régularité"
   // (modif. 26/09/2026) — calculé une fois par PlayersView et passé en prop.
-  const levelLabel = levelInfo && levelInfo.value > 0 ? levelInfo.label : "/";
   const statsLine =
     playerStats.played === 0 && sessionCount === 0
       ? "Aucune statistique"
@@ -346,11 +349,12 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
           playerStats.draws > 0 ? `-${playerStats.draws}N` : ""
         }-${playerStats.losses}D · ${playerStats.winRate}%`;
 
-  const letterCellClass =
-    "w-8 h-7 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-dim)] flex items-center justify-center active:scale-95 transition-transform";
-  const levelCellClass = `h-7 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-dim)] flex items-center justify-center ${
-    showHistoryCell ? "w-8" : "col-span-2 w-full"
-  }`;
+  // Bloc de droite (refonte du 19/10/2026) : la pastille Niveau 🎾 quitte la
+  // ligne du nom et vient ici, avec en dessous le bouton historique (et, pour
+  // l'admin, le bouton "i" qui regroupe main / côté / classement / fédération).
+  const showRightBlock = showRanking || isAdmin;
+  const smallBtnClass =
+    "h-7 flex-1 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] flex items-center justify-center active:scale-95 transition-transform hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50";
 
   return (
     <>
@@ -359,17 +363,10 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
           <PlayerAvatar player={player} size={36} className="self-start mt-0.5" />
 
           <div className="flex-1 min-w-0 flex flex-col gap-1">
-            {/* Ligne 1 : nom, ranking (si visible), créancier, puis les
-                autres badges éventuels. */}
+            {/* Ligne 1 : nom, créancier, puis les autres badges éventuels
+                (le Niveau 🎾 est désormais dans le bloc de droite). */}
             <div className="flex items-center gap-1 flex-wrap">
               <span className="font-semibold text-sm truncate">{player.name}</span>
-              {showRanking && (
-                <Badge tone="lime" className="!px-1.5 !py-0.5 !text-[9px]">
-                  {rankingState.hasRanking
-                    ? `🎾 ${rankingState.score.toFixed(1).replace(".", ",")}`
-                    : "🎾 N.C."}
-                </Badge>
-              )}
               {player.isCreditor && isAdmin && (
                 <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[9px]">
                   Créancier
@@ -408,42 +405,50 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
             </p>
           </div>
 
-          {/* Bloc de droite : main / côté / classement / historique en 2x2 (ou
-              2x1 + classement seul en dessous si l'historique est masqué), puis
-              le bouton modifier tout à droite de la carte. */}
+          {/* Bloc de droite : Niveau 🎾 en haut, bouton(s) en dessous, même
+              largeur pour toutes les cartes (alignement vertical parfait), puis
+              le bouton modifier (admin) tout à droite. */}
           <div className="flex items-center gap-2 shrink-0">
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setInfoModal("hand")}
-                aria-label={`Main dominante : ${player.dominantHand || "—"}. Toucher pour l'explication.`}
-                className={letterCellClass}
-              >
-                {handAbbrev(player.dominantHand)}
-              </button>
-              <button
-                type="button"
-                onClick={() => setInfoModal("side")}
-                aria-label={`Côté préféré : ${normalizeSide(player.preferredSide) || "—"}. Toucher pour l'explication.`}
-                className={letterCellClass}
-              >
-                {sideAbbrev(player.preferredSide)}
-              </button>
-              <span className={levelCellClass} title="Classement officiel">
-                {levelLabel}
-              </span>
-              {showHistoryCell && (
-                <button
-                  type="button"
-                  onClick={() => setShowRankingHistory(true)}
-                  aria-label="Historique de niveau"
-                  title="Historique de niveau"
-                  className={`${letterCellClass} hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50`}
-                >
-                  <Icon.History className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            {showRightBlock && (
+              <div className="w-[68px] flex flex-col gap-1.5">
+                {showRanking && (
+                  <span
+                    title="Niveau"
+                    className="h-7 w-full rounded-md bg-[var(--color-lime)]/10 border border-[var(--color-lime)]/40 text-[11px] font-bold text-[var(--color-lime)] flex items-center justify-center pm-mono"
+                  >
+                    {rankingState.hasRanking
+                      ? `🎾 ${rankingState.score.toFixed(1).replace(".", ",")}`
+                      : "🎾 N.C."}
+                  </span>
+                )}
+                {(showHistoryCell || isAdmin) && (
+                  <div className="flex gap-1.5">
+                    {showHistoryCell && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRankingHistory(true)}
+                        aria-label="Historique de niveau"
+                        title="Historique de niveau"
+                        className={smallBtnClass}
+                      >
+                        <Icon.History className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setShowInfo(true)}
+                        aria-label="Infos du joueur (main, côté, classement)"
+                        title="Infos du joueur"
+                        className={`${smallBtnClass} text-xs font-bold font-serif italic`}
+                      >
+                        i
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {canEdit && (
               <button
@@ -466,26 +471,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
           onClose={() => setShowRankingHistory(false)}
         />
       )}
-      {infoModal === "hand" && (
-        <LetterInfoModal
-          title="Main dominante"
-          description="La lettre affichée sur la carte indique la main avec laquelle le joueur tient sa raquette."
-          options={HAND_OPTIONS}
-          abbrevFn={handAbbrev}
-          currentValue={player.dominantHand}
-          onClose={() => setInfoModal(null)}
-        />
-      )}
-      {infoModal === "side" && (
-        <LetterInfoModal
-          title="Côté préféré"
-          description="La lettre affichée sur la carte indique le côté du terrain où le joueur préfère évoluer."
-          options={SIDE_OPTIONS}
-          abbrevFn={sideAbbrev}
-          currentValue={player.preferredSide}
-          onClose={() => setInfoModal(null)}
-        />
-      )}
+      {showInfo && <PlayerInfoModal player={player} onClose={() => setShowInfo(false)} />}
     </>
   );
 }
