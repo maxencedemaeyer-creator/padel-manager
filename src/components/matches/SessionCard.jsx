@@ -249,9 +249,13 @@ export function SessionCard({ sessionMatches, now }) {
   // explicitement pour qu'il disparaisse aussitôt côté admin en cas de
   // dépublication (SessionCard reste affichée à l'admin même non publiée).
   const published = isCompositionPublished(sessionMatches);
+  // (19/10/2026) Y a-t-il quelque chose entre la date et « Votre présence » ?
+  // Admin avec la préparation repliée : non → on supprime la fine ligne de
+  // séparation et le grand espace (la carte devient compacte).
+  const showMiddle = !isAdmin || prepExpanded;
   return (
     <Card className="p-4 pm-rise">
-      <div className="flex items-baseline justify-between mb-3 gap-2">
+      <div className={cn("flex items-baseline justify-between gap-2", showMiddle ? "mb-3" : "mb-2")}>
         <div className="flex items-baseline gap-2 flex-wrap min-w-0">
           <p className="pm-display font-bold text-base">
             {formatDateFR(first.date)} · {formatTimeFR(first.time)}
@@ -318,7 +322,7 @@ export function SessionCard({ sessionMatches, now }) {
         </>
       )}
 
-      {(!isAdmin || prepExpanded) && (
+      {showMiddle && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sessionMatches.map((m) => (
             <CourtPanel key={m.id} match={m} now={now} />
@@ -326,7 +330,7 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+      <div className={cn(showMiddle && "mt-4 pt-4 border-t border-[var(--color-border)]")}>
         <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
           Votre présence
         </p>
