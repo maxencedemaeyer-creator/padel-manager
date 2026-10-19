@@ -20,11 +20,13 @@ import Icon from "../icons/Icon";
 import { PlayerLinksGrid } from "./PlayerLinksGrid";
 import { PlayerLinksFiche } from "./PlayerLinksFiche";
 import { PlayerLinksSimulator } from "./PlayerLinksSimulator";
+import { PlayerLinksCompoTest } from "./PlayerLinksCompoTest";
 
 const TABS = [
   ["grid", "Grille"],
   ["fiche", "Fiche joueur"],
   ["sim", "Simulateur"],
+  ["test", "Test de compo"],
 ];
 
 export function PlayerLinksCard({ players, matches }) {
@@ -88,14 +90,15 @@ export function PlayerLinksCard({ players, matches }) {
             </p>
           )}
 
-          <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1 w-fit max-w-full mb-4">
+          {/* 4 onglets : 2 × 2 sur téléphone, sur une ligne sur ordinateur */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl sm:rounded-full p-1 w-full sm:w-fit mb-4">
             {TABS.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
                 className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
+                  "px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap",
                   tab === id ? "bg-sky-200 text-sky-900" : "text-[var(--color-text-dim)]"
                 )}
               >
@@ -114,6 +117,7 @@ export function PlayerLinksCard({ players, matches }) {
             />
           )}
           {tab === "sim" && <PlayerLinksSimulator ctx={ctx} relations={relations} />}
+          {tab === "test" && <PlayerLinksCompoTest ctx={ctx} relations={relations} />}
         </div>
       )}
     </Card>
