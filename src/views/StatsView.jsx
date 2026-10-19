@@ -110,26 +110,43 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
     rose: "bg-rose-500",
   }[accentTone];
   return (
-    <div className="w-36 shrink-0 rounded-2xl border border-[var(--color-border)] bg-white shadow-sm p-4 flex flex-col items-center text-center">
-      <div
-        className={cn(
-          "w-16 h-16 rounded-full flex items-center justify-center overflow-hidden shrink-0 mb-3",
-          accent
-        )}
-      >
-        {player.emoji ? (
-          <span className="text-2xl">{player.emoji}</span>
-        ) : (
-          <span className="text-white pm-display font-extrabold text-lg">
-            {getInitials(player.name)}
-          </span>
-        )}
-      </div>
-      <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
+    <HighlightShell
+      circle={
+        <div
+          className={cn(
+            "w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center overflow-hidden shrink-0",
+            accent
+          )}
+        >
+          {player.emoji ? (
+            <span className="text-xl sm:text-2xl">{player.emoji}</span>
+          ) : (
+            <span className="text-white pm-display font-extrabold text-base sm:text-lg">
+              {getInitials(player.name)}
+            </span>
+          )}
+        </div>
+      }
+      title={title}
+      name={player.name}
+      subtitle={subtitle}
+    />
+  );
+}
+
+// Coque commune des cartes "Personnes marquantes" (19/10/2026) : les 3 cartes
+// tiennent côte à côte dans la largeur du téléphone (grille 3 colonnes au lieu
+// d'un carrousel à faire défiler). Textes sur 2 lignes si besoin, jamais
+// coupés par des "…".
+function HighlightShell({ circle, title, name, subtitle }) {
+  return (
+    <div className="h-full min-w-0 rounded-2xl border border-[var(--color-border)] bg-white shadow-sm px-1.5 py-3 sm:p-4 flex flex-col items-center text-center">
+      <div className="mb-2 sm:mb-3">{circle}</div>
+      <p className="text-[9px] sm:text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold leading-tight mb-0.5">
         {title}
       </p>
-      <p className="text-sm font-bold truncate w-full">{player.name}</p>
-      <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5 truncate w-full">
+      <p className="text-xs sm:text-sm font-bold leading-tight break-words w-full">{name}</p>
+      <p className="text-[10px] sm:text-[11px] text-[var(--color-text-dim)] leading-tight mt-1 break-words w-full">
         {subtitle}
       </p>
     </div>
@@ -141,18 +158,16 @@ function PersonHighlightCard({ player, title, subtitle, accentTone = "dark" }) {
 // highlightPeople plus bas) — pas d'adversaire à mettre en avant dans ce cas.
 function NoNemesisCard() {
   return (
-    <div className="w-36 shrink-0 rounded-2xl border border-[var(--color-border)] bg-white shadow-sm p-4 flex flex-col items-center text-center">
-      <div className="w-16 h-16 rounded-full flex items-center justify-center bg-emerald-600 mb-3">
-        <span className="text-2xl">🏆</span>
-      </div>
-      <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)] font-semibold mb-0.5">
-        Bête noire
-      </p>
-      <p className="text-sm font-bold">Aucune</p>
-      <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
-        Tu as tout gagné pour l'instant
-      </p>
-    </div>
+    <HighlightShell
+      circle={
+        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center bg-emerald-600">
+          <span className="text-xl sm:text-2xl">🏆</span>
+        </div>
+      }
+      title="Bête noire"
+      name="Aucune"
+      subtitle="Tu as tout gagné pour l'instant"
+    />
   );
 }
 
@@ -582,6 +597,12 @@ export function StatsView() {
 
   // Résumé matchs — total joués vs 10 derniers, avec victoires pour chaque
   const last10 = recentForm.slice(-10);
+  // Dernière session jouée (19/10/2026) : 1 session = 1 jeudi, donc toutes les
+  // manches de la même date (à défaut, du même match : "abc", "abc#r1"…).
+  // La série va du plus ancien (gauche) au plus récent (droite).
+  const sessionKeyOf = (f) => f.date || String(f.id).split("#")[0];
+  const lastSessionKey =
+    recentForm.length > 0 ? sessionKeyOf(recentForm[recentForm.length - 1]) : null;
   const last10Wins = last10.filter((f) => f.result === "V").length;
   const last10Rate = last10.length > 0 ? Math.round((last10Wins / last10.length) * 100) : 0;
 
@@ -597,14 +618,14 @@ export function StatsView() {
       playerOf(myStats.bestDuo.id) && {
         player: playerOf(myStats.bestDuo.id),
         title: "Duo gagnant",
-        subtitle: `${myStats.bestDuo.rate}% de V (${myStats.bestDuo.wins}/${myStats.bestDuo.count})`,
+        subtitle: `${myStats.bestDuo.rate}% de victoires (${myStats.bestDuo.wins}/${myStats.bestDuo.count})`,
         accentTone: "emerald",
       },
     myStats.topOpponent &&
       playerOf(myStats.topOpponent.id) && {
         player: playerOf(myStats.topOpponent.id),
         title: "Bête noire",
-        subtitle: `${myStats.topOpponent.losses} défaite${myStats.topOpponent.losses > 1 ? "s" : ""} sur ${myStats.topOpponent.count} confrontation${myStats.topOpponent.count > 1 ? "s" : ""}`,
+        subtitle: `${myStats.topOpponent.losses} défaite${myStats.topOpponent.losses > 1 ? "s" : ""} sur ${myStats.topOpponent.count} duel${myStats.topOpponent.count > 1 ? "s" : ""}`,
         accentTone: "rose",
       },
     // Pas de bête noire à afficher (aucun adversaire n'a de défaite face à
@@ -868,36 +889,47 @@ export function StatsView() {
               >
                 <Icon.Question className="w-3.5 h-3.5" />
               </button>
-              <div className="flex items-center gap-1.5 flex-wrap">
+              {/* 10 pastilles max, TOUJOURS sur une seule ligne (elles se
+                  partagent la largeur). Les manches de la dernière session
+                  jouée sont entourées et marquées "Dernière session". */}
+              <div className="flex items-center gap-1.5 py-1">
                 {recentForm.map((f, i) => (
                   <span
                     key={f.id + i}
                     title={formatDateFR(f.date)}
                     className={cn(
-                      "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
-                      formStyle[f.result]
+                      "flex-1 min-w-0 max-w-[30px] aspect-square rounded-full flex items-center justify-center text-[11px] font-bold",
+                      formStyle[f.result],
+                      lastSessionKey &&
+                        sessionKeyOf(f) === lastSessionKey &&
+                        "ring-2 ring-offset-1 ring-[var(--color-lime)]"
                     )}
                   >
                     {f.result !== "X" && f.result}
                   </span>
                 ))}
               </div>
+              <div className="flex justify-between items-center gap-2 text-[9px] text-[var(--color-text-faint)] mt-2">
+                <span>← Plus ancien</span>
+                <span className="font-bold text-[var(--color-lime)]">
+                  Dernière session (entourée) →
+                </span>
+              </div>
             </Card>
 
             {showFormInfo && <RecentFormInfoModal onClose={() => setShowFormInfo(false)} />}
 
-            {/* Carrousel de personnes fétiches / rivales */}
+            {/* Personnes fétiches / rivales — au maximum 3 cartes (coéquipier
+                fétiche, duo gagnant, bête noire), côte à côte sur une ligne */}
             {highlightPeople.length > 0 && (
               <>
                 <h3 className="pm-display font-bold text-lg text-white mb-3">
                   Personnes marquantes
                 </h3>
-                <div className="flex gap-3 overflow-x-auto pb-3 mb-6 -mx-4 px-4 snap-x snap-mandatory">
-                  {highlightPeople.map((p, i) => (
-                    <div key={i} className="snap-start">
-                      {p.noNemesis ? <NoNemesisCard /> : <PersonHighlightCard {...p} />}
-                    </div>
-                  ))}
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
+                  {highlightPeople.map((p, i) =>
+                    p.noNemesis ? <NoNemesisCard key={i} /> : <PersonHighlightCard key={i} {...p} />
+                  )}
                 </div>
               </>
             )}
