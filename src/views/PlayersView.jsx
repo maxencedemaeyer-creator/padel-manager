@@ -163,7 +163,7 @@ export function PlayersView() {
         aria-label="Trier les joueurs"
         className="flex flex-wrap items-center gap-2 mb-4"
       >
-        <span className="text-[11px] font-semibold text-[var(--color-text-dim)]">Trier par</span>
+        <span className="text-[11px] font-semibold text-white/70">Trier par</span>
         {sortOptions.map((option) => {
           const active = option.id === activeSort;
           return (
