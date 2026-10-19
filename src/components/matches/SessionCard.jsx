@@ -12,6 +12,7 @@ import {
   isConvocationOpen,
   setConvocationOverride,
 } from "../../lib/convocation";
+import { getAvailabilityGroups } from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
 import { Card, Badge, Modal } from "../ui";
@@ -28,71 +29,205 @@ import {
   InvitePlayersModal,
 } from "./Availability";
 
-// Bandeau admin permettant de contrôler la convocation d'une session — qui a
-// le droit de répondre présent/absent/incertain, et depuis quand (voir
-// lib/convocation.js). Par défaut, entièrement automatique (réglage global
-// "Fenêtre de convocation" dans Administration) ; un clic sur "Gérer" permet
-// de forcer l'ouverture ou la fermeture pour CETTE session précise. Ne
-// touche jamais aux réponses déjà données par les joueurs.
-function ConvocationBar({ sessionMatches }) {
-  const { presenceWindowDays } = useAppData();
+// ─────────────────────────────────────────────────────────────────────────
+// (19/10/2026) Bandeau admin « 5 boutons » — remplace les anciens bandeaux
+// empilés (convocation, publication, bouton occasionnel, lien « Modifier une
+// présence » et tableau des réponses toujours affiché). Même esprit que la
+// barre de tri de l'onglet Équipe : un seul cadre, cases de même taille, sur
+// UNE ligne. Chaque case ouvre sa fenêtre pop-up :
+//   1. Composition  — vert si publiée, rouge sinon
+//   2. Convocation  — vert si ouverte, rouge si fermée
+//   3. Réponses     — tableau Présents / Incertains / Absents + « Sans réponse »
+//   4. Présence     — fenêtre « Modifier une présence » existante
+//   5. Occasionnel  — fenêtre « Convoquer un joueur occasionnel » existante
+//                     (case masquée s'il n'existe aucun joueur occasionnel)
+// Purement visuel : aucune lecture / écriture Firebase en plus.
+// ─────────────────────────────────────────────────────────────────────────
+function AdminSessionBar({ sessionMatches }) {
+  const { presenceWindowDays, players } = useAppData();
   const now = useNow();
-  const [showModal, setShowModal] = useState(false);
-  const override = getConvocationOverride(sessionMatches);
-  const open = isConvocationOpen(sessionMatches, now, presenceWindowDays);
-  const autoOpenDate = override ? null : getAutoOpenDate(sessionMatches, presenceWindowDays);
+  const [openModal, setOpenModal] = useState(null);
+  const close = () => setOpenModal(null);
 
-  let statusLabel;
-  if (override === "open") statusLabel = "Convocation ouverte (forcée par vous)";
-  else if (override === "closed") statusLabel = "Convocation fermée (forcée par vous)";
-  else if (open) statusLabel = "Convocation ouverte (automatique)";
-  else statusLabel = `Convocation fermée — ouvrira le ${formatDateFR(autoOpenDate)}`;
+  const published = isCompositionPublished(sessionMatches);
+  const convocOpen = isConvocationOpen(sessionMatches, now, presenceWindowDays);
+  const { present } = getAvailabilityGroups(sessionMatches, players);
+  const hasOccasionalPlayers = players.some((p) => p.isOccasional);
+
+  const buttons = [
+    {
+      id: "compo",
+      icon: Icon.Users,
+      lines: ["Compo", published ? "publiée" : "masquée"],
+      tone: published ? "ok" : "ko",
+      aria: published ? "Composition publiée" : "Composition non publiée",
+    },
+    {
+      id: "convoc",
+      icon: Icon.Bell,
+      lines: ["Convoc.", convocOpen ? "ouverte" : "fermée"],
+      tone: convocOpen ? "ok" : "ko",
+      aria: convocOpen ? "Convocation ouverte" : "Convocation fermée",
+    },
+    {
+      id: "responses",
+      icon: Icon.Check,
+      lines: ["Réponses", `${present.length} présent${present.length > 1 ? "s" : ""}`],
+      tone: "neutral",
+      aria: "Voir les réponses des joueurs",
+    },
+    {
+      id: "presence",
+      icon: Icon.Edit,
+      lines: ["Modifier", "présence"],
+      tone: "neutral",
+      aria: "Modifier une présence",
+    },
+    hasOccasionalPlayers && {
+      id: "invite",
+      icon: Icon.Plus,
+      lines: ["Inviter", "un joueur"],
+      tone: "neutral",
+      aria: "Convoquer un joueur occasionnel",
+    },
+  ].filter(Boolean);
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-2 mb-3 p-2.5 rounded-xl border",
-        open
-          ? "border-emerald-300 bg-emerald-50"
-          : "border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
-      )}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <span
-          className={cn(
-            "w-2 h-2 rounded-full shrink-0",
-            open ? "bg-emerald-500" : "bg-amber-500"
-          )}
-        />
-        <p className="text-[11px] font-semibold text-[var(--color-text-dim)] truncate">
-          {statusLabel}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 transition-all"
+    <>
+      <div
+        role="group"
+        aria-label="Gestion de la session"
+        className="grid gap-1 p-1 mb-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
+        style={{ gridTemplateColumns: `repeat(${buttons.length}, minmax(0, 1fr))` }}
       >
-        Gérer
-      </button>
-      {showModal && (
-        <ConvocationSettingsModal
+        {buttons.map((b) => {
+          const BtnIcon = b.icon;
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setOpenModal(b.id)}
+              aria-label={b.aria}
+              title={b.aria}
+              className={cn(
+                "h-14 px-0.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-center",
+                "text-[9px] min-[390px]:text-[10px] sm:text-xs font-semibold leading-[1.1] tracking-tight whitespace-nowrap",
+                "transition-all active:scale-95",
+                b.tone === "ok" && "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600",
+                b.tone === "ko" && "bg-rose-500 text-white shadow-sm hover:bg-rose-600",
+                b.tone === "neutral" &&
+                  "bg-white text-[var(--color-text-dim)] border border-[var(--color-border)] hover:border-sky-300 hover:text-sky-700"
+              )}
+            >
+              <BtnIcon className="w-3.5 h-3.5 shrink-0 mb-0.5" />
+              {b.lines.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+            </button>
+          );
+        })}
+      </div>
+
+      {openModal === "compo" && (
+        <PublishCompositionModal sessionMatches={sessionMatches} onClose={close} />
+      )}
+      {openModal === "convoc" && (
+        <ConvocationSettingsModal sessionMatches={sessionMatches} onClose={close} />
+      )}
+      {openModal === "responses" && (
+        <ResponsesModal
           sessionMatches={sessionMatches}
-          currentOverride={override}
-          onClose={() => setShowModal(false)}
+          onClose={close}
+          onEditPresence={() => setOpenModal("presence")}
         />
       )}
-    </div>
+      {openModal === "presence" && (
+        <ManagePresenceModal sessionMatches={sessionMatches} onClose={close} />
+      )}
+      {openModal === "invite" && (
+        <InvitePlayersModal sessionMatches={sessionMatches} onClose={close} />
+      )}
+    </>
   );
 }
 
-// Modale ouverte depuis "Gérer" ci-dessus — 3 choix mutuellement exclusifs :
+// Fenêtre « Composition » : rappelle l'état actuel et permet de publier ou
+// dépublier la composition de TOUS les terrains de la date à la fois. Tant
+// qu'elle n'est pas publiée, les joueurs ne voient que leurs boutons de
+// présence (voir MatchesView.jsx / isCompositionPublished).
+function PublishCompositionModal({ sessionMatches, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const published = isCompositionPublished(sessionMatches);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setCompositionPublished(sessionMatches, !published);
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Composition" onClose={onClose}>
+      <div
+        className={cn(
+          "flex items-center gap-2 p-3 rounded-xl border",
+          published ? "border-emerald-300 bg-emerald-50" : "border-rose-200 bg-rose-50"
+        )}
+      >
+        <span
+          className={cn("w-2.5 h-2.5 rounded-full shrink-0", published ? "bg-emerald-500" : "bg-rose-500")}
+        />
+        <p className="text-sm font-semibold">
+          {published ? "Publiée — visible par les joueurs" : "Non publiée — visible par vous uniquement"}
+        </p>
+      </div>
+      <p className="text-xs text-[var(--color-text-dim)]">
+        {published
+          ? "Dépublier cache à nouveau les terrains aux joueurs : ils ne verront plus que leur présence."
+          : "Publier rend la composition de tous les terrains de cette date visible par tous les joueurs."}
+      </p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={toggle}
+        className={cn(
+          "w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 active:scale-[0.98]",
+          published
+            ? "bg-white border border-rose-300 text-rose-700 hover:bg-rose-50"
+            : "bg-emerald-500 text-white hover:bg-emerald-600"
+        )}
+      >
+        {busy ? "Enregistrement..." : published ? "Dépublier la composition" : "Publier la composition"}
+      </button>
+    </Modal>
+  );
+}
+
+// Fenêtre « Gérer la convocation » — 3 choix mutuellement exclusifs :
 // automatique (comportement par défaut, piloté par le réglage global),
 // forcer l'ouverture (utile pour convoquer plus tôt qu'à l'accoutumée), ou
 // forcer la fermeture (utile pour un match pas encore certain). Rappelle
 // explicitement que les réponses déjà données ne sont jamais affectées.
-function ConvocationSettingsModal({ sessionMatches, currentOverride, onClose }) {
+function ConvocationSettingsModal({ sessionMatches, onClose }) {
+  const { presenceWindowDays } = useAppData();
+  const now = useNow();
   const [saving, setSaving] = useState(false);
+  const currentOverride = getConvocationOverride(sessionMatches);
+  const open = isConvocationOpen(sessionMatches, now, presenceWindowDays);
+  const autoOpenDate = currentOverride ? null : getAutoOpenDate(sessionMatches, presenceWindowDays);
+
+  let statusLabel;
+  if (currentOverride === "open") statusLabel = "Ouverte (forcée par vous)";
+  else if (currentOverride === "closed") statusLabel = "Fermée (forcée par vous)";
+  else if (open) statusLabel = "Ouverte (automatique)";
+  else statusLabel = `Fermée — ouvrira le ${formatDateFR(autoOpenDate)}`;
 
   const choose = async (value) => {
     setSaving(true);
@@ -126,7 +261,16 @@ function ConvocationSettingsModal({ sessionMatches, currentOverride, onClose }) 
 
   return (
     <Modal title="Gérer la convocation" onClose={onClose}>
-      <p className="text-xs text-[var(--color-text-dim)] mb-3">
+      <div
+        className={cn(
+          "flex items-center gap-2 p-3 rounded-xl border",
+          open ? "border-emerald-300 bg-emerald-50" : "border-rose-200 bg-rose-50"
+        )}
+      >
+        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", open ? "bg-emerald-500" : "bg-rose-500")} />
+        <p className="text-sm font-semibold">{statusLabel}</p>
+      </div>
+      <p className="text-xs text-[var(--color-text-dim)]">
         Ne change jamais les réponses déjà données par les joueurs — contrôle
         uniquement qui peut encore répondre à partir de maintenant.
       </p>
@@ -159,108 +303,69 @@ function ConvocationSettingsModal({ sessionMatches, currentOverride, onClose }) 
   );
 }
 
-// Bandeau admin permettant de publier/dépublier la composition d'une
-// session (tous les terrains de la date à la fois) — tant qu'elle n'est pas
-// publiée, les joueurs ne voient que leurs boutons de présence (voir
-// MatchesView.jsx qui décide, pour les non-admins, d'afficher SessionCard ou
-// AvailabilitySessionCard selon isCompositionPublished).
-function PublishCompositionBar({ sessionMatches }) {
-  const [busy, setBusy] = useState(false);
-  const published = isCompositionPublished(sessionMatches);
-
-  const toggle = async () => {
-    setBusy(true);
-    try {
-      await setCompositionPublished(sessionMatches, !published);
-    } catch (error) {
-      alert("Erreur Firestore : " + error.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+// Fenêtre « Réponses des joueurs » : reprend le tableau Présents / Incertains
+// / Absents (en gras = déjà placé sur un terrain) et ajoute en dessous la
+// liste de ceux qui n'ont PAS encore répondu — pratique pour savoir qui
+// relancer. Un bouton en bas mène directement à « Modifier une présence ».
+function ResponsesModal({ sessionMatches, onClose, onEditPresence }) {
+  const { players } = useAppData();
+  const { pending } = getAvailabilityGroups(sessionMatches, players);
+  const waiting = pending
+    .filter((p) => !p.isTest)
+    .map((p) => getFirstName(p.name))
+    .sort((a, b) => a.localeCompare(b, "fr"));
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-2 mb-3 p-2.5 rounded-xl border",
-        published
-          ? "border-emerald-300 bg-emerald-50"
-          : "border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
-      )}
+    <Modal
+      title="Réponses des joueurs"
+      onClose={onClose}
+      wide
+      footer={
+        <button
+          type="button"
+          onClick={onEditPresence}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold bg-sky-500 text-white hover:bg-sky-600 active:scale-[0.98] transition-all"
+        >
+          <Icon.Edit className="w-4 h-4" />
+          Modifier une présence
+        </button>
+      }
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span
-          className={cn(
-            "w-2 h-2 rounded-full shrink-0",
-            published ? "bg-emerald-500" : "bg-amber-500"
-          )}
-        />
-        <p className="text-[11px] font-semibold text-[var(--color-text-dim)] truncate">
-          {published
-            ? "Composition publiée — visible par les joueurs"
-            : "Composition non publiée — visible par vous uniquement"}
+      <RespondedPlayersPanel sessionMatches={sessionMatches} />
+      <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1">
+          Sans réponse · {waiting.length}
+        </p>
+        <p className="text-xs text-[var(--color-text-dim)]">
+          {waiting.length ? waiting.join(", ") : "Tout le monde a répondu 🎉"}
         </p>
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={toggle}
-        className={cn(
-          "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all disabled:opacity-50 active:scale-[0.98]",
-          published
-            ? "bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-            : "bg-sky-200 text-sky-900 hover:bg-sky-300"
-        )}
-      >
-        {published ? "Dépublier" : "Publier la composition"}
-      </button>
-    </div>
+      <p className="text-[11px] text-[var(--color-text-faint)]">
+        En gras : joueurs déjà placés sur un terrain.
+      </p>
+    </Modal>
   );
 }
 
 export function SessionCard({ sessionMatches, now }) {
-  const { isAdmin, players } = useAppData();
-  // Admin : modale permettant de modifier la présence (la sienne ou celle
-  // d'un autre joueur) sans passer par le placement sur le terrain.
-  const [showManagePresence, setShowManagePresence] = useState(false);
-  // Admin : modale "Convoquer un joueur occasionnel" (ajout du 10/10/2026) —
-  // le bouton n'apparaît que s'il existe au moins un joueur occasionnel.
-  const [showInvitePlayers, setShowInvitePlayers] = useState(false);
-  const hasOccasionalPlayers = players.some((p) => p.isOccasional);
-  // Admin : le volet "préparation" (bandeau publier/dépublier, lien
-  // "Modifier une présence", tableau des réponses de présence, ET la grille
-  // des terrains/compositions elle-même) est replié par défaut — l'admin
-  // voit alors exactement le même affichage qu'un joueur normal tant que la
-  // composition n'a pas été publiée (uniquement sa propre présence). La
-  // flèche en haut à droite de la carte permet de tout déplier pour
-  // retrouver la vue complète actuelle (terrains compris). Ce repli est un
-  // simple état d'affichage LOCAL à l'admin connecté (aucune écriture
-  // Firestore) : il n'a aucun effet sur ce que voient les autres joueurs —
-  // une fois la composition publiée (voir isCompositionPublished), elle
-  // reste affichée d'office à tous les autres joueurs, quel que soit l'état
-  // (replié/déplié) de la flèche admin. Replié par défaut = moins de
-  // composants montés par carte, donc plus léger quand il y a beaucoup de
-  // matchs à l'écran.
+  const { isAdmin } = useAppData();
+  // Admin : la flèche en haut à droite déplie / replie la grille des
+  // terrains (repliée par défaut = carte compacte et plus légère). Simple état
+  // d'affichage LOCAL (aucune écriture Firestore) : sans effet sur ce que
+  // voient les joueurs. Le bandeau des 5 boutons reste, lui, toujours visible
+  // pour voir d'un coup d'œil l'état (vert / rouge) de chaque session.
   const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
-  // La composition n'étant affichée (via cette carte) qu'une fois publiée
-  // pour les non-admins, ce badge est en pratique toujours visible des
-  // joueurs qui voient SessionCard — mais on le conditionne quand même
-  // explicitement pour qu'il disparaisse aussitôt côté admin en cas de
-  // dépublication (SessionCard reste affichée à l'admin même non publiée).
   const published = isCompositionPublished(sessionMatches);
-  // (19/10/2026) Y a-t-il quelque chose entre la date et « Votre présence » ?
-  // Admin avec la préparation repliée : non → on supprime la fine ligne de
-  // séparation et le grand espace (la carte devient compacte).
-  const showMiddle = !isAdmin || prepExpanded;
+  const showCourts = !isAdmin || prepExpanded;
   return (
     <Card className="p-4 pm-rise">
-      <div className={cn("flex items-baseline justify-between gap-2", showMiddle ? "mb-3" : "mb-2")}>
+      <div className={cn("flex items-baseline justify-between gap-2", showCourts || isAdmin ? "mb-3" : "mb-2")}>
         <div className="flex items-baseline gap-2 flex-wrap min-w-0">
           <p className="pm-display font-bold text-base">
             {formatDateFR(first.date)} · {formatTimeFR(first.time)}
           </p>
-          {published && (
+          {published && !isAdmin && (
             <span className="text-[11px] font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full shrink-0">
               Suggestion de feuille de match
             </span>
@@ -274,12 +379,8 @@ export function SessionCard({ sessionMatches, now }) {
             <button
               type="button"
               onClick={() => setPrepExpanded((v) => !v)}
-              aria-label={
-                prepExpanded
-                  ? "Masquer les terrains, le tableau des présences et la publication de la composition"
-                  : "Afficher les terrains, le tableau des présences et la publication de la composition"
-              }
-              title={prepExpanded ? "Replier la préparation" : "Déplier la préparation"}
+              aria-label={prepExpanded ? "Masquer les terrains" : "Afficher les terrains"}
+              title={prepExpanded ? "Masquer les terrains" : "Afficher les terrains"}
               className="p-1.5 rounded-full bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 hover:text-sky-700 active:scale-95 transition-all"
             >
               <Icon.Chevron
@@ -290,39 +391,9 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       </div>
 
-      {isAdmin && prepExpanded && (
-        <>
-          <ConvocationBar sessionMatches={sessionMatches} />
+      {isAdmin && <AdminSessionBar sessionMatches={sessionMatches} />}
 
-          <PublishCompositionBar sessionMatches={sessionMatches} />
-
-          <div className="flex items-center justify-between gap-2 mb-2">
-            {hasOccasionalPlayers ? (
-              <button
-                type="button"
-                onClick={() => setShowInvitePlayers(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-sky-500 text-white hover:bg-sky-600 active:scale-[0.98] transition-all"
-              >
-                <Icon.Bell className="w-3.5 h-3.5" />
-                Convoquer un joueur occasionnel
-              </button>
-            ) : (
-              <span />
-            )}
-            <button
-              type="button"
-              onClick={() => setShowManagePresence(true)}
-              className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 underline decoration-dotted"
-            >
-              Modifier une présence
-            </button>
-          </div>
-
-          <RespondedPlayersPanel sessionMatches={sessionMatches} />
-        </>
-      )}
-
-      {showMiddle && (
+      {showCourts && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sessionMatches.map((m) => (
             <CourtPanel key={m.id} match={m} now={now} />
@@ -330,25 +401,12 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       )}
 
-      <div className={cn(showMiddle && "mt-4 pt-4 border-t border-[var(--color-border)]")}>
+      <div className={cn(showCourts && "mt-4 pt-4 border-t border-[var(--color-border)]")}>
         <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
           Votre présence
         </p>
         <AvailabilityButtons sessionMatches={sessionMatches} />
       </div>
-
-      {showManagePresence && (
-        <ManagePresenceModal
-          sessionMatches={sessionMatches}
-          onClose={() => setShowManagePresence(false)}
-        />
-      )}
-      {showInvitePlayers && (
-        <InvitePlayersModal
-          sessionMatches={sessionMatches}
-          onClose={() => setShowInvitePlayers(false)}
-        />
-      )}
     </Card>
   );
 }
