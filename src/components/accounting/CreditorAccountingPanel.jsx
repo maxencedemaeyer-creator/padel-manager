@@ -64,6 +64,9 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   const [savingGroupKey, setSavingGroupKey] = useState(null);
   // Modale de détail des remboursements (bloc 4) : "past" | "upcoming" | null.
   const [paymentsModalTab, setPaymentsModalTab] = useState(null);
+  // Volet "Consommation personnelle hors abonnement" (bloc 6) : replié par
+  // défaut (19/10/2026), état non mémorisé — aucune écriture Firebase.
+  const [showOffSubscription, setShowOffSubscription] = useState(false);
   // Mémoïsé (04/09/2026) : ces 3 fonctions reparcourent TOUS les matchs de
   // l'app (`getUnpaidPastParticipations` n'est même pas filtrée par
   // créancier). Ce panneau est ouvert par CHAQUE créancier dans "Ma
@@ -669,9 +672,35 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
           à régler comme n'importe quel joueur. */}
       {hasPayableMatches && (
         <>
-          <p className="text-xs font-semibold uppercase tracking-wide text-rose-500 mb-2">
-            Consommation personnelle hors abonnement
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowOffSubscription((v) => !v)}
+            aria-expanded={showOffSubscription}
+            className="w-full flex items-center gap-3 bg-rose-50 border border-rose-200 rounded-2xl shadow-sm px-4 py-3 mb-3 text-left hover:bg-rose-100/70 active:bg-rose-100 transition-colors"
+          >
+            <Icon.AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-rose-600 leading-tight">
+                Hors abonnement
+              </span>
+              <span className="block text-[11px] text-rose-600/70 mt-0.5">
+                {selfPayableMatches.length} match{selfPayableMatches.length > 1 ? "s" : ""}
+              </span>
+            </span>
+            <span className="pm-mono font-bold text-sm text-rose-800 shrink-0">
+              {selfPayableTotal.toLocaleString("fr-FR")} €
+            </span>
+            <Icon.Chevron
+              className={cn(
+                "w-4 h-4 text-rose-400 shrink-0 transition-transform",
+                showOffSubscription && "rotate-90"
+              )}
+            />
+          </button>
+        </>
+      )}
+      {hasPayableMatches && showOffSubscription && (
+        <>
           <p className="text-xs text-rose-600/80 mb-2">
             N'est créancier d'aucun terrain ces jours-là — ces matchs ne sont pas couverts par sa
             créance, à régler comme n'importe quel joueur.
