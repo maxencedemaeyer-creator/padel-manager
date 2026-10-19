@@ -113,8 +113,8 @@ function AdminSessionBar({ sessionMatches }) {
                 "h-14 px-0.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-center",
                 "text-[9px] min-[390px]:text-[10px] sm:text-xs font-semibold leading-[1.1] tracking-tight whitespace-nowrap",
                 "transition-all active:scale-95",
-                b.tone === "ok" && "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600",
-                b.tone === "ko" && "bg-rose-500 text-white shadow-sm hover:bg-rose-600",
+                b.tone === "ok" && "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200",
+                b.tone === "ko" && "bg-rose-100 text-rose-800 border border-rose-300 hover:bg-rose-200",
                 b.tone === "neutral" &&
                   "bg-white text-[var(--color-text-dim)] border border-[var(--color-border)] hover:border-sky-300 hover:text-sky-700"
               )}
@@ -350,17 +350,17 @@ function ResponsesModal({ sessionMatches, onClose, onEditPresence }) {
 export function SessionCard({ sessionMatches, now }) {
   const { isAdmin } = useAppData();
   // Admin : la flèche en haut à droite déplie / replie la grille des
-  // terrains (repliée par défaut = carte compacte et plus légère). Simple état
+  // terrains et le bandeau de gestion (repliés par défaut = carte compacte et plus légère). Simple état
   // d'affichage LOCAL (aucune écriture Firestore) : sans effet sur ce que
-  // voient les joueurs. Le bandeau des 5 boutons reste, lui, toujours visible
-  // pour voir d'un coup d'œil l'état (vert / rouge) de chaque session.
+  // voient les joueurs. Le bandeau des 5 boutons est dans ce volet dépliant
+  // (le laisser toujours visible chargeait trop l'écran — retour de Max).
   const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
   const published = isCompositionPublished(sessionMatches);
   const showCourts = !isAdmin || prepExpanded;
   return (
     <Card className="p-4 pm-rise">
-      <div className={cn("flex items-baseline justify-between gap-2", showCourts || isAdmin ? "mb-3" : "mb-2")}>
+      <div className={cn("flex items-baseline justify-between gap-2", showCourts ? "mb-3" : "mb-2")}>
         <div className="flex items-baseline gap-2 flex-wrap min-w-0">
           <p className="pm-display font-bold text-base">
             {formatDateFR(first.date)} · {formatTimeFR(first.time)}
@@ -379,8 +379,8 @@ export function SessionCard({ sessionMatches, now }) {
             <button
               type="button"
               onClick={() => setPrepExpanded((v) => !v)}
-              aria-label={prepExpanded ? "Masquer les terrains" : "Afficher les terrains"}
-              title={prepExpanded ? "Masquer les terrains" : "Afficher les terrains"}
+              aria-label={prepExpanded ? "Replier la préparation" : "Déplier la préparation"}
+              title={prepExpanded ? "Replier la préparation" : "Déplier la préparation"}
               className="p-1.5 rounded-full bg-white border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-sky-300 hover:text-sky-700 active:scale-95 transition-all"
             >
               <Icon.Chevron
@@ -391,7 +391,7 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       </div>
 
-      {isAdmin && <AdminSessionBar sessionMatches={sessionMatches} />}
+      {isAdmin && prepExpanded && <AdminSessionBar sessionMatches={sessionMatches} />}
 
       {showCourts && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
