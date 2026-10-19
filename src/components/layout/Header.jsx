@@ -1,16 +1,65 @@
 // ─────────────────────────────────────────────────────────────────────────
-// En-tête fixe : profil (→ Mon profil), actualisation, clochette de
-// désinscriptions tardives (admin), déconnexion.
+// Clochette des désinscriptions tardives (ADMIN uniquement) + sa fenêtre.
+//
+// (19/10/2026) L'ancien bandeau supérieur de l'app (logo, profil,
+// actualiser, clochette, déconnexion) a été supprimé pour gagner de la
+// place à l'écran :
+//   - la clochette est désormais dans le bloc "Bonjour" (onglet Matchs),
+//     via le composant AdminAlertsBell ci-dessous ;
+//   - la déconnexion est dans "Mon profil", à côté de la roulette ⚙️.
+// Le fichier garde son nom (Header.jsx) pour ne rien casser ailleurs.
+//
+// Économie Firebase : l'écoute des alertes n'est plus lancée que chez
+// l'admin (avant, chaque joueur la lançait pour rien, la clochette
+// n'étant affichée qu'à l'admin). Elle est démarrée UNE seule fois puis
+// conservée : changer d'onglet et revenir ne relit pas les alertes.
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../firebase";
-import { cn, formatDateFR, getFirstName } from "../../lib/utils";
-import { useWithdrawalAlerts } from "../../lib/withdrawalWatcher";
+import { cn, formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Modal, Button, Card, Badge, EmptyState } from "../ui";
-import { PlayerAvatar } from "../players/PlayerAvatar";
+import { Modal, Button, Card, EmptyState } from "../ui";
+
+// Petite mémoire partagée : une seule écoute Firestore pour toute la durée
+// de la visite, quel que soit le nombre de fois où la clochette s'affiche.
+let alertsCache = [];
+let alertsStarted = false;
+const alertsSubscribers = new Set();
+
+function startAlertsListener() {
+  if (alertsStarted) return;
+  alertsStarted = true;
+  try {
+    const q = query(collection(db, "withdrawals"), where("alertWorthy", "==", true));
+    onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => new Date(b.leftAt) - new Date(a.leftAt));
+        alertsCache = list;
+        alertsSubscribers.forEach((fn) => fn(list));
+      },
+      (error) => console.error(error)
+    );
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function useAdminWithdrawalAlerts() {
+  const [alerts, setAlerts] = useState(alertsCache);
+  useEffect(() => {
+    startAlertsListener();
+    alertsSubscribers.add(setAlerts);
+    setAlerts(alertsCache);
+    return () => {
+      alertsSubscribers.delete(setAlerts);
+    };
+  }, []);
+  return alerts;
+}
 
 export function WithdrawalAlertsModal({ alerts, onClose }) {
   const [busyId, setBusyId] = useState(null);
@@ -99,117 +148,39 @@ export function WithdrawalAlertsModal({ alerts, onClose }) {
   );
 }
 
-export function Header({ setView, view }) {
-  const { connectedPlayer, isAdmin, logout } = useAppData();
-  const withdrawalAlerts = useWithdrawalAlerts();
+// Bouton clochette (style "bloc Bonjour" : rond blanc translucide sur fond
+// bleu) + pastille rouge du nombre d'alertes non lues. Ne s'affiche que
+// pour l'admin — les autres joueurs ne voient rien et ne lisent rien.
+export function AdminAlertsBell() {
+  const { isAdmin } = useAppData();
+  if (!isAdmin) return null;
+  return <AdminAlertsBellInner />;
+}
+
+function AdminAlertsBellInner() {
+  const alerts = useAdminWithdrawalAlerts();
   const [showAlerts, setShowAlerts] = useState(false);
-  const unreadCount = withdrawalAlerts.filter((a) => !a.read).length;
-  // Même principe que BottomNav.jsx : sur le Game Center (fond sombre),
-  // l'en-tête clair habituel (fond blanc, texte/boutons foncés) devient
-  // illisible. On bascule uniquement sur cet onglet vers une variante
-  // sombre — partout ailleurs, l'en-tête garde son style clair d'origine.
-  const isDark = view === "game-center";
-  // Base commune (fond/bordure/texte) des boutons ronds à droite — seule la
-  // couleur au survol reste propre à chaque bouton (sky pour actualiser/
-  // cloche, danger pour la déconnexion), inchangée par rapport à avant.
-  const iconBtnBase = cn(
-    "p-2.5 rounded-full transition-colors",
-    isDark
-      ? "bg-white/10 border border-white/15 text-white/70"
-      : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-dim)]"
-  );
-  const iconBtnHoverSky = isDark
-    ? "hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50"
-    : "hover:text-sky-700 hover:border-sky-300";
+  const unreadCount = alerts.filter((a) => !a.read).length;
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-30 flex items-center justify-between px-5 py-4 backdrop-blur-md border-b",
-        // Bleu-nuit proche du fond du Game Center (voir le dégradé
-        // #0B0B1E → #13132C dans GameCenterView.jsx), plutôt qu'un gris
-        // neutre — pour que l'en-tête ait l'air de prolonger ce fond au
-        // lieu de sembler être un simple overlay sombre générique.
-        isDark ? "bg-[#12122c]/85 border-white/10" : "bg-[var(--color-nav)]/90 border-[var(--color-border)]"
-      )}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <Icon.Ball className="w-5 h-5 text-[var(--color-lime)] shrink-0" />
-        {/* Chez l'admin, la mention est réduite (et se réagrandit à partir
-            de sm:) pour laisser assez de place aux 3 boutons de droite
-            (profil, cloche, déconnexion) sans que rien ne soit coupé. */}
-        <span
-          className={cn(
-            "pm-display font-extrabold truncate",
-            isAdmin ? "text-xs sm:text-base" : "text-base",
-            isDark && "text-white"
-          )}
-        >
-          Padel Manager
-        </span>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={() => setView("stats")}
-          aria-label="Mon profil"
-          className={cn(
-            "flex items-center gap-2 pl-1 pr-3 py-1 rounded-full transition-colors",
-            isDark
-              ? "bg-white/10 border border-white/15 hover:border-[var(--color-lime)]/50"
-              : "bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-sky-300"
-          )}
-        >
-          <PlayerAvatar player={connectedPlayer} size={28} />
-          <span
-            className={cn(
-              "text-xs font-semibold max-w-[80px] truncate",
-              isDark && "text-white"
-            )}
-          >
-            {getFirstName(connectedPlayer.name)}
+    <>
+      <button
+        type="button"
+        onClick={() => setShowAlerts(true)}
+        aria-label="Alertes de désinscription"
+        title="Désinscriptions tardives"
+        className="relative p-2 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all"
+      >
+        <Icon.Bell className="w-4 h-4" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+            {unreadCount > 9 ? "9+" : unreadCount}
           </span>
-          {isAdmin && (
-            <Badge tone="lime" className="!px-1.5 !py-0.5">
-              Admin
-            </Badge>
-          )}
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          aria-label="Actualiser la page"
-          title="Actualiser la page"
-          className={cn(iconBtnBase, iconBtnHoverSky)}
-        >
-          <Icon.Refresh className="w-4 h-4" />
-        </button>
-        {isAdmin && (
-          <button
-            onClick={() => setShowAlerts(true)}
-            aria-label="Alertes de désinscription"
-            className={cn("relative", iconBtnBase, iconBtnHoverSky)}
-          >
-            <Icon.Bell className="w-4 h-4" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
         )}
-        <button
-          onClick={logout}
-          aria-label="Déconnexion"
-          className={cn(
-            iconBtnBase,
-            "hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40"
-          )}
-        >
-          <Icon.Logout className="w-4 h-4" />
-        </button>
-      </div>
+      </button>
       {showAlerts && (
-        <WithdrawalAlertsModal alerts={withdrawalAlerts} onClose={() => setShowAlerts(false)} />
+        <WithdrawalAlertsModal alerts={alerts} onClose={() => setShowAlerts(false)} />
       )}
-    </header>
+    </>
   );
 }
