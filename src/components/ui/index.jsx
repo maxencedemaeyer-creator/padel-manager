@@ -66,10 +66,14 @@ export function Card({ children, className = "" }) {
 
 export function Modal({ title, onClose, children, footer, wide = false }) {
   const content = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto pm-fade">
+    // (19/10/2026) Compatibilité téléphones : "pm-modal-overlay" et
+    // "pm-modal-h" (voir src/index.css) gardent la fenêtre dans la zone
+    // VRAIMENT visible de l'écran (barre d'adresse Safari/Chrome, encoche,
+    // barre d'accueil de l'iPhone) : les boutons du bas restent accessibles.
+    <div className="pm-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto overscroll-contain pm-fade">
       <div
         className={cn(
-          "relative w-full max-h-[90vh] flex flex-col bg-white/80 backdrop-blur-2xl backdrop-saturate-150 border border-white/60 rounded-[28px] shadow-2xl overflow-hidden pm-rise",
+          "pm-modal-h relative w-full flex flex-col bg-white/80 backdrop-blur-2xl backdrop-saturate-150 border border-white/60 rounded-[28px] shadow-2xl overflow-hidden pm-rise",
           wide ? "max-w-lg" : "max-w-sm"
         )}
       >
@@ -77,7 +81,8 @@ export function Modal({ title, onClose, children, footer, wide = false }) {
           <h3 className="pm-display font-bold text-lg text-[var(--color-text)]">{title}</h3>
           <button
             onClick={onClose}
-            className="p-2 rounded-full bg-white/70 border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-text)] shrink-0"
+            aria-label="Fermer"
+            className="p-2.5 rounded-full bg-white/70 border border-white/70 text-[var(--color-text-dim)] hover:text-[var(--color-text)] shrink-0"
           >
             <Icon.X className="w-4 h-4" />
           </button>
