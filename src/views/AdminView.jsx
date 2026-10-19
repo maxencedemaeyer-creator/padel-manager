@@ -715,15 +715,12 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-1 mt-8">
-        <h3 className="font-semibold text-sm text-white">Gestion des abonnements</h3>
-      </div>
-      <p className="text-[11px] text-[var(--color-text-faint)] mb-3">
+      <p className="text-[11px] text-[var(--color-text-faint)]">
         Clôturez un abonnement terminé et déjà réglé pour ranger ses matchs (rien n'est perdu), ou
         supprimez définitivement un abonnement créé par erreur (et tous ses matchs avec).
       </p>
 
-      <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1 w-fit mb-3">
+      <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1 w-fit">
         {[
           ["active", `Actifs (${activeList.length})`],
           ["archived", `Archivés (${archivedList.length})`],
@@ -747,12 +744,12 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
           title={tab === "active" ? "Aucun abonnement actif" : "Aucun abonnement archivé"}
           subtitle={
             tab === "active"
-              ? "Générez-en un avec le bouton « Créer un abonnement » en haut de page."
+              ? "Générez-en un avec le bouton « Créer un abonnement » ci-dessus."
               : "Les abonnements clôturés apparaîtront ici."
           }
         />
       ) : (
-        <div className="flex flex-col gap-2 mb-6">
+        <div className="flex flex-col gap-2">
           {visibleList.map((info) => {
             const { abonnement: a } = info;
             const busy = busyId === a.id;
@@ -1063,6 +1060,46 @@ function RenameCourtsModal({ abonnement, matches, club, onClose }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Mise en page du centre Administration (réorganisé le 19/10/2026) : les
+// cartes sont rangées par rubrique (Équipe, Niveau, Comptabilité,
+// Abonnements & clubs, Réglages du site), avec un sommaire de raccourcis en
+// haut. Purement visuel : aucune fonctionnalité ni donnée n'a changé.
+// ─────────────────────────────────────────────────────────────────────────
+const ADMIN_SECTIONS = [
+  { id: "admin-team", label: "Équipe", icon: Icon.Users },
+  { id: "admin-level", label: "Niveau", icon: Icon.Chart },
+  { id: "admin-accounting", label: "Comptabilité", icon: Icon.Coin },
+  { id: "admin-subscriptions", label: "Abonnements", icon: Icon.Calendar },
+  { id: "admin-site", label: "Réglages", icon: Icon.Settings },
+];
+
+// Rubrique : titre + icône, puis les cartes empilées avec un espacement
+// régulier (la marge propre à chaque carte est neutralisée ici).
+function AdminSection({ id, icon: SectionIcon, title, subtitle, grid = false, children }) {
+  return (
+    <section id={id} className="mb-8 scroll-mt-4">
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="w-9 h-9 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0">
+          <SectionIcon className="w-4.5 h-4.5" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="pm-display font-bold text-base text-white leading-tight">{title}</h3>
+          {subtitle && <p className="text-[11px] text-white/70">{subtitle}</p>}
+        </div>
+      </div>
+      <div
+        className={cn(
+          "gap-3 *:mb-0! *:mt-0!",
+          grid ? "grid grid-cols-1 sm:grid-cols-2" : "flex flex-col"
+        )}
+      >
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export function AdminView() {
   const {
     players,
@@ -1122,48 +1159,26 @@ export function AdminView() {
     { label: "Paiements en attente", value: unpaidCount, icon: Icon.Coin },
   ];
 
+  const goTo = (id) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   return (
-    <div className="px-4 pt-4 pb-28">
-      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+    <div className="px-4 pt-4 pb-28 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="pm-display font-bold text-xl text-white">Administration</h2>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="secondary"
-            className="!py-2 !px-3"
-            onClick={() => setShowManageClubs(true)}
+        {maintenanceEnabled && (
+          <button
+            type="button"
+            onClick={() => goTo("admin-site")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500 text-white text-xs font-semibold shadow-sm"
           >
-            <span className="flex items-center gap-1.5">
-              <Icon.Shield className="w-4 h-4" /> Clubs
-            </span>
-          </Button>
-          <Button
-            variant="secondary"
-            className="!py-2 !px-3"
-            onClick={() => setShowCreateSeason(true)}
-          >
-            <span className="flex items-center gap-1.5">
-              <Icon.Calendar className="w-4 h-4" /> Créer un abonnement
-            </span>
-          </Button>
-        </div>
+            <Icon.AlertCircle className="w-3.5 h-3.5" /> Maintenance active
+          </button>
+        )}
       </div>
 
-      <RankingDivergenceCard players={players} />
-
-      {/* Outil consultatif "Liens entre joueurs" (replié par défaut) : qui a
-          joué avec / contre qui, préférences confidentielles, simulateur de
-          répartition. Ne modifie jamais une composition. */}
-      <PlayerLinksCard players={players} matches={matches} />
-      <PlayerPinsCard players={players} />
-
-      <MaintenanceSettingCard enabled={maintenanceEnabled} />
-      <GameCenterSettingCard enabled={gameCenterEnabled} />
-      <RankingSettingCard enabled={rankingEnabled} />
-      <PresenceWindowSettingCard value={presenceWindowDays} />
-      <PresenceLockSettingCard value={presenceLockHours} />
-      <RankingRecalcCard players={players} matches={matches} />
-
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      {/* Vue d'ensemble — chiffres clés */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         {stats.map((s) => (
           <Card key={s.label} className="p-4">
             <s.icon className="w-4 h-4 text-[var(--color-lime)] mb-2" />
@@ -1173,123 +1188,212 @@ export function AdminView() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="font-semibold text-sm text-white">
-          Soldes des créanciers
-        </h3>
-        <span className="pm-mono text-sm font-bold text-white">
-          Total : {totalBalance.toLocaleString("fr-FR")} €
-        </span>
+      {/* Sommaire : accès rapide aux rubriques */}
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-6 -mx-4 px-4 [scrollbar-width:none]">
+        {ADMIN_SECTIONS.map((sec) => (
+          <button
+            key={sec.id}
+            type="button"
+            onClick={() => goTo(sec.id)}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
+          >
+            <sec.icon className="w-3.5 h-3.5" /> {sec.label}
+          </button>
+        ))}
       </div>
-      <p className="text-[11px] text-[var(--color-text-faint)] mb-3">
-        « Créance de départ » = investissement initial, défini par abonnement lors de sa
-        génération (un créancier peut cumuler plusieurs abonnements). « Solde » = total perçu via
-        les matchs, calculé automatiquement.
-      </p>
 
-      {creditors.length === 0 ? (
-        <EmptyState
-          icon={<Icon.Coin className="w-6 h-6" />}
-          title="Aucun créancier configuré"
-          subtitle="Un joueur devient créancier automatiquement en étant sélectionné à la génération d'un abonnement, ou manuellement depuis l'onglet Joueurs."
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {[...creditors]
-            .sort((a, b) => (creditorRawTotals.get(b.id) || 0) - (creditorRawTotals.get(a.id) || 0))
-            .map((c) => {
-              const { claims, total } = getCreditorClaims(c.id, abonnements, matches);
+      {/* 1. Équipe — joueurs, coach, convocations */}
+      <AdminSection
+        id="admin-team"
+        icon={Icon.Users}
+        title="Équipe"
+        subtitle="Joueurs, coach, liens et convocations"
+      >
+        {/* Outil consultatif "Liens entre joueurs" (replié par défaut) : qui a
+            joué avec / contre qui, préférences confidentielles, simulateur de
+            répartition. Ne modifie jamais une composition. */}
+        <PlayerLinksCard players={players} matches={matches} />
+        <PlayerPinsCard players={players} />
+        <PresenceWindowSettingCard value={presenceWindowDays} />
+        <PresenceLockSettingCard value={presenceLockHours} />
+      </AdminSection>
 
-              return (
-                <Card key={c.id} className="p-4 flex flex-col gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setViewingCreditor(c)}
-                    className="flex items-center gap-3 text-left -m-1 p-1 rounded-xl hover:bg-[var(--color-surface-2)] transition-colors"
-                    title="Voir sa comptabilité complète (lecture seule)"
-                  >
-                    <PlayerAvatar player={c} size={40} />
-                    <span className="flex-1 font-semibold text-sm">{c.name}</span>
-                    <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)] shrink-0" />
-                  </button>
+      {/* 2. Niveau — affichage, alertes et recalcul */}
+      <AdminSection
+        id="admin-level"
+        icon={Icon.Chart}
+        title="Niveau"
+        subtitle="Visibilité, écarts à surveiller et recalcul"
+      >
+        <RankingDivergenceCard players={players} />
+        <RankingSettingCard enabled={rankingEnabled} />
+        <RankingRecalcCard players={players} matches={matches} />
+      </AdminSection>
 
-                  <div className="pl-[52px] flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
+      {/* 3. Comptabilité — soldes des créanciers */}
+      <AdminSection
+        id="admin-accounting"
+        icon={Icon.Coin}
+        title="Comptabilité"
+        subtitle="Créances et soldes des créanciers"
+      >
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="font-semibold text-sm text-white">Soldes des créanciers</h4>
+            <span className="pm-mono text-sm font-bold text-white">
+              Total : {totalBalance.toLocaleString("fr-FR")} €
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-faint)]">
+            « Créance de départ » = investissement initial, défini par abonnement lors de sa
+            génération (un créancier peut cumuler plusieurs abonnements). « Solde » = total perçu
+            via les matchs, calculé automatiquement.
+          </p>
+        </div>
+        {creditors.length === 0 ? (
+          <EmptyState
+            icon={<Icon.Coin className="w-6 h-6" />}
+            title="Aucun créancier configuré"
+            subtitle="Un joueur devient créancier automatiquement en étant sélectionné à la génération d'un abonnement, ou manuellement depuis l'onglet Joueurs."
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {[...creditors]
+              .sort((a, b) => (creditorRawTotals.get(b.id) || 0) - (creditorRawTotals.get(a.id) || 0))
+              .map((c) => {
+                const { claims, total } = getCreditorClaims(c.id, abonnements, matches);
+
+                return (
+                  <Card key={c.id} className="p-4 flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setViewingCreditor(c)}
+                      className="flex items-center gap-3 text-left -m-1 p-1 rounded-xl hover:bg-[var(--color-surface-2)] transition-colors"
+                      title="Voir sa comptabilité complète (lecture seule)"
+                    >
+                      <PlayerAvatar player={c} size={40} />
+                      <span className="flex-1 font-semibold text-sm">{c.name}</span>
+                      <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)] shrink-0" />
+                    </button>
+
+                    <div className="pl-[52px] flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-[var(--color-text-dim)]">
+                          Créance de départ
+                          {claims.length > 1 ? ` (${claims.length} abonnements)` : ""}
+                        </span>
+                        <span className="pm-mono text-sm font-bold text-sky-600">
+                          {total.toLocaleString("fr-FR")} €
+                        </span>
+                      </div>
+                      {claims.length === 0 ? (
+                        <p className="text-[10px] text-[var(--color-text-faint)]">
+                          Pas encore associé à un abonnement.
+                        </p>
+                      ) : (
+                        claims.map((claim) => {
+                          const club = clubs.find((cl) => cl.id === claim.clubId);
+                          const periodLabel = formatClaimPeriodLabel(claim.startDate, claim.endDate);
+                          return (
+                            <div
+                              key={claim.abonnementId}
+                              className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[var(--color-surface-2)]"
+                            >
+                              <span className="text-[10px] text-[var(--color-text-faint)] min-w-0 truncate">
+                                {[
+                                  claim.label || club?.name,
+                                  periodLabel,
+                                  `${claim.coveredMatches} match${claim.coveredMatches > 1 ? "s" : ""}`,
+                                ]
+                                  .filter(Boolean)
+                                  .join("  ·  ")}
+                              </span>
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                <span className="pm-mono text-xs font-bold">
+                                  {claim.amount.toLocaleString("fr-FR")} €
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingClaim({
+                                      creditorId: c.id,
+                                      creditorName: c.name,
+                                      abonnement: abonnements.find((a) => a.id === claim.abonnementId),
+                                    })
+                                  }
+                                  className="p-1 -m-1 rounded-lg text-[var(--color-text-faint)] hover:text-[var(--color-lime)] transition-colors"
+                                  title="Modifier cette créance"
+                                >
+                                  <Icon.Settings className="w-3.5 h-3.5" />
+                                </button>
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pl-[52px]">
                       <span className="text-xs text-[var(--color-text-dim)]">
-                        Créance de départ
-                        {claims.length > 1 ? ` (${claims.length} abonnements)` : ""}
+                        Solde (perçu via les matchs)
                       </span>
-                      <span className="pm-mono text-sm font-bold text-sky-600">
-                        {total.toLocaleString("fr-FR")} €
+                      <span className="pm-mono text-sm font-bold text-[var(--color-lime)]">
+                        {(creditorRawTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
                       </span>
                     </div>
-                    {claims.length === 0 ? (
-                      <p className="text-[10px] text-[var(--color-text-faint)]">
-                        Pas encore associé à un abonnement.
-                      </p>
-                    ) : (
-                      claims.map((claim) => {
-                        const club = clubs.find((cl) => cl.id === claim.clubId);
-                        const periodLabel = formatClaimPeriodLabel(claim.startDate, claim.endDate);
-                        return (
-                          <div
-                            key={claim.abonnementId}
-                            className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[var(--color-surface-2)]"
-                          >
-                            <span className="text-[10px] text-[var(--color-text-faint)] min-w-0 truncate">
-                              {[
-                                claim.label || club?.name,
-                                periodLabel,
-                                `${claim.coveredMatches} match${claim.coveredMatches > 1 ? "s" : ""}`,
-                              ]
-                                .filter(Boolean)
-                                .join("  ·  ")}
-                            </span>
-                            <span className="flex items-center gap-1.5 shrink-0">
-                              <span className="pm-mono text-xs font-bold">
-                                {claim.amount.toLocaleString("fr-FR")} €
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditingClaim({
-                                    creditorId: c.id,
-                                    creditorName: c.name,
-                                    abonnement: abonnements.find((a) => a.id === claim.abonnementId),
-                                  })
-                                }
-                                className="p-1 -m-1 rounded-lg text-[var(--color-text-faint)] hover:text-[var(--color-lime)] transition-colors"
-                                title="Modifier cette créance"
-                              >
-                                <Icon.Settings className="w-3.5 h-3.5" />
-                              </button>
-                            </span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  </Card>
+                );
+              })}
+          </div>
+        )}
+      </AdminSection>
 
-                  <div className="flex items-center justify-between pl-[52px]">
-                    <span className="text-xs text-[var(--color-text-dim)]">
-                      Solde (perçu via les matchs)
-                    </span>
-                    <span className="pm-mono text-sm font-bold text-[var(--color-lime)]">
-                      {(creditorRawTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
-                    </span>
-                  </div>
-                </Card>
-              );
-            })}
+      {/* 4. Abonnements & clubs */}
+      <AdminSection
+        id="admin-subscriptions"
+        icon={Icon.Calendar}
+        title="Abonnements & clubs"
+        subtitle="Créer, clôturer ou supprimer un abonnement"
+      >
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            className="!py-2 !px-3"
+            onClick={() => setShowCreateSeason(true)}
+          >
+            <span className="flex items-center gap-1.5">
+              <Icon.Plus className="w-4 h-4" /> Créer un abonnement
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
+            className="!py-2 !px-3"
+            onClick={() => setShowManageClubs(true)}
+          >
+            <span className="flex items-center gap-1.5">
+              <Icon.Shield className="w-4 h-4" /> Gérer les clubs
+            </span>
+          </Button>
         </div>
-      )}
+        <AbonnementManagementSection
+          abonnements={abonnements}
+          matches={matches}
+          players={players}
+          clubs={clubs}
+        />
+      </AdminSection>
 
-      <AbonnementManagementSection
-        abonnements={abonnements}
-        matches={matches}
-        players={players}
-        clubs={clubs}
-      />
+      {/* 5. Réglages du site */}
+      <AdminSection
+        id="admin-site"
+        icon={Icon.Settings}
+        title="Réglages du site"
+        subtitle="Accès à l'app et fonctionnalités visibles"
+        grid
+      >
+        <MaintenanceSettingCard enabled={maintenanceEnabled} />
+        <GameCenterSettingCard enabled={gameCenterEnabled} />
+      </AdminSection>
 
       {showCreateSeason && (
         <CreateSeasonModal onClose={() => setShowCreateSeason(false)} />
