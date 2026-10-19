@@ -15,6 +15,7 @@
 // produit — ce composant ne fait rien d'autre qu'attraper les erreurs.
 // ─────────────────────────────────────────────────────────────────────────
 import { Component } from "react";
+import { hideSplash } from "../lib/splash";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -27,6 +28,9 @@ export class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // (19/10/2026) Si l'erreur survient pendant l'ouverture, on retire
+    // l'écran de logo pour que le message ci-dessous soit bien visible.
+    hideSplash();
     // Toujours utile en cas de souci : visible dans la console développeur
     // du navigateur de la personne concernée, pour pouvoir diagnostiquer
     // après coup sur base de sa description.
