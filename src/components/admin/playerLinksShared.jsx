@@ -6,12 +6,12 @@
 import { useMemo } from "react";
 import { getFirstName, formatDateShortFR } from "../../lib/utils";
 
-// Prénom si personne d'autre ne le porte parmi les joueurs affichés, sinon
-// nom complet (pour ne jamais confondre deux "Jean").
+// Prénom si personne d'autre ne le porte dans le roster, sinon nom complet
+// (pour ne jamais confondre deux "Jean").
 export function useNameOf(ctx) {
   return useMemo(() => {
     const counts = new Map();
-    ctx.ids.forEach((id) => {
+    (ctx.allIds || ctx.ids).forEach((id) => {
       const first = getFirstName(ctx.playersById.get(id)?.name);
       counts.set(first, (counts.get(first) || 0) + 1);
     });
