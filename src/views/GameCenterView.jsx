@@ -44,7 +44,9 @@ export function GameCenterView() {
   const [openGame, setOpenGame] = useState(null);
 
   return (
-    // Hauteur : 100dvh moins la hauteur de l'en-tête sticky (~4.5rem), pas
+    // (19/10/2026) Le bandeau supérieur de l'app a été supprimé : la page
+    // occupe désormais simplement toute la hauteur visible (100dvh).
+    // Historique — Hauteur : 100dvh moins la hauteur de l'en-tête sticky (~4.5rem), pas
     // "min-h-screen" tout seul — sinon on empile "1 écran plein" EN PLUS de
     // l'en-tête (qui prend déjà de la place au-dessus), et la page devient
     // scrollable sur une hauteur vide équivalente à l'en-tête (bug remonté
@@ -53,7 +55,7 @@ export function GameCenterView() {
     // 100vh dépasse la zone réellement visible quand la barre d'adresse est
     // affichée.
     <div
-      className="relative overflow-hidden px-4 pt-4 pb-28 min-h-[calc(100dvh-4.5rem)]"
+      className="relative overflow-hidden px-4 pt-4 pb-28 min-h-[100dvh]"
       style={{
         background:
           "radial-gradient(circle at 15% 8%, rgba(168,85,247,0.35), transparent 45%), radial-gradient(circle at 90% 15%, rgba(34,211,238,0.28), transparent 50%), radial-gradient(circle at 50% 100%, rgba(236,72,153,0.16), transparent 55%), linear-gradient(180deg, #0B0B1E 0%, #13132C 55%, #0B0B1E 100%)",
