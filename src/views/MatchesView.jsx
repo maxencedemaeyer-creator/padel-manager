@@ -311,7 +311,9 @@ export function MatchesView() {
         <button
           onClick={() => setShowCreateMatch(true)}
           aria-label="Créer un match ponctuel"
-          className="fixed bottom-24 right-5 z-20 w-14 h-14 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center shadow-lg shadow-sky-300/50 active:scale-95 transition-all"
+          // (19/10/2026) Position calée au-dessus de la barre de navigation,
+          // y compris sur les iPhone avec barre d'accueil (zone "safe-area").
+          className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] z-20 w-14 h-14 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center shadow-lg shadow-sky-300/50 active:scale-95 transition-all"
         >
           <Icon.Plus className="w-6 h-6" />
         </button>
