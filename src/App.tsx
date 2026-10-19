@@ -13,7 +13,6 @@ import { Spinner, BounceLoader, Button } from "./components/ui";
 import { authReady } from "./firebase";
 import { SplashHold, SplashDone } from "./lib/splash";
 import { AuthGate } from "./components/auth/AuthGate";
-import { Header } from "./components/layout/Header";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
 import { LevelHistoryIntro } from "./components/players/LevelHistoryIntro";
@@ -278,8 +277,10 @@ function MainApp() {
 
   return (
     <AppDataContext.Provider value={contextValue}>
-      <div className="pm-root">
-        <Header setView={changeView} view={view} />
+      {/* (19/10/2026) Plus de bandeau supérieur : la clochette admin est
+          dans le bloc "Bonjour" (onglet Matchs) et la déconnexion dans
+          "Mon profil". "pm-app" = fond bleu foncé du logo (voir index.css). */}
+      <div className="pm-root pm-app">
         <Suspense
           fallback={
             view === "game-center" ? (
