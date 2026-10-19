@@ -412,14 +412,19 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
             {showRightBlock && (
               <div className="w-[68px] flex flex-col gap-1.5">
                 {showRanking && (
-                  <span
-                    title="Niveau"
-                    className="h-7 w-full rounded-md bg-[var(--color-lime)]/10 border border-[var(--color-lime)]/40 text-[11px] font-bold text-[var(--color-lime)] flex items-center justify-center pm-mono"
-                  >
-                    {rankingState.hasRanking
-                      ? `🎾 ${rankingState.score.toFixed(1).replace(".", ",")}`
-                      : "🎾 N.C."}
-                  </span>
+                  // Même pastille que dans "Mon profil" (Badge "lime" : fond
+                  // turquoise arrondi, balle + nombre), en format carte.
+                  <div className="flex justify-center" title="Niveau">
+                    <Badge
+                      tone="lime"
+                      className="pm-display !px-2 !py-1 !text-sm !font-extrabold !gap-1 leading-none"
+                    >
+                      <span className="text-xs leading-none">🎾</span>
+                      {rankingState.hasRanking
+                        ? rankingState.score.toFixed(1).replace(".", ",")
+                        : "N.C."}
+                    </Badge>
+                  </div>
                 )}
                 {(showHistoryCell || isAdmin) && (
                   <div className="flex gap-1.5">
