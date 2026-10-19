@@ -1155,8 +1155,8 @@ export function AdminView() {
   const stats = [
     { label: "Joueurs", value: players.length, icon: Icon.Users },
     { label: "Créanciers", value: creditors.length, icon: Icon.Shield },
-    { label: "Matchs à venir", value: upcomingCount, icon: Icon.Calendar },
-    { label: "Paiements en attente", value: unpaidCount, icon: Icon.Coin },
+    { label: "À venir", value: upcomingCount, icon: Icon.Calendar },
+    { label: "Impayés", value: unpaidCount, icon: Icon.Coin },
   ];
 
   const goTo = (id) =>
@@ -1178,13 +1178,21 @@ export function AdminView() {
       </div>
 
       {/* Vue d'ensemble — chiffres clés */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      {/* Chiffres clés — une seule ligne compacte (allégée le 19/10/2026) */}
+      <div className="grid grid-cols-4 gap-1.5 mb-3">
         {stats.map((s) => (
-          <Card key={s.label} className="p-4">
-            <s.icon className="w-4 h-4 text-[var(--color-lime)] mb-2" />
-            <p className="pm-display text-2xl font-extrabold">{s.value}</p>
-            <p className="text-xs text-[var(--color-text-dim)]">{s.label}</p>
-          </Card>
+          <div
+            key={s.label}
+            className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/10 text-white"
+          >
+            <span className="flex items-center gap-1">
+              <s.icon className="w-3 h-3 opacity-70" />
+              <span className="pm-display text-sm font-bold leading-none">{s.value}</span>
+            </span>
+            <span className="text-[10px] text-white/70 mt-0.5 leading-none whitespace-nowrap">
+              {s.label}
+            </span>
+          </div>
         ))}
       </div>
 
