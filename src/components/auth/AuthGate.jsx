@@ -9,7 +9,8 @@ import { cn, isPlayerAdmin } from "../../lib/utils";
 import { usePlayers } from "../../hooks/useFirestoreData";
 import { AppDataContext } from "../../context/AppContext";
 import Icon from "../icons/Icon";
-import { Field, Button, BounceLoader, inputClass } from "../ui";
+import { Field, Button, inputClass } from "../ui";
+import { SplashHold, SplashDone } from "../../lib/splash";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PlayerTile({ player, onClick }) {
@@ -348,7 +349,8 @@ export function AuthGate({ children }) {
   );
 
   if (loading || restoring) {
-    return <BounceLoader fullScreen />;
+    // Écran d'ouverture (logo) affiché pendant le chargement — voir lib/splash.js.
+    return <SplashHold />;
   }
 
   if (connectedPlayer) {
@@ -366,6 +368,8 @@ export function AuthGate({ children }) {
 
   return (
     <div className="pm-root min-h-screen flex flex-col">
+      {/* Écran de connexion prêt : fin de l'écran d'ouverture (effet de zoom). */}
+      <SplashDone />
       {showBrandHeader && <AuthBrandHeader />}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
         {players.length === 0 ? (
