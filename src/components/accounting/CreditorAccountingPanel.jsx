@@ -411,80 +411,6 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
         />
       )}
 
-      {/* 2. Créance(s) de départ — une carte par abonnement où il figure
-          comme créancier. Roulette de réglages masquée en lecture seule. */}
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-        Créance de départ
-      </p>
-      {claims.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-5">
-          <p className="pm-display text-3xl font-extrabold" style={{ color: "#1F2937" }}>
-            0 €
-          </p>
-          <p className="text-xs text-slate-500 mt-1">
-            Aucune créance enregistrée pour l'instant — elle est désormais définie lors de la
-            génération d'un abonnement, depuis l'onglet Administration.
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 mb-5">
-          {claims.map((claim) => {
-            const club = clubs.find((c) => c.id === claim.clubId);
-            const periodLabel = formatClaimPeriodLabel(claim.startDate, claim.endDate);
-            return (
-              <div
-                key={claim.abonnementId}
-                className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-500 truncate">
-                    {claim.label || club?.name || "Abonnement"}
-                  </span>
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setEditingClaim(claim)}
-                      className="p-1.5 -m-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-                      title="Modifier cette créance"
-                    >
-                      <Icon.Settings className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-                <p className="pm-display text-2xl font-extrabold" style={{ color: "#1F2937" }}>
-                  {claim.amount.toLocaleString("fr-FR")} €
-                </p>
-                <p className="text-[10px] text-slate-400 mt-2.5 pt-2.5 border-t border-slate-100">
-                  {[
-                    club?.name,
-                    (claim.courts || []).length > 0 &&
-                      `Terrain${claim.courts.length > 1 ? "s" : ""} ${claim.courts.join(", ")}`,
-                    periodLabel,
-                    `${claim.coveredMatches} match${claim.coveredMatches > 1 ? "s" : ""} couvert${claim.coveredMatches > 1 ? "s" : ""}`,
-                  ]
-                    .filter(Boolean)
-                    .join("  ·  ")}
-                </p>
-              </div>
-            );
-          })}
-          {claims.length > 1 && (
-            <p className="text-xs text-slate-500 px-1">
-              Total : <span className="font-bold">{advanced.toLocaleString("fr-FR")} €</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      {!readOnly && editingClaim && (
-        <ClaimSettingsModal
-          creditorId={creditorId}
-          creditorName={players.find((p) => p.id === creditorId)?.name || ""}
-          abonnement={abonnements.find((a) => a.id === editingClaim.abonnementId)}
-          onClose={() => setEditingClaim(null)}
-        />
-      )}
-
       {/* 3. Consommation personnelle (auto-remboursement). */}
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
         Consommation personnelle
@@ -639,6 +565,82 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
           accent="sky"
           sortDir="asc"
           onClose={() => setPaymentsModalTab(null)}
+        />
+      )}
+
+      {/* 2. Créance(s) de départ — une ligne compacte par abonnement où il
+          figure comme créancier. Placée juste avant la synthèse (19/10/2026)
+          car elle ne change jamais et sert surtout au calcul du reste net. Roulette de réglages masquée en lecture seule. */}
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+        Créance de départ
+      </p>
+      {claims.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 mb-5">
+          <p className="pm-display text-lg font-extrabold" style={{ color: "#1F2937" }}>
+            0 €
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Aucune créance enregistrée pour l'instant — elle est définie lors de la génération
+            d'un abonnement, depuis l'onglet Administration.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 mb-5">
+          {claims.map((claim) => {
+            const club = clubs.find((c) => c.id === claim.clubId);
+            const periodLabel = formatClaimPeriodLabel(claim.startDate, claim.endDate);
+            return (
+              <div
+                key={claim.abonnementId}
+                className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold text-slate-700 leading-tight">
+                    {claim.label || club?.name || "Abonnement"}
+                  </span>
+                  <span className="block text-[10px] text-slate-400 mt-0.5 leading-snug">
+                    {[
+                      club?.name,
+                      periodLabel,
+                      `${claim.coveredMatches} match${claim.coveredMatches > 1 ? "s" : ""} couvert${claim.coveredMatches > 1 ? "s" : ""}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <span
+                  className="pm-display text-lg font-extrabold shrink-0"
+                  style={{ color: "#1F2937" }}
+                >
+                  {claim.amount.toLocaleString("fr-FR")} €
+                </span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingClaim(claim)}
+                    className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors shrink-0"
+                    title="Modifier cette créance"
+                  >
+                    <Icon.Settings className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {claims.length > 1 && (
+            <p className="text-xs text-slate-500 px-1">
+              Total : <span className="font-bold">{advanced.toLocaleString("fr-FR")} €</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {!readOnly && editingClaim && (
+        <ClaimSettingsModal
+          creditorId={creditorId}
+          creditorName={players.find((p) => p.id === creditorId)?.name || ""}
+          abonnement={abonnements.find((a) => a.id === editingClaim.abonnementId)}
+          onClose={() => setEditingClaim(null)}
         />
       )}
 
