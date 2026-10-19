@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Padel Manager - Gestion Club & Comptes</title>
     <meta name="description" content="Application de gestion de club de padel avec planning de saison, présences par terrain et comptabilité des avances et dettes." />
     <meta property="og:title" content="Padel Manager - Gestion Club & Comptes" />
@@ -18,7 +18,9 @@
     <!-- Icône quand le site est ajouté à l'écran d'accueil (iOS) -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- "black-translucent" : l'heure/la batterie s'affichent en blanc PAR-DESSUS
+         le fond de l'app (plus de bande blanche en haut sur iPhone). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Padel Manager">
 
     <!-- Manifest PWA (icônes Android + autres) -->
@@ -35,6 +37,9 @@
          (la balle est découpée dans la même image, rien à télécharger en plus).
          C'est src/lib/splash.js qui le fait disparaître quand l'app est prête. -->
     <style>
+      /* Fond bleu foncé dès la première image : évite toute bande blanche
+         (haut, bas, et effet "élastique" quand on tire la page sur iPhone). */
+      html,body{background:#14334F;margin:0}
       #pm-splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#14334F;transition:opacity .55s ease .15s}
       #pm-splash .pm-sp-logo{position:relative;width:128px;height:128px;background:url(/icon-192.png) center/100% 100% no-repeat;animation:pm-sp-in .5s cubic-bezier(.2,.8,.2,1) both;transition:transform .7s cubic-bezier(.55,0,.85,.35),opacity .5s ease .2s}
       #pm-splash .pm-sp-cover{position:absolute;left:24%;top:18.4%;width:15.4%;height:15.4%;border-radius:50%;background:#14334F}
