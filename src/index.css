@@ -66,8 +66,13 @@ html, body{
     var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  min-height: 100dvh; /* hauteur réellement visible (barre d'adresse comprise) */
   overflow-x: hidden;
   max-width: 100vw;
+  /* Téléphone tenu à l'horizontale : le contenu ne passe plus sous
+     l'encoche / la caméra (gauche ou droite). Vaut 0 partout ailleurs. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   /* Sur iPhone (app ajoutée à l'écran d'accueil), le contenu passe sous
      l'heure/la batterie : on le décale juste de la hauteur de cette zone.
      Sur ordinateur et dans Safari normal, cette valeur vaut 0. */
@@ -83,6 +88,10 @@ html, body{
     radial-gradient(circle at 12% 0%, rgba(63,164,124,0.18), transparent 42%),
     radial-gradient(circle at 100% 18%, rgba(67,97,238,0.22), transparent 48%),
     #14334F;
+  /* iPhone avec barre d'accueil (le petit trait en bas) : on ajoute sa
+     hauteur sous le contenu, pour que la dernière carte de chaque onglet
+     ne soit jamais cachée derrière la barre de navigation. 0 ailleurs. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .pm-root *{ font-family: inherit; }
 .pm-display{ font-family: var(--font-display); letter-spacing: -0.02em; }
@@ -149,3 +158,47 @@ html, body{
   50%{ transform: scaleX(0.5); opacity: 0.12; }
 }
 .pm-bounce-shadow{ animation: pm-bounce-shadow 0.95s infinite; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Compatibilité téléphones (audit du 19/10/2026)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* 1. iPhone : Safari zoome automatiquement dès qu'on touche un champ dont
+   le texte fait moins de 16 px (code PIN, montant, nom…), et la page reste
+   zoomée ensuite. On force 16 px sur les écrans tactiles uniquement : sur
+   ordinateur, les champs gardent leur taille actuelle. */
+@media (hover: none) and (pointer: coarse){
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea{
+    font-size: 16px !important;
+  }
+}
+
+/* 2. Supprime le flash gris/bleu qui apparaît au toucher d'un bouton sur
+   Android et iPhone (l'app a déjà ses propres effets au clic). */
+html{
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 3. Fenêtres (Modal) : hauteur calée sur la zone VRAIMENT visible de
+   l'écran. Avec l'ancien "90vh", sur iPhone/Android la barre d'adresse
+   pouvait cacher le bas de la fenêtre (et ses boutons Valider/Annuler).
+   La première ligne sert de secours aux très vieux téléphones. */
+.pm-modal-h{
+  max-height: 90vh;
+  max-height: 90dvh;
+}
+.pm-modal-overlay{
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* 4. Respecte le réglage "Réduire les animations" du téléphone. */
+@media (prefers-reduced-motion: reduce){
+  .pm-rise, .pm-fade, .pm-shake, .pm-bounce, .pm-bounce-shadow, .pm-pulse{
+    animation: none !important;
+  }
+}
