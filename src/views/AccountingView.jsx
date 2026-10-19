@@ -30,11 +30,11 @@ export function AccountingView() {
   );
 
   return (
-    <div className="min-h-screen px-4 pt-4 pb-28" style={{ backgroundColor: "#F8FAFC" }}>
-      <h2 className="pm-display font-bold text-xl mb-1" style={{ color: "#1F2937" }}>
+    <div className="min-h-screen px-4 pt-4 pb-28">
+      <h2 className="pm-display font-bold text-xl mb-1 text-white">
         Ma comptabilité
       </h2>
-      <p className="text-xs text-slate-500 mb-4">
+      <p className="text-xs text-white/70 mb-4">
         Il vous reste {remainingMatchesCount} match{remainingMatchesCount > 1 ? "s" : ""} à jouer
         dans votre abonnement.
       </p>
