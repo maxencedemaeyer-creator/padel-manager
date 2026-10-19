@@ -8,6 +8,9 @@
 // adversaires de chaque match) et un voyant de couleur selon l'historique et
 // les préférences qu'il a encodées.
 //
+// Depuis le 19/10/2026, TOUT le roster est sélectionnable (nouveaux joueurs
+// et occasionnels compris, même sans aucun match joué).
+//
 // AUCUN LIEN AVEC LA COMPOSITION DES MATCHS : ce composant ne lit aucune
 // composition en cours, n'écrit rien nulle part et n'a aucun bouton
 // "appliquer". L'admin regarde, puis compose lui-même dans l'onglet Matchs.
@@ -159,7 +162,7 @@ export function PlayerLinksSimulator({ ctx, relations }) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
-        {ctx.ids.map((id) => {
+        {ctx.allIds.map((id) => {
           const on = picked.includes(id);
           const full = picked.length >= MAX_PLAYERS && !on;
           return (
