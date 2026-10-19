@@ -866,29 +866,92 @@ export function RespondedPlayersPanel({ sessionMatches }) {
   );
 }
 
-// Boutons de statut proposés à l'admin dans ManagePresenceModal — les 3
-// statuts normaux (AVAILABILITY_STATUSES) plus, en 4e position, le statut
-// "reserve" admin uniquement (voir RESERVE_STATUS dans lib/availability.js) :
-// marque le joueur présent mais volontairement mis en réserve, même si la
-// session n'est pas complète. Jamais proposé au joueur lui-même — ni dans
-// AvailabilityButtons, ni dans ChangeMyResponseModal, qui utilisent tous les
-// deux AVAILABILITY_STATUSES directement.
+// Choix proposés à l'admin dans ManagePresenceModal — les 3 statuts normaux
+// (AVAILABILITY_STATUSES) plus le statut "reserve" admin uniquement (voir
+// RESERVE_STATUS dans lib/availability.js) : présent mais volontairement mis
+// en réserve, même si la session n'est pas complète. Jamais proposé au joueur
+// lui-même — ni dans AvailabilityButtons, ni dans ChangeMyResponseModal, qui
+// utilisent tous les deux AVAILABILITY_STATUSES directement.
 const ADMIN_STATUS_BUTTONS = [...AVAILABILITY_STATUSES, RESERVE_STATUS];
 
+// Libellés courts (tiennent sur une ligne de téléphone) et couleurs des
+// choix de la modale admin.
+const ADMIN_CHOICE = {
+  present: {
+    label: "Présent",
+    icon: Icon.Check,
+    solid: "bg-emerald-500 border-emerald-500 text-white",
+    soft: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
+  absent: {
+    label: "Absent",
+    icon: Icon.X,
+    solid: "bg-rose-500 border-rose-500 text-white",
+    soft: "bg-rose-50 border-rose-200 text-rose-700",
+    dot: "bg-rose-500",
+  },
+  unknown: {
+    label: "Pas sûr",
+    icon: Icon.Question,
+    solid: "bg-amber-500 border-amber-500 text-white",
+    soft: "bg-amber-50 border-amber-200 text-amber-800",
+    dot: "bg-amber-500",
+  },
+  [RESERVE_STATUS]: {
+    label: "Réserve",
+    icon: Icon.Users,
+    solid: "bg-violet-500 border-violet-500 text-white",
+    soft: "bg-violet-50 border-violet-200 text-violet-700",
+    dot: "bg-violet-500",
+  },
+};
+
+// "Adrien Wouters" → "Adrien W." (affichage compact sur téléphone). Si deux
+// joueurs du club tombent sur le même nom court, on garde leur nom complet.
+function shortPlayerName(name) {
+  const parts = String(name || "").trim().split(/\s+/);
+  if (parts.length < 2) return parts[0] || "?";
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
 // Modale admin "Gérer les présences" — TOUS les joueurs du club pour cette
-// session (qu'ils aient déjà répondu ou non), chacun avec ses 3 boutons
-// Présent / Absent / Je ne sais pas encore, un 4e bouton "Réserve" (présent
-// mais volontairement non placé, voir ADMIN_STATUS_BUTTONS ci-dessus), plus
-// un 5e bouton pour réinitialiser sa réponse. Permet à l'administrateur de
-// modifier sa propre présence ou celle de n'importe quel autre joueur.
+// session (qu'ils aient déjà répondu ou non). Chaque ligne affiche l'emoji,
+// le nom court du joueur (nom complet sur ordinateur) et UNE seule pastille
+// avec sa réponse actuelle. Un appui sur cette pastille ouvre, juste sous la
+// ligne, les 5 choix avec leur libellé : Présent / Absent / Pas sûr /
+// Réserve (présent mais volontairement non placé) / Effacer (réinitialise la
+// réponse, le joueur devra rechoisir lui-même). Une seule ligne ouverte à la
+// fois. Permet à l'administrateur de modifier sa propre présence ou celle de
+// n'importe quel autre joueur. Aucune lecture/écriture Firebase en plus.
 export function ManagePresenceModal({ sessionMatches, onClose }) {
   const { players, matches } = useAppData();
   const [savingId, setSavingId] = useState(null);
+  const [openId, setOpenId] = useState(null);
 
   const { availability } = getAvailabilityGroups(sessionMatches, players);
   const invitedIds = getInvitedPlayerIds(sessionMatches);
 
   const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Noms courts, avec repli sur le nom complet en cas de doublon.
+  const shortCount = {};
+  sortedPlayers.forEach((p) => {
+    const s = shortPlayerName(p.name);
+    shortCount[s] = (shortCount[s] || 0) + 1;
+  });
+  const displayShort = (p) => {
+    const s = shortPlayerName(p.name);
+    return shortCount[s] > 1 ? p.name : s;
+  };
+
+  // Petit récapitulatif en haut de la fenêtre.
+  const counts = { present: 0, [RESERVE_STATUS]: 0, unknown: 0, absent: 0, none: 0 };
+  sortedPlayers.forEach((p) => {
+    const s = availability[p.id];
+    if (s && counts[s] !== undefined) counts[s] += 1;
+    else counts.none += 1;
+  });
 
   // Le placement automatique (autoPlacePresentPlayer) ne se déclenche que
   // pour le statut "present" — jamais pour "reserve" : c'est précisément ce
@@ -896,6 +959,7 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
   // des places libres, sans qu'il se retrouve auto-placé dans la foulée.
   const setStatus = async (playerId, status) => {
     setSavingId(playerId);
+    setOpenId(null);
     try {
       await setSessionAvailability(sessionMatches, playerId, status);
       if (status === "present") {
@@ -913,6 +977,7 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
   // rechoisir lui-même (utile si un joueur s'est trompé de bouton).
   const resetStatus = async (playerId) => {
     setSavingId(playerId);
+    setOpenId(null);
     try {
       await resetSessionAvailability(sessionMatches, playerId);
     } catch (error) {
@@ -922,30 +987,39 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
     }
   };
 
-  const statusIcon = {
-    present: Icon.Check,
-    absent: Icon.X,
-    unknown: Icon.Question,
-    [RESERVE_STATUS]: Icon.Users,
-  };
-  const statusActiveClass = {
-    present: "bg-emerald-500 border-emerald-500 text-white",
-    absent: "bg-rose-500 border-rose-500 text-white",
-    unknown: "bg-amber-500 border-amber-500 text-white",
-    [RESERVE_STATUS]: "bg-violet-500 border-violet-500 text-white",
-  };
+  const summary = [
+    { key: "present", n: counts.present },
+    { key: RESERVE_STATUS, n: counts[RESERVE_STATUS] },
+    { key: "unknown", n: counts.unknown },
+    { key: "absent", n: counts.absent },
+  ];
 
   return (
-    <Modal title="Gérer les présences" onClose={onClose}>
-      <p className="text-xs text-[var(--color-text-dim)] mb-3">
-        Modifiez la présence de n'importe quel joueur pour cette date — y
-        compris la vôtre. Le bouton{" "}
-        <Icon.Users className="inline w-3 h-3 -mt-0.5" /> met un joueur
-        présent volontairement en réserve, même si la session n'est pas
-        encore complète.
+    <Modal title="Gérer les présences" onClose={onClose} wide>
+      <p className="text-xs text-[var(--color-text-dim)]">
+        Touchez la réponse d'un joueur pour la modifier.
       </p>
 
-      <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pm-scroll-visible pr-1">
+      <div className="flex flex-wrap gap-1.5">
+        {summary.map(({ key, n }) => (
+          <span
+            key={key}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full border",
+              ADMIN_CHOICE[key].soft
+            )}
+          >
+            <span className={cn("w-1.5 h-1.5 rounded-full", ADMIN_CHOICE[key].dot)} />
+            {ADMIN_CHOICE[key].label} {n}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full border bg-white border-[var(--color-border)] text-[var(--color-text-faint)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+          Sans réponse {counts.none}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         {sortedPlayers.length === 0 ? (
           <p className="text-xs text-[var(--color-text-faint)] italic py-2">
             Aucun joueur.
@@ -953,71 +1027,101 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
         ) : (
           sortedPlayers.map((p) => {
             const status = availability[p.id];
+            const meta = status ? ADMIN_CHOICE[status] : null;
             const busy = savingId === p.id;
+            const open = openId === p.id;
+            const invited = p.isOccasional && invitedIds.has(p.id) && !status;
+            const StatusIcon = meta?.icon;
             return (
               <div
                 key={p.id}
-                className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                className={cn(
+                  "rounded-2xl border bg-white/90 transition-all",
+                  open
+                    ? "border-[var(--color-blue)]/40 shadow-md"
+                    : "border-[var(--color-border)]"
+                )}
               >
-                <span className="flex-1 min-w-0 truncate text-sm font-medium flex items-center gap-1.5">
-                  <span className="truncate">
-                    {p.emoji} {p.name}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setOpenId(open ? null : p.id)}
+                  className="w-full flex items-center gap-2 pl-3 pr-2 py-2 text-left disabled:opacity-50"
+                >
+                  <span className="text-lg leading-none shrink-0">{p.emoji}</span>
+                  <span className="flex-1 min-w-0 text-sm font-semibold text-[var(--color-text)]">
+                    <span className="sm:hidden">{displayShort(p)}</span>
+                    <span className="hidden sm:inline">{p.name}</span>
                   </span>
-                  {p.isOccasional && (
-                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-orange-700 bg-orange-100 border border-orange-200 rounded-full px-1.5 py-0.5">
-                      Occasionnel
-                    </span>
-                  )}
-                  {p.isOccasional && invitedIds.has(p.id) && !status && (
-                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-700 bg-sky-100 border border-sky-200 rounded-full px-1.5 py-0.5">
-                      Convoqué
-                    </span>
-                  )}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  {ADMIN_STATUS_BUTTONS.map((s) => {
-                    const StatusIcon = statusIcon[s];
-                    const active = status === s;
-                    const label =
-                      s === RESERVE_STATUS
-                        ? "Mettre en réserve (présent, sans place)"
-                        : STATUS_META[s].label;
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setStatus(p.id, s)}
-                        aria-label={label}
-                        title={label}
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center border transition-all disabled:opacity-40",
-                          s === RESERVE_STATUS && "ml-1",
-                          active
-                            ? statusActiveClass[s]
-                            : "bg-white border-[var(--color-border)] text-[var(--color-text-faint)] hover:border-sky-300"
-                        )}
-                      >
-                        <StatusIcon className="w-3.5 h-3.5" />
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    disabled={busy || !status}
-                    onClick={() => resetStatus(p.id)}
-                    aria-label="Réinitialiser sa réponse"
-                    title="Réinitialiser — il devra rechoisir lui-même"
-                    className="w-8 h-8 ml-1 rounded-full flex items-center justify-center border border-[var(--color-border)] bg-white text-[var(--color-text-faint)] hover:border-slate-400 hover:text-slate-600 disabled:opacity-30 transition-all"
+                  <span
+                    className={cn(
+                      "shrink-0 inline-flex items-center gap-1 h-8 pl-2.5 pr-2 rounded-full border text-xs font-semibold",
+                      meta
+                        ? meta.solid
+                        : invited
+                        ? "bg-sky-50 border-sky-200 text-sky-700"
+                        : "bg-white border-dashed border-slate-300 text-[var(--color-text-faint)]"
+                    )}
                   >
-                    <Icon.Refresh className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                    {busy ? (
+                      <Icon.Ball className="w-3.5 h-3.5 pm-pulse" />
+                    ) : (
+                      StatusIcon && <StatusIcon className="w-3.5 h-3.5" />
+                    )}
+                    {meta ? meta.label : invited ? "Convoqué" : "À définir"}
+                    <Icon.Chevron
+                      className={cn(
+                        "w-3.5 h-3.5 opacity-70 transition-transform",
+                        open ? "-rotate-90" : "rotate-90"
+                      )}
+                    />
+                  </span>
+                </button>
+
+                {open && (
+                  <div className="px-2 pb-2 pt-1 grid grid-cols-5 gap-1.5 pm-fade">
+                    {ADMIN_STATUS_BUTTONS.map((s) => {
+                      const c = ADMIN_CHOICE[s];
+                      const ChoiceIcon = c.icon;
+                      const active = status === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setStatus(p.id, s)}
+                          className={cn(
+                            "flex flex-col items-center justify-center gap-1 py-2 rounded-xl border text-[11px] font-semibold transition-all active:scale-95",
+                            active ? c.solid : c.soft
+                          )}
+                        >
+                          <ChoiceIcon className="w-4 h-4" />
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      disabled={!status}
+                      onClick={() => resetStatus(p.id)}
+                      title="Le joueur devra rechoisir lui-même"
+                      className="flex flex-col items-center justify-center gap-1 py-2 rounded-xl border border-[var(--color-border)] bg-white text-[11px] font-semibold text-slate-600 transition-all active:scale-95 disabled:opacity-30"
+                    >
+                      <Icon.Refresh className="w-4 h-4" />
+                      Effacer
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
+
+      <p className="text-[11px] text-[var(--color-text-faint)] leading-snug pt-1">
+        <b>Réserve</b> : présent, mais volontairement laissé hors terrain même
+        s'il reste de la place. <b>Effacer</b> : le joueur devra rechoisir
+        lui-même.
+      </p>
     </Modal>
   );
 }
