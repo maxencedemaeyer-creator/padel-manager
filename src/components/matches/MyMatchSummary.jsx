@@ -20,6 +20,7 @@ import { computePlayerStats } from "../../lib/stats";
 import { findRecentMvpWin } from "../../lib/mvp";
 import { useAppData } from "../../context/AppContext";
 import Icon from "../icons/Icon";
+import { AdminAlertsBell } from "../layout/Header";
 
 // Mêmes valeurs que dans MatchesView pour repérer "les 2 prochains matchs"
 // exactement comme la liste "Prochains matchs" affichée juste en dessous
@@ -217,23 +218,35 @@ export function MyMatchSummary({ now }) {
 
   return (
     <div className="relative rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-700 text-white shadow-sm p-4 mb-5">
-      {tbdMatchesToHandle.length > 0 && (
-        <button
-          type="button"
-          onClick={scrollToReprogramSection}
-          aria-label={`${tbdMatchesToHandle.length} match${
-            tbdMatchesToHandle.length > 1 ? "s" : ""
-          } à reprogrammer — voir`}
-          title="Match(s) à reprogrammer"
-          className="absolute top-3 right-3 p-2 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all"
-        >
-          <Icon.Calendar className="w-4 h-4" />
-          <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">
-            !
-          </span>
-        </button>
-      )}
-      <p className="pm-display font-bold text-lg mb-1 pr-8">
+      {/* Boutons ronds en haut à droite du bloc : "matchs à reprogrammer"
+          (admin/créancier, si besoin) et, pour l'admin uniquement, la
+          clochette des désinscriptions tardives (déplacée ici le 19/10/2026
+          depuis l'ancien bandeau supérieur, supprimé). */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        {tbdMatchesToHandle.length > 0 && (
+          <button
+            type="button"
+            onClick={scrollToReprogramSection}
+            aria-label={`${tbdMatchesToHandle.length} match${
+              tbdMatchesToHandle.length > 1 ? "s" : ""
+            } à reprogrammer — voir`}
+            title="Match(s) à reprogrammer"
+            className="relative p-2 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all"
+          >
+            <Icon.Calendar className="w-4 h-4" />
+            <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">
+              !
+            </span>
+          </button>
+        )}
+        <AdminAlertsBell />
+      </div>
+      <p
+        className={
+          "pm-display font-bold text-lg mb-1 " +
+          (isAdmin && tbdMatchesToHandle.length > 0 ? "pr-20" : isAdmin || tbdMatchesToHandle.length > 0 ? "pr-11" : "")
+        }
+      >
         Bonjour {getFirstName(connectedPlayer.name)} 👋
       </p>
       {mvpWinMatch && (
