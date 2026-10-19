@@ -483,7 +483,8 @@ function RankingSparkline({ values, width = 150, height = 28 }) {
 }
 
 export function StatsView() {
-  const { connectedPlayer, players, matches, sessionToken, isAdmin, rankingEnabled } = useAppData();
+  const { connectedPlayer, players, matches, sessionToken, isAdmin, rankingEnabled, logout } =
+    useAppData();
   // Ranking — même condition d'affichage que PlayerRow.jsx/MyMatchSummary.jsx.
   const showRanking = isAdmin || rankingEnabled;
   // Mémoïsé (04/09/2026) : ces calculs reparcourent TOUS les matchs (et,
@@ -647,7 +648,7 @@ export function StatsView() {
     <div className="pb-28">
       {/* En-tête profil — grand avatar, prénom (nom de famille masqué, trop
           de place sur mobile), contexte */}
-      <div className="px-4 pt-2 pb-6">
+      <div className="px-4 pt-5 pb-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <AvatarSelfEditor player={connectedPlayer} size={80} />
@@ -664,15 +665,30 @@ export function StatsView() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            aria-label="Paramètres de mon profil"
-            title="Paramètres"
-            className="p-2.5 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all shrink-0"
-          >
-            <Icon.Settings className="w-4 h-4" />
-          </button>
+          {/* Roulette ⚙️ + déconnexion (déplacée ici le 19/10/2026 depuis
+              l'ancien bandeau supérieur de l'app, supprimé). */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              aria-label="Paramètres de mon profil"
+              title="Paramètres"
+              className="p-2.5 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all"
+            >
+              <Icon.Settings className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Se déconnecter de Padel Manager ?")) logout();
+              }}
+              aria-label="Déconnexion"
+              title="Déconnexion"
+              className="p-2.5 rounded-full bg-white/10 border border-white/20 text-white hover:bg-rose-500/80 hover:border-rose-400 active:scale-95 transition-all"
+            >
+              <Icon.Logout className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
