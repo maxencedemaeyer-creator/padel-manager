@@ -125,8 +125,14 @@ export function getShownPlayers(players, links) {
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
 }
 
-// Contexte de calcul partagé par la grille, les fiches et le simulateur.
-// `means` = pour chaque joueur, nombre moyen de matchs "avec" et "contre"
+// Contexte de calcul partagé par la grille, les fiches, le simulateur et le
+// test de compo.
+// `ids`    = joueurs affichés dans la grille et les fiches (occasionnels
+//            seulement s'ils ont déjà joué).
+// `allIds` = TOUT le roster (hors comptes de test), nouveaux joueurs et
+//            occasionnels compris : c'est la liste proposée au choix dans le
+//            simulateur et le test de compo (décidé le 19/10/2026).
+// `means`  = pour chaque joueur, nombre moyen de matchs "avec" et "contre"
 // par autre joueur affiché : sert de repère pour dire si un chiffre est
 // élevé POUR CE JOUEUR (3 fois contre quelqu'un n'a pas le même poids pour
 // un joueur à 5 matchs que pour un joueur à 20).
@@ -134,8 +140,12 @@ export function buildLinkContext(matches, players) {
   const links = computePlayerLinks(matches);
   const shown = getShownPlayers(players, links);
   const ids = shown.map((p) => p.id);
+  const allShown = (players || [])
+    .filter((p) => p && p.id && !p.isTest)
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+  const allIds = allShown.map((p) => p.id);
   const means = new Map();
-  ids.forEach((id) => {
+  allIds.forEach((id) => {
     let withTotal = 0;
     let againstTotal = 0;
     ids.forEach((other) => {
@@ -144,10 +154,18 @@ export function buildLinkContext(matches, players) {
       withTotal += c.withCount;
       againstTotal += c.againstCount;
     });
-    const n = Math.max(ids.length - 1, 1);
+    const n = Math.max(ids.length - (ids.includes(id) ? 1 : 0), 1);
     means.set(id, { withMean: withTotal / n, againstMean: againstTotal / n });
   });
-  return { links, shown, ids, means, playersById: new Map((players || []).map((p) => [p.id, p])) };
+  return {
+    links,
+    shown,
+    ids,
+    allShown,
+    allIds,
+    means,
+    playersById: new Map((players || []).map((p) => [p.id, p])),
+  };
 }
 
 // Niveau de "chaleur" d'un compteur par rapport à la moyenne :
@@ -339,6 +357,55 @@ function perfectMatchings(items) {
   return out;
 }
 
+// Évalue UN match précis : teams = [[a, b], [c, d]]. Utilisé par le
+// simulateur (pour chaque combinaison) et par le test de compo (pour la
+// composition placée à la main par l'admin).
+export function evaluateMatch(ctx, relations, teams, nameOf) {
+  const [[a, b], [c, d]] = teams;
+  return {
+    teams: [
+      [a, b],
+      [c, d],
+    ],
+    partnerLinks: [
+      evaluatePartnerLink(ctx, relations, a, b, nameOf),
+      evaluatePartnerLink(ctx, relations, c, d, nameOf),
+    ],
+    opponentLinks: [
+      evaluateOpponentLink(ctx, relations, a, c, nameOf),
+      evaluateOpponentLink(ctx, relations, a, d, nameOf),
+      evaluateOpponentLink(ctx, relations, b, c, nameOf),
+      evaluateOpponentLink(ctx, relations, b, d, nameOf),
+    ],
+  };
+}
+
+// Bilan d'un ou plusieurs matchs évalués.
+export function summarizeMatches(matches) {
+  const all = matches.flatMap((m) => [...m.partnerLinks, ...m.opponentLinks]);
+  return {
+    attentionCount: all.filter((l) => ATTENTION_STATUSES.includes(l.status)).length,
+    hasAvoid: all.some((l) => l.status === "avoid"),
+    greenCount: all.filter((l) => l.status === "green").length,
+    score: all.reduce((sum, l) => sum + l.penalty, 0),
+  };
+}
+
+// Empreinte d'une composition, indépendante de l'ordre des joueurs, des
+// équipes et des terrains : sert à retrouver la compo de l'admin parmi
+// toutes les combinaisons du simulateur.
+export function compositionKey(matches) {
+  return matches
+    .map((m) =>
+      m.teams
+        .map((t) => [...t].sort().join("+"))
+        .sort()
+        .join(" vs ")
+    )
+    .sort()
+    .join(" / ");
+}
+
 // Nombre de joueurs acceptés par le simulateur : 4 (un match) ou 8 (une
 // session de deux matchs, la situation habituelle du club).
 export const SIMULATOR_SIZES = [4, 8];
@@ -366,35 +433,10 @@ export function evaluateConfigurations(ctx, relations, ids, nameOf) {
   perfectMatchings(ids).forEach((pairs) => {
     // Les paires sont ensuite opposées deux à deux pour former les matchs.
     perfectMatchings(pairs.map((_, i) => i)).forEach((grouping) => {
-      const matches = grouping.map(([i, j]) => {
-        const [a, b] = pairs[i];
-        const [c, d] = pairs[j];
-        return {
-          teams: [
-            [a, b],
-            [c, d],
-          ],
-          partnerLinks: [
-            evaluatePartnerLink(ctx, relations, a, b, nameOf),
-            evaluatePartnerLink(ctx, relations, c, d, nameOf),
-          ],
-          opponentLinks: [
-            evaluateOpponentLink(ctx, relations, a, c, nameOf),
-            evaluateOpponentLink(ctx, relations, a, d, nameOf),
-            evaluateOpponentLink(ctx, relations, b, c, nameOf),
-            evaluateOpponentLink(ctx, relations, b, d, nameOf),
-          ],
-        };
-      });
-      const all = matches.flatMap((m) => [...m.partnerLinks, ...m.opponentLinks]);
-      evaluated.push({
-        index: evaluated.length,
-        matches,
-        attentionCount: all.filter((l) => ATTENTION_STATUSES.includes(l.status)).length,
-        hasAvoid: all.some((l) => l.status === "avoid"),
-        greenCount: all.filter((l) => l.status === "green").length,
-        score: all.reduce((sum, l) => sum + l.penalty, 0),
-      });
+      const matches = grouping.map(([i, j]) =>
+        evaluateMatch(ctx, relations, [pairs[i], pairs[j]], nameOf)
+      );
+      evaluated.push({ index: evaluated.length, matches, ...summarizeMatches(matches) });
     });
   });
 
