@@ -9,13 +9,10 @@ import Icon from "../icons/Icon";
 
 export function BottomNav({ view, setView }) {
   const { isAdmin, connectedPlayer, gameCenterEnabled } = useAppData();
-  // Le Game Center a un fond sombre (voir GameCenterView.jsx) au lieu du
-  // fond clair habituel du reste de l'app : le verre clair de la barre
-  // (bg-white/60 + texte gris-bleu clair) s'y fondait presque entièrement,
-  // devenant illisible. Sur cet onglet uniquement, on bascule la barre sur
-  // une variante "verre sombre" (fond noir translucide, bordure et texte
-  // clairs) — sur tous les autres onglets, rien ne change.
-  const isDark = view === "game-center";
+  // Depuis le 19/10/2026, tous les onglets ont un fond bleu foncé (et le
+  // Game Center un fond sombre) : l'ancien "verre clair" avec texte gris-bleu
+  // devenait illisible. La barre est donc toujours en "verre sombre" : fond
+  // bleu nuit translucide, bordure claire, libellés blancs bien lisibles.
   const tabs = [
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
     { id: "players", label: "Équipe", icon: Icon.Users },
@@ -28,29 +25,29 @@ export function BottomNav({ view, setView }) {
     ...(isAdmin || gameCenterEnabled
       ? [{ id: "game-center", label: "Game Center", icon: Icon.Gamepad }]
       : []),
-    ...(isAdmin ? [{ id: "admin", label: "Administration", icon: Icon.Shield }] : []),
+    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: Icon.Shield }] : []),
   ];
   const content = (
     <nav
       className={cn(
-        "fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md backdrop-blur-2xl backdrop-saturate-150 border rounded-full shadow-[0_12px_32px_-8px_rgba(20,33,61,0.18)] flex px-2 py-1.5",
-        isDark ? "bg-black/45 border-white/15" : "bg-white/60 border-white/70"
+        "fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md backdrop-blur-2xl backdrop-saturate-150 border rounded-full shadow-[0_12px_32px_-8px_rgba(0,0,0,0.5)] flex px-2 py-1.5",
+        "bg-[#0B1A33]/80 border-white/15"
       )}
     >
       {tabs.map((t) => {
         const active = view === t.id;
         const IconEl = t.icon;
-        const inactiveColor = isDark ? "text-white/55" : "text-[var(--color-text-faint)]";
+        const inactiveColor = "text-white/75";
         return (
           <button
             key={t.id}
             onClick={() => setView(t.id)}
-            className="flex-1 flex flex-col items-center gap-1 py-1.5"
+            className="flex-1 min-w-0 flex flex-col items-center gap-1 py-1.5"
           >
             <span
               className={cn(
                 "w-9 h-9 rounded-full flex items-center justify-center transition-colors",
-                active && "bg-[var(--color-lime)]/15"
+                active && "bg-[var(--color-lime)]/20"
               )}
             >
               <IconEl
@@ -59,7 +56,7 @@ export function BottomNav({ view, setView }) {
             </span>
             <span
               className={cn(
-                "text-[10px] font-semibold",
+                "text-[10px] font-semibold whitespace-nowrap",
                 active ? "text-[var(--color-lime)]" : inactiveColor
               )}
             >
