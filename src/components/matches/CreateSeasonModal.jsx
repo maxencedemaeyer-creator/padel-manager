@@ -25,6 +25,7 @@ import { db } from "../../firebase";
 import { cn, formatDateFR, getRecurringDatesInRange, parseFeeInput, todayISO } from "../../lib/utils";
 import { RECURRENCE_OPTIONS } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
+import { updateRoles } from "../../lib/roles";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
@@ -32,7 +33,7 @@ import { PlayerAvatar } from "../players/PlayerAvatar";
 const NEW_CLUB_VALUE = "__new__";
 
 export function CreateSeasonModal({ onClose }) {
-  const { players, clubs } = useAppData();
+  const { players, clubs, sessionToken } = useAppData();
 
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState("");
@@ -187,13 +188,31 @@ export function CreateSeasonModal({ onClose }) {
           writesQueued += 1;
         });
       });
+      await batch.commit();
       // 4. Active automatiquement le statut "Créancier" sur la fiche de
       // chaque joueur sélectionné ci-dessus (s'il ne l'était pas déjà) — pas
-      // besoin d'un aller-retour manuel par l'onglet Joueurs.
-      creditorPlayerIds.forEach((playerId) => {
-        batch.set(doc(db, "players", playerId), { isCreditor: true }, { merge: true });
-      });
-      await batch.commit();
+      // besoin d'un aller-retour manuel par l'onglet Joueurs. Depuis le
+      // 25/10/2026 (rôles, étape 1), ce changement de rôle passe par le
+      // serveur (api/manage-roles.js) : la base refuse de le recevoir
+      // directement depuis le navigateur. La compta, elle, ne dépend pas de
+      // cette case (elle lit les créanciers de l'abonnement) : un échec ici
+      // n'abîme aucun chiffre, il prive seulement le joueur de l'onglet Compta
+      // tant que la case n'est pas cochée sur sa fiche.
+      const newCreditorIds = creditorPlayerIds.filter(
+        (id) => !(players || []).some((p) => p.id === id && p.isCreditor === true)
+      );
+      try {
+        await updateRoles(
+          sessionToken,
+          newCreditorIds.map((playerId) => ({ playerId, changes: { isCreditor: true } }))
+        );
+      } catch (roleError) {
+        alert(
+          "Abonnement créé, mais le statut « Créancier » n'a pas pu être activé : " +
+            roleError.message +
+            "\nCochez « Créancier » sur la fiche des joueurs concernés."
+        );
+      }
       alert(
         `${writesQueued} match(s) créé(s) avec succès dans Firestore ` +
           `(${dates.length} date(s) × ${courtList.length} terrain(s)).`
