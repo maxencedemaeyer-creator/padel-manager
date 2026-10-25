@@ -172,9 +172,9 @@ function MainApp() {
       // Un onglet restauré auquel ce joueur n'a plus droit (changement de
       // rôle, Game Center désactivé entre-temps...) ne doit jamais
       // s'afficher par erreur — on retombe sur "Matchs".
-      if (saved === "admin" && !appData.isAdmin) return "matches";
-      if (saved === "accounting" && !appData.connectedPlayer.isCreditor) return "matches";
-      if (saved === "game-center" && !appData.isAdmin && !settingsHook.settings.gameCenterEnabled) {
+      if (saved === "admin" && !appData.perms.accessAdminTab) return "matches";
+      if (saved === "accounting" && !appData.perms.accessAccountingTab) return "matches";
+      if (saved === "game-center" && !appData.perms.seeGameCenterAlways && !settingsHook.settings.gameCenterEnabled) {
         return "matches";
       }
       return saved;
@@ -252,7 +252,7 @@ function MainApp() {
   // Mode maintenance : tout le monde est bloqué sur l'écran d'attente, sauf
   // l'administrateur (qui doit impérativement garder l'accès pour pouvoir
   // désactiver la maintenance depuis l'onglet Administration).
-  if (settingsHook.settings.maintenanceEnabled && !appData.isAdmin) {
+  if (settingsHook.settings.maintenanceEnabled && !appData.perms.bypassMaintenance) {
     return (
       <AppDataContext.Provider value={contextValue}>
         <MaintenanceScreen />
