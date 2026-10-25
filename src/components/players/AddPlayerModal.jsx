@@ -1,5 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Formulaire "Ajouter un joueur" (admin uniquement).
+// Formulaire "Ajouter un joueur" — admin, et coach depuis le 25/10/2026
+// (étape 3 des rôles). Le coach crée un simple joueur : aucun rôle ni
+// étiquette "test" à cocher, pas de réactivation d'un joueur supprimé.
+// Après la création, le code PIN est affiché UNE fois, avec un bouton pour
+// l'envoyer par WhatsApp (lien wa.me, aucun numéro stocké dans l'app).
 // ─────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
@@ -13,7 +17,7 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function AddPlayerModal({ onClose }) {
-  const { players, archivedPlayers, sessionToken, connectedPlayer } = useAppData();
+  const { players, archivedPlayers, sessionToken, connectedPlayer, perms } = useAppData();
   // 25/10/2026 (rôles, étape 1) : seul l'admin principal peut créer un
   // nouvel administrateur (le serveur le revérifie).
   const amOwner = Boolean(connectedPlayer) && getOwnerId(players) === connectedPlayer.id;
@@ -23,6 +27,7 @@ export function AddPlayerModal({ onClose }) {
     accessCode: "",
     isAdmin: false,
     isCreditor: false,
+    isCoach: false,
     isTest: false,
     level: "Pas de niveau",
     dominantHand: "Droitier",
@@ -35,6 +40,9 @@ export function AddPlayerModal({ onClose }) {
   const [reactivating, setReactivating] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [duplicateOwner, setDuplicateOwner] = useState(null);
+  // Joueur tout juste créé : { name, code } → écran de confirmation avec le
+  // code et le bouton WhatsApp (affiché une seule fois).
+  const [created, setCreated] = useState(null);
 
   // Les codes PIN ne sont plus lisibles depuis le navigateur (voir
   // firestore.rules) : la vérification de doublon se fait désormais via le
@@ -100,8 +108,15 @@ export function AddPlayerModal({ onClose }) {
     }
   };
 
+  // Un coach ne peut pas réactiver un joueur supprimé : si le nom
+  // correspond à un ancien joueur, il est invité à passer par l'admin
+  // (plutôt que de créer un doublon).
+  const blockedByArchived = Boolean(matchedArchived) && !perms.restorePlayers;
   const canSubmit =
-    form.name.trim().length > 0 && form.accessCode.length === 4 && !duplicateOwner;
+    form.name.trim().length > 0 &&
+    form.accessCode.length === 4 &&
+    !duplicateOwner &&
+    !blockedByArchived;
 
   const reactivate = async () => {
     if (!matchedArchived) return;
@@ -159,9 +174,12 @@ export function AddPlayerModal({ onClose }) {
         throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
       }
       const roleChanges = {};
-      if (form.isAdmin && amOwner) roleChanges.isAdmin = true;
-      if (form.isCreditor) roleChanges.isCreditor = true;
-      if (form.isTest) roleChanges.isTest = true;
+      if (perms.manageRoles) {
+        if (form.isAdmin && amOwner) roleChanges.isAdmin = true;
+        if (form.isCreditor) roleChanges.isCreditor = true;
+        if (form.isCoach) roleChanges.isCoach = true;
+        if (form.isTest) roleChanges.isTest = true;
+      }
       try {
         await updateRoles(sessionToken, [{ playerId: playerRef.id, changes: roleChanges }]);
       } catch (roleError) {
@@ -171,13 +189,50 @@ export function AddPlayerModal({ onClose }) {
             "\nVous pouvez les cocher à nouveau depuis sa fiche."
         );
       }
-      onClose();
+      setCreated({ name: form.name.trim(), code: form.accessCode });
     } catch (error) {
       alert("Erreur : " + error.message);
     } finally {
       setSaving(false);
     }
   };
+
+  // Ouvre WhatsApp avec le message déjà rédigé (même texte que le volet
+  // « Codes PIN » de l'admin) ; le contact se choisit dans WhatsApp.
+  const sendOnWhatsApp = () => {
+    if (!created) return;
+    const firstName = created.name.split(" ")[0];
+    const text =
+      `Salut ${firstName} ! 👋\n` +
+      `Voici ton code PIN pour Padel Manager : ${created.code}\n` +
+      `N'hésite pas à le changer toi-même dans l'onglet « Mon profil ».\n` +
+      `Connexion : ${window.location.origin}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  };
+
+  if (created) {
+    return (
+      <Modal
+        title="Joueur ajouté ✅"
+        onClose={onClose}
+        footer={<Button onClick={onClose}>Terminé</Button>}
+      >
+        <p className="text-sm text-[var(--color-text)] mb-3">
+          <strong>{created.name}</strong> peut maintenant se connecter avec ce code :
+        </p>
+        <p className="pm-mono text-3xl font-bold tracking-[0.4em] text-center py-3 mb-3 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+          {created.code}
+        </p>
+        <Button className="w-full" onClick={sendOnWhatsApp}>
+          Envoyer le code par WhatsApp
+        </Button>
+        <p className="text-[11px] text-[var(--color-text-faint)] mt-3">
+          Ce code ne sera plus affiché après la fermeture de cette fenêtre
+          {perms.manageRoles ? " (vous le retrouverez dans le volet « Codes PIN » de l'onglet Admin)." : " : seul l'administrateur pourra le retrouver."}
+        </p>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -211,7 +266,16 @@ export function AddPlayerModal({ onClose }) {
         />
       </Field>
 
-      {matchedArchived && (
+      {matchedArchived && !perms.restorePlayers && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
+          <p className="text-xs text-amber-800">
+            <strong>{matchedArchived.name}</strong> a déjà fait partie du club. Demande à
+            l'administrateur de réactiver son profil (il retrouvera tout son historique).
+          </p>
+        </div>
+      )}
+
+      {matchedArchived && perms.restorePlayers && (
         <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
           <p className="text-xs text-amber-800 mb-2">
             <strong>{matchedArchived.name}</strong> a déjà été supprimé du
@@ -318,6 +382,7 @@ export function AddPlayerModal({ onClose }) {
         </Field>
       </div>
 
+      {perms.manageRoles && (
       <div className="flex flex-col gap-2 mb-2">
         {amOwner && (
           <label className="flex items-center gap-2.5 text-sm">
@@ -342,6 +407,15 @@ export function AddPlayerModal({ onClose }) {
         <label className="flex items-center gap-2.5 text-sm">
           <input
             type="checkbox"
+            checked={form.isCoach}
+            onChange={(e) => setF("isCoach", e.target.checked)}
+            className="w-4 h-4 accent-[var(--color-lime)]"
+          />
+          Coach (présences, composition des terrains, scores)
+        </label>
+        <label className="flex items-center gap-2.5 text-sm">
+          <input
+            type="checkbox"
             checked={form.isTest}
             onChange={(e) => setF("isTest", e.target.checked)}
             className="w-4 h-4 accent-[var(--color-lime)]"
@@ -349,6 +423,7 @@ export function AddPlayerModal({ onClose }) {
           Compte test (invisible sur l'écran de connexion et pour les autres joueurs)
         </label>
       </div>
+      )}
     </Modal>
   );
 }
