@@ -8,8 +8,13 @@
 //
 // Ce volet n'est rendu que dans AdminView (onglet réservé à l'admin), et les
 // préférences ne transitent que par la fonction serveur api/admin-relations.js
-// qui revérifie que l'utilisateur est bien administrateur. Pour ouvrir plus
-// tard l'outil à un rôle "coach", il suffira d'élargir ces deux contrôles.
+// qui revérifie que l'utilisateur est bien administrateur.
+//
+// Coach (25/10/2026, étape 3 des rôles) : le même volet est proposé en bas
+// de « Mon profil » avec `countersOnly` — compteurs, simulateur et test de
+// compo seulement. Les confidences (souhaits, joueurs à éviter, modes) ne
+// sont alors JAMAIS demandées au serveur, et l'onglet « Fiche joueur »
+// (où elles se modifient) n'est pas proposé.
 // ─────────────────────────────────────────────────────────────────────────
 import { useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -28,11 +33,15 @@ const TABS = [
   ["sim", "Simulateur"],
   ["test", "Test de compo"],
 ];
+const NO_RELATIONS = {};
 
-export function PlayerLinksCard({ players, matches }) {
+export function PlayerLinksCard({ players, matches, countersOnly = false }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("grid");
-  const { relations, loading, error, loaded, reload, savePrefs } = useAdminRelations(open);
+  const adminRelations = useAdminRelations(open && !countersOnly);
+  const { loading, error, loaded, reload, savePrefs } = adminRelations;
+  const relations = countersOnly ? NO_RELATIONS : adminRelations.relations;
+  const tabs = countersOnly ? TABS.filter(([id]) => id !== "fiche") : TABS;
 
   // Le calcul n'est fait que volet ouvert, sur les matchs déjà chargés par
   // l'app (aucune lecture Firestore supplémentaire).
@@ -66,11 +75,12 @@ export function PlayerLinksCard({ players, matches }) {
       {open && ctx && (
         <div className="mt-4">
           <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
-            Outil de consultation, visible de vous seul : il ne modifie aucune composition. C'est
-            vous qui placez ensuite les joueurs à la main dans l'onglet Matchs.
+            {countersOnly
+              ? "Outil de consultation : il ne modifie aucune composition. C'est toi qui places ensuite les joueurs à la main dans l'onglet Matchs."
+              : "Outil de consultation, visible de vous seul : il ne modifie aucune composition. C'est vous qui placez ensuite les joueurs à la main dans l'onglet Matchs."}
           </p>
 
-          {error && (
+          {!countersOnly && error && (
             <div className="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
               <p className="text-[11px] font-semibold text-rose-700 flex items-start gap-1">
                 <Icon.AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {error}
@@ -84,7 +94,7 @@ export function PlayerLinksCard({ players, matches }) {
               </Button>
             </div>
           )}
-          {loading && !loaded && (
+          {!countersOnly && loading && !loaded && (
             <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
               Chargement des préférences...
             </p>
@@ -92,7 +102,7 @@ export function PlayerLinksCard({ players, matches }) {
 
           {/* 4 onglets : 2 × 2 sur téléphone, sur une ligne sur ordinateur */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl sm:rounded-full p-1 w-full sm:w-fit mb-4">
-            {TABS.map(([id, label]) => (
+            {tabs.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -108,7 +118,7 @@ export function PlayerLinksCard({ players, matches }) {
           </div>
 
           {tab === "grid" && <PlayerLinksGrid ctx={ctx} relations={relations} />}
-          {tab === "fiche" && (
+          {tab === "fiche" && !countersOnly && (
             <PlayerLinksFiche
               ctx={ctx}
               relations={relations}
