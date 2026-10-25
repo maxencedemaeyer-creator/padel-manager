@@ -20,6 +20,7 @@ import { cn, formatDateFR } from "../../lib/utils";
 import { Modal, EmptyState } from "../ui";
 import Icon from "../icons/Icon";
 import { PlayerAvatar } from "../players/PlayerAvatar";
+import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
 
 const ACCENTS = {
   emerald: { text: "text-emerald-600", bg: "bg-emerald-50/70", border: "border-emerald-200/70" },
@@ -67,6 +68,10 @@ export function CreditorPaymentsModal({
       await updateDoc(doc(db, "matches", item.matchId), {
         participants: updatedParticipants,
       });
+      logActivity(
+        "payment",
+        `Paiement de ${playerName(players, item.playerId)} annulé — ${matchLabel(match)}`
+      );
       setUndoingKey(null);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
