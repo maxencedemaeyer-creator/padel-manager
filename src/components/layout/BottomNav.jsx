@@ -63,7 +63,7 @@ export function BottomNav({ view, setView }) {
   // - Ordinateur : la barre prend toute la largeur, onglets centrés.
   const content = (
     <nav
-      className="pm-bottom-nav fixed inset-x-0 bottom-0 z-30 bg-[#0B1A33]/95 backdrop-blur-2xl backdrop-saturate-150 border-t border-white/10 pt-1"
+      className="pm-bottom-nav lg:hidden fixed inset-x-0 bottom-0 z-30 bg-[#0B1A33]/95 backdrop-blur-2xl backdrop-saturate-150 border-t border-white/10 pt-1"
       style={{
         paddingBottom: "max(6px, env(safe-area-inset-bottom))",
         paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
@@ -107,8 +107,50 @@ export function BottomNav({ view, setView }) {
       </div>
     </nav>
   );
-  // Portail : la barre est attachée directement à <body>, donc jamais
-  // affectée par un ancêtre (transform, filtre...) ou une bizarrerie de
-  // Safari iOS qui casserait son positionnement "fixed".
-  return createPortal(content, document.body);
+  // (25/10/2026) Sur ordinateur (écran de 1024 px ou plus) : la barre du bas
+  // est cachée et la navigation passe dans une colonne fixe à gauche, avec le
+  // logo, "Padel Manager" et le nom complet des onglets. Le contenu de l'app
+  // est décalé de la même largeur (240 px) dans App.tsx ("lg:pl-60").
+  const sidebar = (
+    <aside className="pm-side-nav hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-60 flex-col bg-[#0B1A33]/95 backdrop-blur-2xl border-r border-white/10 px-4 py-7 overflow-y-auto">
+      <div className="flex items-center gap-3 px-2 pb-8">
+        <img src="/icon-192.png" alt="" className="w-10 h-10 rounded-xl" />
+        <span className="text-white text-lg font-bold whitespace-nowrap">Padel Manager</span>
+      </div>
+      {tabs.map((t) => {
+        const active = view === t.id;
+        const IconEl = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setView(t.id)}
+            aria-label={t.label}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "w-full flex items-center gap-3.5 px-4 py-3 mb-1 rounded-2xl text-[15px] font-semibold text-left transition-colors",
+              active
+                ? "bg-[var(--color-lime)]/20 text-[var(--color-lime)]"
+                : "text-white/75 hover:bg-white/5 hover:text-white"
+            )}
+          >
+            <IconEl className="w-5 h-5 shrink-0" />
+            <span className="whitespace-nowrap">{t.label}</span>
+            {active && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--color-lime)]" />
+            )}
+          </button>
+        );
+      })}
+    </aside>
+  );
+  // Portail : les barres sont attachées directement à <body>, donc jamais
+  // affectées par un ancêtre (transform, filtre...) ou une bizarrerie de
+  // Safari iOS qui casserait leur positionnement "fixed".
+  return createPortal(
+    <>
+      {content}
+      {sidebar}
+    </>,
+    document.body
+  );
 }
