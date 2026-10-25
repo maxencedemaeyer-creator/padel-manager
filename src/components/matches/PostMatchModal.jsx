@@ -13,6 +13,7 @@ import { getCourtSlots, computeWinnerFromSets, hasMatchScore } from "../../lib/m
 import { computeRankingUpdateForMatch, cancelRankingForMatch, UNRANK_PLAYER } from "../../lib/levelRating";
 import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, scoreLabel } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, Button } from "../ui";
 import { PlayerSlotCard } from "./PlayerSlotCard";
@@ -109,6 +110,10 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
   });
 
   await batch.commit();
+  // Journal d'activité (étape 4 des rôles) — jamais bloquant.
+  const before = hasMatchScore(match) ? scoreLabel(match.scores) : match.matchType === "Amical" ? "« Pas de score »" : null;
+  const after = matchType === "Amical" ? "« Pas de score »" : `score ${scoreLabel(sets)}`;
+  logActivity("score", `${before ? "Score modifié" : "Score encodé"} : ${after} — ${matchLabel(match)}${before ? ` (avant : ${before})` : ""}`);
 }
 
 export function PostMatchModal({ match, onClose }) {
