@@ -41,7 +41,7 @@ const LAST_MATCH_WINDOW_DAYS = 15;
 const REST_OF_SEASON_PAGE_SIZE = 10;
 
 export function MatchesView() {
-  const { matches: allMatches, abonnements, isAdmin, connectedPlayer, players } = useAppData();
+  const { matches: allMatches, abonnements, perms, connectedPlayer, players } = useAppData();
   const now = useNow();
   const [filter, setFilter] = useState("upcoming");
   const [showCreateMatch, setShowCreateMatch] = useState(false);
@@ -101,7 +101,7 @@ export function MatchesView() {
     // le voient. Le bloc "Bonjour" (MyMatchSummary.jsx) affiche, pour ces
     // mêmes personnes, un petit bouton d'alerte qui amène directement ici.
     const visibleTbdMatches = tbdMatches.filter(
-      (m) => isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id)
+      (m) => perms.manageTBDMatches || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id)
     );
 
     const sortedByStart = [...datedMatches].sort((a, b) => getMatchStart(a) - getMatchStart(b));
@@ -166,7 +166,7 @@ export function MatchesView() {
       lastSessions: groupMatchesBySession(lastGroup),
       otherSessions: groupMatchesBySession(otherFiltered),
     };
-  }, [allMatches, abonnements, isAdmin, connectedPlayer.id, players, now, filter]);
+  }, [allMatches, abonnements, perms.manageTBDMatches, connectedPlayer.id, players, now, filter]);
 
   const visibleOtherSessions = otherSessions.slice(0, restOfSeasonVisibleCount);
   const remainingOtherSessionsCount = otherSessions.length - visibleOtherSessions.length;
@@ -232,7 +232,7 @@ export function MatchesView() {
                 ? "Les matchs terminés apparaîtront ici."
                 : notFinished.length > 0
                 ? "Le prochain match programmé a lieu dans plus de 15 jours."
-                : isAdmin
+                : perms.createMatch
                 ? "Créez un match ponctuel avec le bouton + ci-dessous, ou lancez une saison complète depuis l'onglet Administration."
                 : "Revenez plus tard, l'administrateur programmera bientôt de nouveaux matchs."
             }
@@ -246,7 +246,7 @@ export function MatchesView() {
               // l'administrateur n'a pas cliqué sur "Publier la
               // composition" pour cette session — lui, garde toujours la
               // vue complète pour pouvoir composer les équipes tranquillement.
-              const showComposition = isAdmin || isCompositionPublished(session);
+              const showComposition = perms.seeUnpublishedComposition || isCompositionPublished(session);
               return showComposition ? (
                 <SessionCard key={key} sessionMatches={session} now={now} />
               ) : (
@@ -262,7 +262,7 @@ export function MatchesView() {
               // s'affiche aux joueurs qu'une fois publiée par l'admin ; lui,
               // garde la vue complète pour composer à l'avance.
               const finished = getMatchTiming(session[0], now) === "finished";
-              const showComposition = isAdmin || (!finished && isCompositionPublished(session));
+              const showComposition = perms.seeUnpublishedComposition || (!finished && isCompositionPublished(session));
               return showComposition ? (
                 <SessionCard key={key} sessionMatches={session} now={now} />
               ) : (
@@ -307,7 +307,7 @@ export function MatchesView() {
         </div>
       )}
 
-      {isAdmin && (
+      {perms.createMatch && (
         <button
           onClick={() => setShowCreateMatch(true)}
           aria-label="Créer un match ponctuel"
