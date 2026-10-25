@@ -14,6 +14,7 @@ import {
 } from "../../lib/convocation";
 import { getAvailabilityGroups } from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
+import { canEditExistingScore } from "../../lib/permissions";
 import Icon from "../icons/Icon";
 import { Card, Badge, Modal } from "../ui";
 import { CourtPanel } from "./CourtPanel";
@@ -357,7 +358,12 @@ export function SessionCard({ sessionMatches, now }) {
   const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
   const published = isCompositionPublished(sessionMatches);
-  const showCourts = !perms.manageSession || prepExpanded;
+  // Le coach prépare seulement les sessions pas encore terminées (les
+  // présences d'un match passé restent réservées à l'admin).
+  const canPrepare =
+    perms.manageSession &&
+    (perms.editPastPresences || getMatchTiming(first, now) !== "finished");
+  const showCourts = !canPrepare || prepExpanded;
   return (
     <Card className="p-4 pm-rise">
       <div className={cn("flex items-baseline justify-between gap-2", showCourts ? "mb-3" : "mb-2")}>
@@ -365,7 +371,7 @@ export function SessionCard({ sessionMatches, now }) {
           <p className="pm-display font-bold text-base">
             {formatDateFR(first.date)} · {formatTimeFR(first.time)}
           </p>
-          {published && !perms.manageSession && (
+          {published && !canPrepare && (
             <span className="text-[11px] font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full shrink-0">
               Suggestion de feuille de match
             </span>
@@ -375,7 +381,7 @@ export function SessionCard({ sessionMatches, now }) {
           <Badge tone="neutral" className="!text-[10px] shrink-0">
             {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
           </Badge>
-          {perms.manageSession && (
+          {canPrepare && (
             <button
               type="button"
               onClick={() => setPrepExpanded((v) => !v)}
@@ -391,7 +397,7 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       </div>
 
-      {perms.manageSession && prepExpanded && <AdminSessionBar sessionMatches={sessionMatches} />}
+      {canPrepare && prepExpanded && <AdminSessionBar sessionMatches={sessionMatches} />}
 
       {showCourts && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -618,7 +624,7 @@ export function CompactMatchResult({
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {(perms.editAnyScore || (canEditScore && !scoreEntered)) && (
+        {(canEditExistingScore(perms, match) || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
@@ -633,6 +639,7 @@ export function CompactMatchResult({
       {showMenu && (
         <CourtSettingsMenu
           scoreOnly={!perms.editMatchSettings}
+          canDelete={perms.deleteMatch}
           onClose={() => setShowMenu(false)}
           onPickDateTime={() => {
             setShowMenu(false);
@@ -745,7 +752,7 @@ function RoundResultRow({
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {(perms.editAnyScore || (canEditScore && !scoreEntered)) && (
+        {(canEditExistingScore(perms, match) || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
