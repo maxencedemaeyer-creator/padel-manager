@@ -8,6 +8,7 @@ import { db } from "../../firebase";
 import { getCreditorAccounting, getAllCreditorPlayerIds } from "../../lib/stats";
 import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, EmptyState } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
@@ -76,6 +77,10 @@ export function PaymentModal({ match, participant, onClose }) {
       await updateDoc(doc(db, "matches", match.id), {
         participants: updatedParticipants,
       });
+      logActivity(
+        "payment",
+        `${playerName(players, participant.playerId)} marqué payé à ${creditor.name} — ${matchLabel(match)}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
