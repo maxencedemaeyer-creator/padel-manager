@@ -12,6 +12,7 @@ import { cn } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES, levelDisplayLabel } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import { getOwnerId, updateRoles } from "../../lib/roles";
+import { logActivity } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
@@ -126,6 +127,7 @@ export function AddPlayerModal({ onClose }) {
         archived: false,
         archivedAt: null,
       });
+      logActivity("player", `${matchedArchived.name} réactivé (profil restauré)`);
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -189,6 +191,7 @@ export function AddPlayerModal({ onClose }) {
             "\nVous pouvez les cocher à nouveau depuis sa fiche."
         );
       }
+      logActivity("player", `${form.name.trim()} ajouté au club`);
       setCreated({ name: form.name.trim(), code: form.accessCode });
     } catch (error) {
       alert("Erreur : " + error.message);
