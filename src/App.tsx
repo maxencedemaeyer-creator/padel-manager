@@ -16,6 +16,7 @@ import { AuthGate } from "./components/auth/AuthGate";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PostMatchPrompt } from "./components/matches/PostMatchPrompt";
 import { LevelHistoryIntro } from "./components/players/LevelHistoryIntro";
+import { CoachIntro } from "./components/players/CoachIntro";
 import Icon from "./components/icons/Icon";
 // "Matchs" est importé normalement (pas en chargement à la demande) — voir
 // le commentaire détaillé plus bas, juste avant les 5 autres onglets qui
@@ -309,6 +310,9 @@ function MainApp() {
         {/* Fenêtre "Nouveau : historique de niveau" (une seule fois par joueur,
             mémorisée sur Firebase) — voir players/LevelHistoryIntro.jsx. */}
         <LevelHistoryIntro />
+        {/* Fenêtre "Tu es désormais coach !" (une seule fois par nomination,
+            mémorisée sur Firebase) — voir players/CoachIntro.jsx. */}
+        <CoachIntro />
         {/* L'app est prête : fin de l'écran d'ouverture (effet de zoom). */}
         <SplashDone />
       </div>
