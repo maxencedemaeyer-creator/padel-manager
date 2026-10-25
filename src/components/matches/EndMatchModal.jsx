@@ -20,6 +20,7 @@ import { computeWinnerFromSets, hasMatchScore } from "../../lib/matchLogic";
 import { computeRankingUpdateForMatch, cancelRankingForMatch, UNRANK_PLAYER } from "../../lib/levelRating";
 import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
+import { canEditExistingScore } from "../../lib/permissions";
 import { Modal, Button } from "../ui";
 
 // Applique en une seule écriture atomique (writeBatch) le score du match ET,
@@ -121,7 +122,7 @@ export function EndMatchModal({ match, onClose }) {
   const { players, matches, perms } = useAppData();
   // Un joueur (non-admin) ne peut qu'ENCODER un score quand il n'y en a pas
   // encore ; dès qu'un score existe, seul l'admin peut le modifier.
-  const playerBlocked = !perms.editAnyScore && hasMatchScore(match);
+  const playerBlocked = !canEditExistingScore(perms, match) && hasMatchScore(match);
 
   const initSet = (set) => {
     if (set && typeof set === "object") return { a: set.a ?? "", b: set.b ?? "" };
@@ -311,9 +312,9 @@ export function EndMatchModal({ match, onClose }) {
           joueur qui a un niveau. Si les équipes ont changé en cours de route, vous pourrez
           ajouter une manche ensuite depuis le bloc « Dernier résultat ».
         </p>
-        {!perms.editAnyScore && (
+        {!canEditExistingScore(perms, match) && (
           <p className="text-[var(--color-text-faint)] text-[10px] text-center">
-            Pour modifier un score, contactez l'admin.
+            Pour modifier un score, contactez le coach ou l'administrateur.
           </p>
         )}
       </div>
