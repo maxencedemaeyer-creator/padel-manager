@@ -26,7 +26,7 @@ import { Modal, EmptyState } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function AssignCreditorModal({ matchId, playerId, playerName, fee, currentOwedTo, onClose }) {
-  const { players, matches, abonnements, isAdmin, connectedPlayer } = useAppData();
+  const { players, matches, abonnements, perms, connectedPlayer } = useAppData();
   const match = matches.find((m) => m.id === matchId);
 
   const sessionCreditorIds = match ? getSessionCreditorIds(match, matches) : null;
@@ -44,10 +44,10 @@ export function AssignCreditorModal({ matchId, playerId, playerName, fee, curren
 
   // Même règle que PaymentModal.jsx : un créancier non-admin ne peut
   // assigner une dette qu'à lui-même, pas au nom d'un autre créancier.
-  const visibleSuggested = isAdmin
+  const visibleSuggested = perms.payToAnyCreditor
     ? suggested
     : suggested.filter((c) => c.id === connectedPlayer.id);
-  const visibleOthers = isAdmin ? others : others.filter((c) => c.id === connectedPlayer.id);
+  const visibleOthers = perms.payToAnyCreditor ? others : others.filter((c) => c.id === connectedPlayer.id);
 
   const [saving, setSaving] = useState(false);
 
@@ -120,7 +120,7 @@ export function AssignCreditorModal({ matchId, playerId, playerName, fee, curren
         <div className="flex flex-col gap-4">
           {visibleSuggested.length > 0 && (
             <div className="flex flex-col gap-2">
-              {hasAnyCreditorIds && isAdmin && (
+              {hasAnyCreditorIds && perms.payToAnyCreditor && (
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">
                   Créanciers du jour
                 </p>
