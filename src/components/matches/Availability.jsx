@@ -317,7 +317,7 @@ function ReserveNoticeModal({ onClose }) {
 // auto-inscrit lui-même (jamais une place attribuée par un admin, toujours
 // conservée).
 export function AvailabilityButtons({ sessionMatches }) {
-  const { players, connectedPlayer, isAdmin, matches, presenceWindowDays, presenceLockHours } =
+  const { players, connectedPlayer, perms, matches, presenceWindowDays, presenceLockHours } =
     useAppData();
   const now = useNow();
   const [saving, setSaving] = useState(false);
@@ -351,7 +351,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   // Les comptes test (isTest) sont exclus des compteurs/listes Présent·Absent·
   // En attente pour tout le monde SAUF l'admin — même logique que l'écran de
   // connexion (AuthGate) et l'onglet Joueurs (PlayersView).
-  const visiblePlayers = isAdmin ? players : players.filter((p) => !p.isTest);
+  const visiblePlayers = perms.seeTestAccounts ? players : players.filter((p) => !p.isTest);
 
   const {
     availability,
@@ -379,7 +379,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   // jamais verrouillé ici puisqu'on ne sait pas s'il a eu lieu.
   const sessionTiming = getMatchTiming(sessionMatches?.[0] || {}, now);
   const isPostMatchLocked =
-    !isAdmin && (sessionTiming === "ongoing" || sessionTiming === "finished");
+    !perms.editPastPresences && (sessionTiming === "ongoing" || sessionTiming === "finished");
 
   // Gel de présence avant match (ajouté le 19/09/2026, voir constants.js →
   // DEFAULT_PRESENCE_LOCK_HOURS, réglable depuis Administration) : à moins de
@@ -392,7 +392,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   // tardivement ne pose de problème à personne. L'admin garde, lui, un accès
   // total et immédiat via ManagePresenceModal, à tout moment.
   const isPreMatchFrozen =
-    !isAdmin &&
+    !perms.ignorePresenceRules &&
     (myStatus === "present" || myStatus === RESERVE_STATUS) &&
     isPresenceFrozen(sessionMatches?.[0], now, presenceLockHours);
 
@@ -687,7 +687,7 @@ export function AvailabilityButtons({ sessionMatches }) {
   // lib/convocation.js) : pas de boutons pour un joueur qui n'a pas encore
   // répondu — seul l'admin garde la main (via "Gérer les présences") pour
   // répondre à sa place si besoin avant l'ouverture.
-  if (!isAdmin && !convocationOpen && !isInvited) {
+  if (!perms.ignorePresenceRules && !convocationOpen && !isInvited) {
     const forcedClosed = getConvocationOverride(sessionMatches) === "closed";
     const autoOpenDate = forcedClosed
       ? null
