@@ -26,6 +26,7 @@ import { cn, formatDateFR, getRecurringDatesInRange, parseFeeInput, todayISO } f
 import { RECURRENCE_OPTIONS } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
 import { updateRoles } from "../../lib/roles";
+import { logActivity } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
@@ -213,6 +214,10 @@ export function CreateSeasonModal({ onClose }) {
             "\nCochez « Créancier » sur la fiche des joueurs concernés."
         );
       }
+      logActivity(
+        "money",
+        `Abonnement créé : ${clubName}, ${writesQueued} match${writesQueued > 1 ? "s" : ""} (${dates.length} date${dates.length > 1 ? "s" : ""} × ${courtList.length} terrain${courtList.length > 1 ? "s" : ""})${label.trim() ? ` — ${label.trim()}` : ""}`
+      );
       alert(
         `${writesQueued} match(s) créé(s) avec succès dans Firestore ` +
           `(${dates.length} date(s) × ${courtList.length} terrain(s)).`
