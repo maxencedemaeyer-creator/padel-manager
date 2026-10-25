@@ -107,12 +107,34 @@ export default async function handler(req, res) {
       // coach ! » (CoachIntro.jsx) doit réapparaître, même si la personne
       // l'avait déjà vue lors d'une nomination précédente.
       if (data.isCoach === true) data["seenFeatures.coachIntro"] = FieldValue.delete();
-      if (Object.keys(data).length > 0) writes.push({ ref: targetRef, data });
+      if (Object.keys(data).length > 0) writes.push({ ref: targetRef, data, name: target.name || "?" });
     }
 
     if (writes.length > 0) {
       const batch = db.batch();
       writes.forEach((w) => batch.update(w.ref, w.data));
+      // Journal d'activité (étape 4) : une ligne par joueur modifié, écrite
+      // dans le MÊME envoi que le changement de rôle (tout ou rien).
+      const LABELS = {
+        isAdmin: "Administrateur",
+        isCoach: "Coach",
+        isCreditor: "Créancier",
+        isTest: "Compte test",
+        isGuest: "Invité",
+      };
+      writes.forEach((w) => {
+        const parts = Object.entries(w.data)
+          .filter(([k]) => LABELS[k])
+          .map(([k, v]) => `${LABELS[k]} ${v ? "donné" : "retiré"}`);
+        if (parts.length === 0) return;
+        batch.set(db.collection("activityLog").doc(), {
+          at: FieldValue.serverTimestamp(),
+          actorId: acting.id,
+          actorName: acting.data.name || "?",
+          type: "role",
+          summary: `${w.name} : ${parts.join(", ")}`,
+        });
+      });
       await batch.commit();
     }
 
