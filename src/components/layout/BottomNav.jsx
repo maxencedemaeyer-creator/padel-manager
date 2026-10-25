@@ -24,7 +24,7 @@ function useScreenWidth() {
 }
 
 export function BottomNav({ view, setView }) {
-  const { isAdmin, connectedPlayer, gameCenterEnabled } = useAppData();
+  const { perms, gameCenterEnabled } = useAppData();
   const screenWidth = useScreenWidth();
   // Depuis le 19/10/2026, tous les onglets ont un fond bleu foncé (et le
   // Game Center un fond sombre) : l'ancien "verre clair" avec texte gris-bleu
@@ -34,15 +34,15 @@ export function BottomNav({ view, setView }) {
     { id: "matches", label: "Matchs", icon: Icon.Trophy },
     { id: "players", label: "Équipe", icon: Icon.Users },
     { id: "stats", label: "Mon profil", short: "Profil", icon: Icon.Chart },
-    ...(connectedPlayer.isCreditor
+    ...(perms.accessAccountingTab
       ? [{ id: "accounting", label: "Compta", icon: Icon.Coin }]
       : []),
     // Visible pour l'admin en permanence ; pour les autres joueurs
     // uniquement si l'admin l'a activé depuis l'onglet Administration.
-    ...(isAdmin || gameCenterEnabled
+    ...(perms.seeGameCenterAlways || gameCenterEnabled
       ? [{ id: "game-center", label: "Game Center", short: "Jeux", icon: Icon.Gamepad }]
       : []),
-    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: Icon.Shield }] : []),
+    ...(perms.accessAdminTab ? [{ id: "admin", label: "Admin", icon: Icon.Shield }] : []),
   ];
   // (19/10/2026) Compatibilité petits téléphones : avec 5 ou 6 onglets
   // (admin/créancier), "Mon profil" et "Game Center" ne tenaient plus dans
