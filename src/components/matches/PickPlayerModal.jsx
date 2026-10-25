@@ -8,6 +8,7 @@ import { doc, updateDoc, writeBatch, deleteField } from "firebase/firestore";
 import { db } from "../../firebase";
 import { cn, formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel } from "../../lib/activityLog";
 import { hasMatchScore, getCourtSlots } from "../../lib/matchLogic";
 import { COURT_SLOT_DEFS } from "../../lib/constants";
 import { getRounds } from "../../lib/rounds";
@@ -232,6 +233,12 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         });
       }
       await batch.commit();
+      logActivity(
+        "composition",
+        currentParticipant
+          ? `${currentParticipant.name} remplacé par ${player.name} — ${matchLabel(match)}`
+          : `${player.name} placé sur le terrain — ${matchLabel(match)}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -276,6 +283,7 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         (p) => p.playerId !== currentParticipant.playerId
       );
       await updateDoc(doc(db, "matches", match.id), { participants: remaining });
+      logActivity("composition", `${currentParticipant.name} retiré du terrain — ${matchLabel(match)}`);
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
