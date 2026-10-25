@@ -118,10 +118,10 @@ async function applyMatchAndRanking({ match, players, matches, sets, matchType, 
 }
 
 export function EndMatchModal({ match, onClose }) {
-  const { players, matches, isAdmin } = useAppData();
+  const { players, matches, perms } = useAppData();
   // Un joueur (non-admin) ne peut qu'ENCODER un score quand il n'y en a pas
   // encore ; dès qu'un score existe, seul l'admin peut le modifier.
-  const playerBlocked = !isAdmin && hasMatchScore(match);
+  const playerBlocked = !perms.editAnyScore && hasMatchScore(match);
 
   const initSet = (set) => {
     if (set && typeof set === "object") return { a: set.a ?? "", b: set.b ?? "" };
@@ -296,7 +296,7 @@ export function EndMatchModal({ match, onClose }) {
       )}
 
       <div className="flex flex-col gap-2 mt-3">
-        {isAdmin && (
+        {perms.markNoScore && (
           <Button
             variant="secondary"
             className="w-full !text-xs"
@@ -311,7 +311,7 @@ export function EndMatchModal({ match, onClose }) {
           joueur qui a un niveau. Si les équipes ont changé en cours de route, vous pourrez
           ajouter une manche ensuite depuis le bloc « Dernier résultat ».
         </p>
-        {!isAdmin && (
+        {!perms.editAnyScore && (
           <p className="text-[var(--color-text-faint)] text-[10px] text-center">
             Pour modifier un score, contactez l'admin.
           </p>
