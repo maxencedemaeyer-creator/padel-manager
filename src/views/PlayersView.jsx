@@ -54,13 +54,13 @@ function compareByName(a, b) {
 }
 
 export function PlayersView() {
-  const { players, matches, isAdmin, rankingEnabled } = useAppData();
+  const { players, matches, perms, rankingEnabled } = useAppData();
   const [showAdd, setShowAdd] = useState(false);
   const [sortId, setSortId] = useState("name");
   // Le Niveau n'est visible que par l'admin, ou par tous une fois le switch
   // "Niveau" activé (Administration) — trier par Niveau révélerait l'ordre,
   // donc le bouton suit exactement la même règle que la pastille.
-  const showLevel = isAdmin || rankingEnabled;
+  const showLevel = perms.seeLevelAlways || rankingEnabled;
   const sortOptions = SORT_OPTIONS.filter((o) => o.id !== "level" || showLevel);
   const activeSort = sortOptions.some((o) => o.id === sortId) ? sortId : "name";
   // Nombre de fois où chaque joueur a été élu "homme du match" (voir jeu du
@@ -135,13 +135,13 @@ export function PlayersView() {
   }, [activeSort, mvpCounts, sessionCounts]);
 
   const sorted = useMemo(
-    () => sortPlayers(players.filter((p) => (isAdmin || !p.isTest) && !p.isOccasional)),
-    [players, isAdmin, sortPlayers]
+    () => sortPlayers(players.filter((p) => (perms.seeTestAccounts || !p.isTest) && !p.isOccasional)),
+    [players, perms.seeTestAccounts, sortPlayers]
   );
 
   const occasionalPlayers = useMemo(
-    () => sortPlayers(players.filter((p) => (isAdmin || !p.isTest) && p.isOccasional)),
-    [players, isAdmin, sortPlayers]
+    () => sortPlayers(players.filter((p) => (perms.seeTestAccounts || !p.isTest) && p.isOccasional)),
+    [players, perms.seeTestAccounts, sortPlayers]
   );
 
   return (
@@ -157,7 +157,7 @@ export function PlayersView() {
             Trier par
           </span>
         </div>
-        {isAdmin && (
+        {perms.addPlayers && (
           <Button variant="secondary" className="!py-2 !px-3" onClick={() => setShowAdd(true)}>
             <span className="flex items-center gap-1.5">
               <Icon.Plus className="w-4 h-4" /> Ajouter
