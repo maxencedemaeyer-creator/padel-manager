@@ -282,6 +282,9 @@ function MainApp() {
           dans le bloc "Bonjour" (onglet Matchs) et la déconnexion dans
           "Mon profil". "pm-app" = fond bleu foncé du logo (voir index.css). */}
       <div className="pm-root pm-app">
+        {/* (25/10/2026) Sur ordinateur, le contenu est décalé de 240 px vers
+            la droite pour laisser la place à la colonne de navigation. */}
+        <div className="lg:pl-60">
         <Suspense
           fallback={
             view === "game-center" ? (
@@ -305,6 +308,7 @@ function MainApp() {
             <AdminView />
           )}
         </Suspense>
+        </div>
         <BottomNav view={view} setView={changeView} />
         <PostMatchPrompt />
         {/* Fenêtre "Nouveau : historique de niveau" (une seule fois par joueur,
