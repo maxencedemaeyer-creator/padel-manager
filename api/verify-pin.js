@@ -61,8 +61,19 @@ export default async function handler(req, res) {
     let loginAsPlayerId = null;
     if (codes.accessCode && pin === codes.accessCode) {
       loginAsPlayerId = playerId;
-    } else if (codes.secondaryTestCode && pin === codes.secondaryTestCode) {
-      loginAsPlayerId = codes.secondaryTestPlayerId || null;
+    } else if (codes.secondaryTestCode && pin === codes.secondaryTestCode && codes.secondaryTestPlayerId) {
+      // Connexion secrète (25/10/2026) : acceptée seulement si la fiche
+      // saisie est celle d'un administrateur ET si la destination est un
+      // compte marqué "test" — une connexion secrète posée autrefois par
+      // quelqu'un d'autre devient donc inopérante.
+      const [ownerSnap, destSnap] = await Promise.all([
+        db.collection("players").doc(playerId).get(),
+        db.collection("players").doc(codes.secondaryTestPlayerId).get(),
+      ]);
+      const ownerOk =
+        ownerSnap.exists && ownerSnap.data().isAdmin === true && ownerSnap.data().archived !== true;
+      const destOk = destSnap.exists && destSnap.data().isTest === true;
+      if (ownerOk && destOk) loginAsPlayerId = codes.secondaryTestPlayerId;
     }
 
     if (needsMigration) {
