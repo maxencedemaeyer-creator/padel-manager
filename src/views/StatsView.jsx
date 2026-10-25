@@ -40,6 +40,7 @@ import { AvatarSelfEditor } from "../components/players/AvatarSelfEditor";
 import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
 import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
 import { PartnerChoiceCard } from "../components/players/PartnerChoiceCard";
+import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
 
 // Le face-à-face n'est plus affiché (carte jugée peu prioritaire face à la
 // densité de l'écran "Mon profil") — le code reste en place, prêt à être
@@ -678,11 +679,15 @@ export function StatsView() {
                 {getFirstName(connectedPlayer.name)}
               </p>
               <p className="text-sm text-white/80 mt-1">
-                {connectedPlayer.isCreditor
-                  ? "Créancier du club"
-                  : connectedPlayer.isAdmin
-                  ? "Administrateur"
-                  : "Membre du club"}
+                {/* Tous les rôles de la personne (25/10/2026, étape 3 des
+                    rôles), « Membre du club » si elle n'en a aucun. */}
+                {[
+                  connectedPlayer.isAdmin && "Administrateur",
+                  connectedPlayer.isCoach && "Coach",
+                  connectedPlayer.isCreditor && "Créancier",
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Membre du club"}
               </p>
             </div>
           </div>
@@ -1086,6 +1091,16 @@ export function StatsView() {
         {/* Choix de partenaire — tout en bas : Indifférent / Varié / Stable,
             modifiable à tout moment (voir PartnerChoiceCard). */}
         <PartnerChoiceCard sessionToken={sessionToken} />
+
+        {/* Section « Coach » (25/10/2026, étape 3 des rôles) — tout en bas,
+            seulement pour un coach (l'admin a déjà ces outils dans l'onglet
+            Admin). Outil « Liens entre joueurs » sans les confidences. */}
+        {perms.accessCoachSection && (
+          <div className="mt-8">
+            <h3 className="pm-display font-bold text-lg text-white mb-3">Coach</h3>
+            <PlayerLinksCard players={players} matches={matches} countersOnly />
+          </div>
+        )}
       </div>
     </div>
   );
