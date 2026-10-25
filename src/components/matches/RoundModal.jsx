@@ -33,6 +33,7 @@ import {
 import { getRounds } from "../../lib/rounds";
 import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, scoreLabel } from "../../lib/activityLog";
 import { canEditExistingScore } from "../../lib/permissions";
 import Icon from "../icons/Icon";
 import { Modal, Button } from "../ui";
@@ -142,6 +143,14 @@ async function saveRoundAndRanking({
     rankingResult,
   });
   await batch.commit();
+  // Journal d'activité (étape 4 des rôles) — jamais bloquant.
+  const after = matchType === "Amical" ? "« Pas de score »" : `score ${scoreLabel(sets)}`;
+  logActivity(
+    "score",
+    roundIndex == null
+      ? `Manche supplémentaire ajoutée : ${after} — ${matchLabel(match)}`
+      : `Manche supplémentaire n° ${roundIndex} modifiée : ${after}${previous && previous.scores ? ` (avant : ${scoreLabel(previous.scores)})` : ""} — ${matchLabel(match)}`
+  );
 }
 
 // Supprime une manche (admin) et annule son effet sur le niveau.
@@ -172,7 +181,10 @@ export async function deleteRoundAndRanking({ match, roundIndex, players, matche
       rankingResult,
     });
   }
-  await batch.commit();
+  await batch.commit();  logActivity(
+    "score",
+    `Manche supplémentaire n° ${roundIndex} supprimée (${scoreLabel(target.scores)}) — ${matchLabel(match)}`
+  );
 }
 
 const EMPTY_SLOTS = { topLeft: null, topRight: null, bottomLeft: null, bottomRight: null };
