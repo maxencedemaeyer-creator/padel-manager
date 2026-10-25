@@ -5,15 +5,27 @@ import { useState } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { todayISO } from "../../lib/utils";
+import { useAppData } from "../../context/AppContext";
 import { Modal, Field, Button, inputClass } from "../ui";
 
 export function CreateMatchModal({ onClose }) {
+  const { perms } = useAppData();
+  // Coach (étape 3 des rôles, 25/10/2026) : un match ponctuel peut être daté
+  // au plus 30 jours dans le passé (pour enregistrer un match déjà joué) ;
+  // l'admin, sans limite.
+  const maxPastDays = perms.createMatchMaxPastDays;
+  const minDate = (() => {
+    if (maxPastDays == null) return undefined;
+    const d = new Date();
+    d.setDate(d.getDate() - maxPastDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("20:00");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const canSubmit = Boolean(date && time);
+  const canSubmit = Boolean(date && time) && (!minDate || date >= minDate);
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -60,8 +72,14 @@ export function CreateMatchModal({ onClose }) {
             type="date"
             className={inputClass}
             value={date}
+            min={minDate}
             onChange={(e) => setDate(e.target.value)}
           />
+          {minDate && date && date < minDate && (
+            <p className="text-[11px] text-rose-600 mt-1">
+              Au plus {maxPastDays} jours dans le passé.
+            </p>
+          )}
         </Field>
         <Field label="Heure">
           <input
