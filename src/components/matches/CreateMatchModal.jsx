@@ -6,6 +6,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 import { todayISO } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel } from "../../lib/activityLog";
 import { Modal, Field, Button, inputClass } from "../ui";
 
 export function CreateMatchModal({ onClose }) {
@@ -42,6 +43,7 @@ export function CreateMatchModal({ onClose }) {
         status: "À venir",
         createdAt: serverTimestamp(),
       });
+      logActivity("match", `Match ponctuel créé — ${matchLabel({ date, time, location: location.trim() })}`);
       onClose();
     } catch (error) {
       alert("Erreur de création : " + error.message);
