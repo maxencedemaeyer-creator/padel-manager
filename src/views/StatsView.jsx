@@ -41,6 +41,7 @@ import { MyPaymentsModal } from "../components/accounting/MyPaymentsModal";
 import { MyDebtsModal } from "../components/accounting/MyDebtsModal";
 import { PartnerChoiceCard } from "../components/players/PartnerChoiceCard";
 import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
+import { logActivity } from "../lib/activityLog";
 
 // Le face-à-face n'est plus affiché (carte jugée peu prioritaire face à la
 // densité de l'écran "Mon profil") — le code reste en place, prêt à être
@@ -309,6 +310,13 @@ function SettingsModal({ player, players, sessionToken, onClose }) {
         level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
       });
+      const oldLevel = player.level || "Pas de niveau";
+      if (level !== oldLevel) {
+        logActivity(
+          "level",
+          `${player.name} a changé son propre classement : ${((oldLevel) === "Pas de niveau" ? "Non classé" : (oldLevel))} → ${((level) === "Pas de niveau" ? "Non classé" : (level))}`
+        );
+      }
 
       onClose();
     } catch (error) {
