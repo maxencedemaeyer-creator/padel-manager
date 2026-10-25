@@ -33,6 +33,7 @@ import {
 import { getRounds } from "../../lib/rounds";
 import { addSessionResyncToBatch } from "../../lib/sessionResync";
 import { useAppData } from "../../context/AppContext";
+import { canEditExistingScore } from "../../lib/permissions";
 import Icon from "../icons/Icon";
 import { Modal, Button } from "../ui";
 
@@ -271,7 +272,7 @@ export function RoundModal({
     }));
 
   // Un joueur ne peut qu'encoder le score d'une manche qui n'en a pas encore.
-  const playerBlocked = scoreOnly && !perms.editAnyScore && hasMatchScore(existing || {});
+  const playerBlocked = scoreOnly && !canEditExistingScore(perms, match) && hasMatchScore(existing || {});
   const save = async (matchType, scoreSets) => {
     if (!allFilled || playerBlocked) return;
     setSaving(true);
@@ -475,7 +476,7 @@ export function RoundModal({
         </p>
         {scoreOnly && (
           <p className="text-[var(--color-text-faint)] text-[10px] text-center">
-            Pour modifier un score, contactez l'admin.
+            Pour modifier un score, contactez le coach ou l'administrateur.
           </p>
         )}
       </div>
