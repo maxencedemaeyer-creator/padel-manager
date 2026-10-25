@@ -13,7 +13,7 @@ import { Modal, EmptyState } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
 export function PaymentModal({ match, participant, onClose }) {
-  const { players, matches, abonnements, isAdmin, connectedPlayer } = useAppData();
+  const { players, matches, abonnements, perms, connectedPlayer } = useAppData();
 
   // Chantier du 02/09/2026 (attribution figée) + ajustement du même jour :
   // un joueur peut légitimement avoir à rembourser un créancier qui n'est
@@ -51,10 +51,10 @@ export function PaymentModal({ match, participant, onClose }) {
   // Un créancier non-admin ne peut confirmer un paiement que vers lui-même
   // (il ne peut pas attester à la place d'un autre créancier) — seul
   // l'admin voit l'ensemble des deux listes.
-  const visibleSuggested = isAdmin
+  const visibleSuggested = perms.payToAnyCreditor
     ? suggested
     : suggested.filter((c) => c.id === connectedPlayer.id);
-  const visibleOthers = isAdmin ? others : others.filter((c) => c.id === connectedPlayer.id);
+  const visibleOthers = perms.payToAnyCreditor ? others : others.filter((c) => c.id === connectedPlayer.id);
 
   const [saving, setSaving] = useState(false);
 
@@ -129,7 +129,7 @@ export function PaymentModal({ match, participant, onClose }) {
         <div className="flex flex-col gap-4">
           {visibleSuggested.length > 0 && (
             <div className="flex flex-col gap-2">
-              {hasAnyCreditorIds && isAdmin && (
+              {hasAnyCreditorIds && perms.payToAnyCreditor && (
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">
                   Créanciers du jour
                 </p>
