@@ -39,6 +39,7 @@ export function EditPlayerModal({ player, onClose }) {
   const [accessCode, setAccessCode] = useState("");
   const [playerIsAdmin, setPlayerIsAdmin] = useState(player.isAdmin === true);
   const [isCreditor, setIsCreditor] = useState(player.isCreditor === true);
+  const [isCoach, setIsCoach] = useState(player.isCoach === true);
   const [isTest, setIsTest] = useState(player.isTest === true);
   const [isOccasional, setIsOccasional] = useState(player.isOccasional === true);
   const [isGuest, setIsGuest] = useState(player.isGuest === true);
@@ -60,7 +61,9 @@ export function EditPlayerModal({ player, onClose }) {
   // fiabilité s'applique (§4.6) ; défini ici (avant `submit`) pour être
   // réutilisé aussi dans le JSX plus bas (zone de danger).
   const isSelf = connectedPlayer && player.id === connectedPlayer.id;
-  const isAdminEditingOther = isAdmin && !isSelf;
+  // Coach (étape 3) : modifier le classement d'un AUTRE suit la même règle
+  // de fiabilité que l'admin.
+  const isAdminEditingOther = perms.editPlayers && !isSelf;
   // Rôles (25/10/2026, étape 1 — sécurité) : ce qui suit ne fait que régler
   // l'AFFICHAGE ; le serveur (api/manage-roles.js, api/manage-pin.js)
   // revérifie tout. Personne ne modifie ses propres rôles, sauf l'admin
@@ -186,6 +189,7 @@ export function EditPlayerModal({ player, onClose }) {
       if (canEditAdminFlag && playerIsAdmin !== (player.isAdmin === true)) roleChanges.isAdmin = playerIsAdmin;
       if (canEditRoles) {
         if (isCreditor !== (player.isCreditor === true)) roleChanges.isCreditor = isCreditor;
+        if (isCoach !== (player.isCoach === true)) roleChanges.isCoach = isCoach;
         if (isTest !== (player.isTest === true)) roleChanges.isTest = isTest;
         if (isGuest !== (player.isGuest === true)) roleChanges.isGuest = isGuest;
       }
@@ -267,6 +271,10 @@ export function EditPlayerModal({ player, onClose }) {
         </>
       }
     >
+      {/* Coach (étape 3 des rôles) : il ne voit que les infos de jeu — nom,
+          email, avatar et code PIN restent réservés à l'admin. */}
+      {perms.editPlayerIdentity && (
+      <>
       <AvatarPicker
         emoji={emoji}
         color={avatarColor}
@@ -330,6 +338,8 @@ export function EditPlayerModal({ player, onClose }) {
         )}
       </Field>
       )}
+      </>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Main dominante">
@@ -384,6 +394,18 @@ export function EditPlayerModal({ player, onClose }) {
         )}
       </Field>
 
+      {!perms.editPlayerAdminFields && perms.setOccasional && (
+        <label className="flex items-center gap-2.5 text-sm mb-2">
+          <input
+            type="checkbox"
+            checked={isOccasional}
+            onChange={(e) => setIsOccasional(e.target.checked)}
+            className="w-4 h-4 accent-[var(--color-lime)]"
+          />
+          Joueur occasionnel
+        </label>
+      )}
+
       {perms.editPlayerAdminFields && (
         <div className="flex flex-col gap-2 mb-2">
           {!canEditRoles && (
@@ -406,6 +428,16 @@ export function EditPlayerModal({ player, onClose }) {
               Seul l'administrateur principal peut nommer ou retirer un administrateur.
             </p>
           )}
+          <label className={cn("flex items-center gap-2.5 text-sm", !canEditRoles && "opacity-50")}>
+            <input
+              type="checkbox"
+              checked={isCoach}
+              disabled={!canEditRoles}
+              onChange={(e) => setIsCoach(e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Coach (présences, composition des terrains, scores)
+          </label>
           <label className={cn("flex items-center gap-2.5 text-sm", !canEditRoles && "opacity-50")}>
             <input
               type="checkbox"
