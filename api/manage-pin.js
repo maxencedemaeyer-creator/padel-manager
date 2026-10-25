@@ -33,6 +33,7 @@
 //     n'existe déjà.
 // ─────────────────────────────────────────────────────────────────────────
 import { getAdminDb, FieldValue, verifySessionToken } from "./_firebaseAdmin.js";
+import { getOwnerId, getActingAdmin } from "./_roles.js";
 
 async function collectAllCodes(db) {
   const [credsSnap, playersSnap] = await Promise.all([
@@ -78,12 +79,22 @@ export default async function handler(req, res) {
         res.status(403).json({ ok: false, error: "Session invalide ou expirée. Reconnectez-vous." });
         return;
       }
-      const actingSnap = await db.collection("players").doc(session.playerId).get();
-      if (!actingSnap.exists || actingSnap.data().isAdmin !== true) {
+      const acting = await getActingAdmin(db, session);
+      if (!acting) {
         res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
         return;
       }
       const codes = await collectAllCodes(db);
+      // 25/10/2026 (rôles, étape 1) : seul l'admin principal voit le code
+      // des AUTRES administrateurs — sinon un admin pourrait se connecter à
+      // la place d'un autre admin. Chacun voit toujours son propre code.
+      const ownerId = await getOwnerId(db);
+      if (ownerId !== acting.id) {
+        const adminsSnap = await db.collection("players").where("isAdmin", "==", true).get();
+        adminsSnap.forEach((d) => {
+          if (d.id !== acting.id) codes.delete(d.id);
+        });
+      }
       res.status(200).json({ ok: true, codes: Object.fromEntries(codes) });
       return;
     }
@@ -143,10 +154,65 @@ export default async function handler(req, res) {
           return;
         }
       } else if (session.playerId !== playerId) {
-        const actingSnap = await db.collection("players").doc(session.playerId).get();
-        if (!actingSnap.exists || actingSnap.data().isAdmin !== true) {
+        const acting = await getActingAdmin(db, session);
+        if (!acting) {
           res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
           return;
+        }
+        // 25/10/2026 (rôles, étape 1) : le code d'un administrateur ne peut
+        // être changé que par lui-même ou par l'admin principal.
+        const targetSnap = await db.collection("players").doc(playerId).get();
+        if (targetSnap.exists && targetSnap.data().isAdmin === true) {
+          const ownerId = await getOwnerId(db);
+          if (ownerId !== acting.id) {
+            res.status(403).json({
+              ok: false,
+              error: "Seul l'administrateur principal peut changer le code d'un administrateur.",
+            });
+            return;
+          }
+        }
+      }
+
+      // Connexion secrète (corrigé le 25/10/2026 — correctif du 21/09 jamais
+      // déployé) : DÉFINIR un code secondaire ou sa destination est réservé à
+      // un administrateur agissant sur SA PROPRE fiche, et la destination
+      // doit être un compte marqué "test". EFFACER (null) reste permis au
+      // titulaire ou à un admin. Avant ce correctif, n'importe quel joueur
+      // connecté pouvait se poser une connexion secrète vers n'importe quel
+      // compte (admin compris) en appelant directement cette route.
+      const definesSecondary =
+        (secondaryTestCode !== undefined && secondaryTestCode !== null) ||
+        (secondaryTestPlayerId !== undefined && secondaryTestPlayerId !== null);
+      if (definesSecondary) {
+        const acting = await getActingAdmin(db, session);
+        if (!acting || acting.id !== playerId) {
+          res.status(403).json({
+            ok: false,
+            error: "La connexion secrète est réservée à l'administrateur, sur sa propre fiche.",
+          });
+          return;
+        }
+        if (secondaryTestCode !== undefined && secondaryTestCode !== null) {
+          if (typeof secondaryTestCode !== "string" || !/^\d{4}$/.test(secondaryTestCode)) {
+            res.status(400).json({ ok: false, error: "Code secondaire invalide." });
+            return;
+          }
+        }
+        let destinationId = secondaryTestPlayerId;
+        if (destinationId === undefined) {
+          const credSnap = await db.collection("player_credentials").doc(playerId).get();
+          destinationId = credSnap.exists ? credSnap.data().secondaryTestPlayerId || null : null;
+        }
+        if (destinationId) {
+          const destSnap = await db.collection("players").doc(destinationId).get();
+          if (!destSnap.exists || destSnap.data().isTest !== true) {
+            res.status(403).json({
+              ok: false,
+              error: "La connexion secrète ne peut ouvrir qu'un profil coché « Compte test ».",
+            });
+            return;
+          }
         }
       }
 
