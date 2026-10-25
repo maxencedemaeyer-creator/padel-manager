@@ -162,6 +162,9 @@ export function CourtSettingsMenu({
   // Joueur (non-admin) dans « Dernier résultat » : seule l'entrée
   // « Encoder un score » est proposée (uniquement quand le match n'a pas de score).
   scoreOnly = false,
+  // Étape 3 des rôles (25/10/2026) : le coach a ce menu, mais pas
+  // « Supprimer le match » (admin seul).
+  canDelete = true,
 }) {
   return (
     <Modal title={dateOnly ? "Reprogrammer ce match" : "Paramètres du terrain"} onClose={onClose}>
@@ -196,7 +199,7 @@ export function CourtSettingsMenu({
                 Remplacer un joueur
               </button>
             )}
-            {!scoreOnly && (
+            {!scoreOnly && canDelete && (
               <button
                 type="button"
                 onClick={onPickDelete}
