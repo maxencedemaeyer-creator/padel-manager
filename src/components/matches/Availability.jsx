@@ -472,7 +472,7 @@ export function AvailabilityButtons({ sessionMatches }) {
       } else if (result === "elsewhere") {
         alert("Vous êtes déjà inscrit sur un autre match le même jour, impossible de prendre cette place.");
       } else if (result === "error") {
-        alert("Impossible de vous placer pour l'instant. Réessayez dans un instant ou contactez l'administrateur.");
+        alert("Impossible de vous placer pour l'instant. Réessayez dans un instant ou contactez le coach ou l'administrateur.");
       }
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
