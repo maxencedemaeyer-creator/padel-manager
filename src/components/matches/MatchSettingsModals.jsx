@@ -7,6 +7,7 @@ import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 
@@ -45,6 +46,10 @@ export function EditMatchDateTimeModal({ match, onClose }) {
         updates.compositionPublished = false;
       }
       await updateDoc(doc(db, "matches", match.id), updates);
+      logActivity(
+        "match",
+        `Match déplacé : ${matchLabel(match)} → ${matchLabel({ ...match, date, time })}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -79,6 +84,10 @@ export function EditMatchDateTimeModal({ match, onClose }) {
         availability: {},
         compositionPublished: false,
       });
+      logActivity(
+        "match",
+        `Match reporté à une date inconnue (composition et présences vidées${(match.participants || []).some((p) => p.paidStatus === "paid" || p.paidStatus === "owed") ? ", paiements effacés" : ""}) — ${matchLabel(match)}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -241,6 +250,10 @@ export function DeleteMatchConfirmModal({ match, onClose }) {
         batch.delete(doc(db, "abonnements", match.abonnementId));
       }
       await batch.commit();
+      logActivity(
+        "match",
+        `Match supprimé — ${matchLabel(match)}${match.scores && Object.values(match.scores).some(Boolean) ? " (avec score)" : ""}${(match.participants || []).some((p) => p.paidStatus === "paid") ? " (avec paiements)" : ""}${isLastOfAbonnement ? " — abonnement supprimé aussi" : ""}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
