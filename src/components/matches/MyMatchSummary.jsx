@@ -38,7 +38,7 @@ function shortCourt(location) {
 }
 
 export function MyMatchSummary({ now }) {
-  const { connectedPlayer, players, matches, isAdmin, presenceWindowDays } = useAppData();
+  const { connectedPlayer, players, matches, perms, presenceWindowDays } = useAppData();
   // (19/09/2026) Le lien "Voir mon ranking →" a été retiré de ce bandeau :
   // pour consulter son ranking, le joueur passe par l'onglet "Mon profil".
 
@@ -50,7 +50,7 @@ export function MyMatchSummary({ now }) {
   // MatchesView.jsx, section "Matchs à reprogrammer", où ces mêmes matchs
   // sont affichés en détail — visibilité identique, calculée pareil).
   const tbdMatchesToHandle = matches.filter(
-    (m) => m.dateTBD && (isAdmin || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id))
+    (m) => m.dateTBD && (perms.manageTBDMatches || isPlayerMatchCreditor(m, matches, players, connectedPlayer.id))
   );
   const scrollToReprogramSection = () => {
     document
@@ -244,7 +244,7 @@ export function MyMatchSummary({ now }) {
       <p
         className={
           "pm-display font-bold text-lg mb-1 " +
-          (isAdmin && tbdMatchesToHandle.length > 0 ? "pr-20" : isAdmin || tbdMatchesToHandle.length > 0 ? "pr-11" : "")
+          (perms.seeWithdrawalAlerts && tbdMatchesToHandle.length > 0 ? "pr-20" : perms.seeWithdrawalAlerts || tbdMatchesToHandle.length > 0 ? "pr-11" : "")
         }
       >
         Bonjour {getFirstName(connectedPlayer.name)} 👋
