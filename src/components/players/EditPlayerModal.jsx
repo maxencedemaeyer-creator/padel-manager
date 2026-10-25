@@ -11,6 +11,7 @@ import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CH
 import { getScoreBase, getPlayerRatingState, computeLevelChangeRecalibration } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
 import { getOwnerId, updateRoles } from "../../lib/roles";
+import { logActivity } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
@@ -196,6 +197,18 @@ export function EditPlayerModal({ player, onClose }) {
       await updateRoles(sessionToken, [{ playerId: player.id, changes: roleChanges }]);
 
       await updateDoc(doc(db, "players", player.id), payload);
+      // Journal d'activité (étape 4 des rôles). Les rôles, eux, sont
+      // journalisés directement par le serveur (api/manage-roles.js).
+      if (levelActuallyChanged) {
+        const oldLevel = player.level || "Pas de niveau";
+        logActivity(
+          "level",
+          `Classement de ${player.name} : ${((oldLevel) === "Pas de niveau" ? "Non classé" : (oldLevel))} → ${((level) === "Pas de niveau" ? "Non classé" : (level))}`
+        );
+      }
+      if (isOccasional !== (player.isOccasional === true)) {
+        logActivity("player", `${player.name} : étiquette « occasionnel » ${isOccasional ? "ajoutée" : "retirée"}`);
+      }
 
       // Codes PIN : uniquement si un changement a été explicitement demandé
       // (nouveau code saisi, nouveau code secondaire saisi, ou suppression
@@ -248,6 +261,7 @@ export function EditPlayerModal({ player, onClose }) {
         archived: true,
         archivedAt: serverTimestamp(),
       });
+      logActivity("player", `${player.name} supprimé du club (profil archivé)`);
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
