@@ -215,7 +215,7 @@ export function RoundModal({
   scoreOnly = false,
   onClose,
 }) {
-  const { players, matches, connectedPlayer, isAdmin } = useAppData();
+  const { players, matches, connectedPlayer, perms } = useAppData();
   const choices = courtChoices && courtChoices.length > 0 ? courtChoices : [matchProp];
   const [courtId, setCourtId] = useState(() => {
     const mine = choices.find((m) =>
@@ -271,7 +271,7 @@ export function RoundModal({
     }));
 
   // Un joueur ne peut qu'encoder le score d'une manche qui n'en a pas encore.
-  const playerBlocked = scoreOnly && !isAdmin && hasMatchScore(existing || {});
+  const playerBlocked = scoreOnly && !perms.editAnyScore && hasMatchScore(existing || {});
   const save = async (matchType, scoreSets) => {
     if (!allFilled || playerBlocked) return;
     setSaving(true);
