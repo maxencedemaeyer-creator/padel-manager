@@ -498,10 +498,10 @@ function RankingSparkline({ values, width = 150, height = 28 }) {
 }
 
 export function StatsView() {
-  const { connectedPlayer, players, matches, sessionToken, isAdmin, rankingEnabled, logout } =
+  const { connectedPlayer, players, matches, sessionToken, perms, rankingEnabled, logout } =
     useAppData();
   // Ranking — même condition d'affichage que PlayerRow.jsx/MyMatchSummary.jsx.
-  const showRanking = isAdmin || rankingEnabled;
+  const showRanking = perms.seeLevelAlways || rankingEnabled;
   // Mémoïsé (04/09/2026) : ces calculs reparcourent TOUS les matchs (et,
   // pour `ranked`, une fois PAR JOUEUR du club) — recalculés jusqu'ici à
   // chaque rendu de l'onglet "Mon profil", même pour un rendu qui n'a rien
