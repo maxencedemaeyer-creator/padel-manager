@@ -27,6 +27,7 @@ import { ManageClubsModal } from "../components/clubs/ManageClubsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
 import { PlayerPinsCard } from "../components/admin/PlayerPinsCard";
+import { BackupCard } from "../components/admin/BackupCard";
 
 // Carte "Game Center" — interrupteur pour rendre l'onglet accessible à tous
 // les joueurs (par défaut, réservé à l'admin). Écrit directement dans
@@ -1401,6 +1402,7 @@ export function AdminView() {
       >
         <MaintenanceSettingCard enabled={maintenanceEnabled} />
         <GameCenterSettingCard enabled={gameCenterEnabled} />
+        <BackupCard />
       </AdminSection>
 
       {showCreateSeason && (
