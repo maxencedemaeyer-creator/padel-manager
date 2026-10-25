@@ -34,6 +34,7 @@ import {
   participantsOf,
 } from "../../lib/stats";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 import { ClaimSettingsModal } from "./ClaimSettingsModal";
@@ -171,6 +172,10 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
       await updateDoc(doc(db, "matches", item.matchId), {
         participants: updatedParticipants,
       });
+      logActivity(
+        "payment",
+        `${playerName(players, item.playerId)} marqué payé à ${playerName(players, item.owedTo || creditorId)} — ${matchLabel(match)}`
+      );
       setConfirmingKey(null);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -219,6 +224,10 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
         batch.update(doc(db, "matches", matchId), { participants: updatedParticipants });
       });
       await batch.commit();
+      logActivity(
+        "payment",
+        `${playerName(players, group.playerId)} marqué payé à ${playerName(players, group.creditorId)} pour ${group.items.length} match${group.items.length > 1 ? "s" : ""} (${group.total.toLocaleString("fr-FR")} €)`
+      );
       setConfirmingGroupKey(null);
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
