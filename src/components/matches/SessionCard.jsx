@@ -348,7 +348,7 @@ function ResponsesModal({ sessionMatches, onClose, onEditPresence }) {
 }
 
 export function SessionCard({ sessionMatches, now }) {
-  const { isAdmin } = useAppData();
+  const { perms } = useAppData();
   // Admin : la flèche en haut à droite déplie / replie la grille des
   // terrains et le bandeau de gestion (repliés par défaut = carte compacte et plus légère). Simple état
   // d'affichage LOCAL (aucune écriture Firestore) : sans effet sur ce que
@@ -357,7 +357,7 @@ export function SessionCard({ sessionMatches, now }) {
   const [prepExpanded, setPrepExpanded] = useState(false);
   const first = sessionMatches[0];
   const published = isCompositionPublished(sessionMatches);
-  const showCourts = !isAdmin || prepExpanded;
+  const showCourts = !perms.manageSession || prepExpanded;
   return (
     <Card className="p-4 pm-rise">
       <div className={cn("flex items-baseline justify-between gap-2", showCourts ? "mb-3" : "mb-2")}>
@@ -365,7 +365,7 @@ export function SessionCard({ sessionMatches, now }) {
           <p className="pm-display font-bold text-base">
             {formatDateFR(first.date)} · {formatTimeFR(first.time)}
           </p>
-          {published && !isAdmin && (
+          {published && !perms.manageSession && (
             <span className="text-[11px] font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full shrink-0">
               Suggestion de feuille de match
             </span>
@@ -375,7 +375,7 @@ export function SessionCard({ sessionMatches, now }) {
           <Badge tone="neutral" className="!text-[10px] shrink-0">
             {sessionMatches.length} terrain{sessionMatches.length > 1 ? "s" : ""}
           </Badge>
-          {isAdmin && (
+          {perms.manageSession && (
             <button
               type="button"
               onClick={() => setPrepExpanded((v) => !v)}
@@ -391,7 +391,7 @@ export function SessionCard({ sessionMatches, now }) {
         </div>
       </div>
 
-      {isAdmin && prepExpanded && <AdminSessionBar sessionMatches={sessionMatches} />}
+      {perms.manageSession && prepExpanded && <AdminSessionBar sessionMatches={sessionMatches} />}
 
       {showCourts && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -555,7 +555,7 @@ export function CompactMatchResult({
   roundLabel = null,
   canEditScore = false,
 }) {
-  const { isAdmin, players } = useAppData();
+  const { perms, players } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
   const [showEnd, setShowEnd] = useState(false);
@@ -618,7 +618,7 @@ export function CompactMatchResult({
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {(isAdmin || (canEditScore && !scoreEntered)) && (
+        {(perms.editAnyScore || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
@@ -632,7 +632,7 @@ export function CompactMatchResult({
 
       {showMenu && (
         <CourtSettingsMenu
-          scoreOnly={!isAdmin}
+          scoreOnly={!perms.editMatchSettings}
           onClose={() => setShowMenu(false)}
           onPickDateTime={() => {
             setShowMenu(false);
@@ -677,7 +677,7 @@ function RoundResultRow({
   compact = false,
   canEditScore = false,
 }) {
-  const { isAdmin, players, matches } = useAppData();
+  const { perms, players, matches } = useAppData();
   const [showMenu, setShowMenu] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -745,7 +745,7 @@ function RoundResultRow({
         ) : (
           <span className="text-xs text-[var(--color-text-faint)] italic">Sans score</span>
         )}
-        {(isAdmin || (canEditScore && !scoreEntered)) && (
+        {(perms.editAnyScore || (canEditScore && !scoreEntered)) && (
           <button
             type="button"
             onClick={() => setShowMenu(true)}
@@ -768,9 +768,9 @@ function RoundResultRow({
               }}
               className="p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
             >
-              {isAdmin ? "Modifier la composition ou le score" : "Encoder le score de la manche"}
+              {perms.composeCourts ? "Modifier la composition ou le score" : "Encoder le score de la manche"}
             </button>
-            {isAdmin && (
+            {perms.deleteRounds && (
               <button
                 type="button"
                 onClick={() => {
@@ -790,7 +790,7 @@ function RoundResultRow({
           match={match}
           sessionMatches={sessionMatches}
           roundIndex={roundIndex}
-          scoreOnly={!isAdmin}
+          scoreOnly={!perms.composeCourts}
           onClose={() => setShowEdit(false)}
         />
       )}
@@ -844,7 +844,7 @@ export function MatchResultBlock({
   collapsible = false,
   defaultOpen = true,
 }) {
-  const { isAdmin, connectedPlayer } = useAppData();
+  const { perms, connectedPlayer } = useAppData();
   const [showAddRound, setShowAddRound] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
   const showBody = !collapsible || open;
@@ -854,7 +854,7 @@ export function MatchResultBlock({
   // l'un des terrains) et à l'admin ; la fenêtre propose tous les terrains de
   // la session.
   const canAddRound =
-    isAdmin ||
+    perms.addRoundAnySession ||
     sessionMatches.some((m) =>
       (m.participants || []).some((p) => p.playerId === connectedPlayer?.id)
     );
