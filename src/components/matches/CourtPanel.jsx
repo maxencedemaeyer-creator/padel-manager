@@ -218,7 +218,12 @@ export function CourtPanel({ match, now }) {
         canAssign={canAssign}
         canSelfManage={selfClickable}
         isSelfSlot={isMe}
-        canPay={canManagePayments}
+        // 25/10/2026 (rôles, étape 1) : personne ne marque SA PROPRE place
+        // payée (un créancier pouvait sinon effacer sa dette envers un autre
+        // créancier en se déclarant "payé à moi-même") — c'est un autre
+        // créancier ou l'admin qui le fait. Une place couverte par un
+        // créancier de la session n'a de toute façon rien à payer.
+        canPay={canManagePayments && !isMe}
         isCreditorParticipant={participant ? creditorPlayerIds.has(participant.playerId) : false}
         trackPayments={trackPayments}
         matchStarted={timing === "ongoing" || finished}
