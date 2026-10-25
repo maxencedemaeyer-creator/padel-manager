@@ -18,6 +18,7 @@ import {
 import { getDivergence, suggestLevelForScore, RANKING_ENGINE_VERSION } from "../lib/levelRating";
 import { computeFullRecalculation } from "../lib/rankingRecalc";
 import { useAppData } from "../context/AppContext";
+import { logActivity } from "../lib/activityLog";
 import Icon from "../components/icons/Icon";
 import { Card, Button, EmptyState, Switch, Modal, Field, inputClass } from "../components/ui";
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
@@ -28,6 +29,7 @@ import { PlayerAvatar } from "../components/players/PlayerAvatar";
 import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
 import { PlayerPinsCard } from "../components/admin/PlayerPinsCard";
 import { BackupCard } from "../components/admin/BackupCard";
+import { ActivityLogCard } from "../components/admin/ActivityLogCard";
 
 // Carte "Game Center" — interrupteur pour rendre l'onglet accessible à tous
 // les joueurs (par défaut, réservé à l'admin). Écrit directement dans
@@ -707,6 +709,10 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
     setBusyId(info.abonnement.id);
     try {
       await updateDoc(doc(db, "abonnements", info.abonnement.id), { archived: willArchive });
+      logActivity(
+        "money",
+        `Abonnement ${willArchive ? "clôturé" : "réactivé"}${info.abonnement.label ? ` — ${info.abonnement.label}` : ""} (${info.matchCount} match${info.matchCount > 1 ? "s" : ""})`
+      );
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
@@ -872,6 +878,10 @@ function DeleteAbonnementConfirmModal({ info, onClose }) {
         await batch.commit();
       }
       await deleteDoc(doc(db, "abonnements", abonnement.id));
+      logActivity(
+        "money",
+        `Abonnement supprimé${abonnement.label ? ` — ${abonnement.label}` : ""} (${relatedMatchIds.length} match${relatedMatchIds.length > 1 ? "s" : ""}${paidAmount > 0 ? `, ${paidAmount.toLocaleString("fr-FR")} € de paiements` : ""})`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -1403,6 +1413,7 @@ export function AdminView() {
         <MaintenanceSettingCard enabled={maintenanceEnabled} />
         <GameCenterSettingCard enabled={gameCenterEnabled} />
         <BackupCard />
+        <ActivityLogCard />
       </AdminSection>
 
       {showCreateSeason && (
