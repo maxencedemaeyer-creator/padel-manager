@@ -2,126 +2,87 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Default deny — toute collection non listée explicitement ci-dessous
-    // reste totalement inaccessible.
+    // Rôles protégés (25/10/2026) : jamais modifiables depuis un navigateur,
+    // seulement par le serveur (api/manage-roles.js).
+    function roleFields() {
+      return ['isAdmin', 'isCoach', 'isCreditor', 'isOwner', 'isTest', 'isGuest'];
+    }
+    function createsWithoutRoles() {
+      let d = request.resource.data;
+      return d.get('isAdmin', false) != true
+        && d.get('isCoach', false) != true
+        && d.get('isCreditor', false) != true
+        && d.get('isOwner', false) != true
+        && d.get('isTest', false) != true
+        && d.get('isGuest', false) != true;
+    }
+    function keepsRoles() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(roleFields());
+    }
+
+    // Refus par défaut pour toute collection non listée
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // 1. Players collection
-    // Lu par tous les visiteurs authentifiés (y compris avant la sélection
-    // du profil / saisie du code PIN, qui est gérée côté application, pas
-    // par Firebase Auth). L'app ne supprime jamais un joueur (elle le
-    // marque "archived: true"), donc aucune permission de suppression n'est
-    // accordée ici.
     match /players/{playerId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create: if isSignedIn() && createsWithoutRoles();
+      allow update: if isSignedIn() && keepsRoles();
     }
 
-    // 2. Matches collection
     match /matches/{matchId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isSignedIn();
     }
 
-    // 3. Abonnements collection (ex-"saisons") — un document par lot généré
-    // depuis "Créer un abonnement" (voir CreateSeasonModal.jsx) : club,
-    // terrain(s), période, créanciers et leur créance de départ. Ce bloc
-    // était absent de ce fichier jusqu'au 02/09/2026 (soir) — repéré à
-    // l'occasion de l'ajout de la suppression/clôture d'abonnement depuis
-    // Administration — alors que l'app lit et écrit déjà cette collection en
-    // production (CreateSeasonModal, ClaimSettingsModal) : les règles
-    // réellement déployées sur la console Firebase étaient donc déjà plus
-    // permissives que ce fichier local, resté désynchronisé. Même niveau
-    // d'accès que "matches" ci-dessus, suppression comprise (nécessaire pour
-    // "Supprimer un abonnement").
     match /abonnements/{abonnementId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isSignedIn();
     }
 
-    // 4. Withdrawals collection (détection des désinscriptions tardives —
-    // src/lib/withdrawalWatcher.js, CourtPanel.jsx, Header.jsx). Absente des
-    // règles précédentes : toutes ces lectures/écritures étaient refusées
-    // en silence, rendant la fonctionnalité inopérante en production.
     match /withdrawals/{withdrawalId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
     }
 
-    // 5. Player credentials collection (codes PIN) — verrouillée : ni lisible
-    // ni modifiable depuis un navigateur, quel que soit l'utilisateur. Seul
-    // le SDK Admin Firebase (utilisé par les fonctions serveur api/verify-pin
-    // et api/manage-pin, jamais exécuté dans un navigateur) peut y accéder,
-    // car il contourne complètement ces règles.
+    // Codes PIN : serveur uniquement
     match /player_credentials/{playerId} {
       allow read, write: if false;
     }
 
-    // 6. Settings collection — réglages globaux de l'app (ex. activation du
-    // Fun Center pour tous les joueurs, voir src/views/AdminView.jsx). Même
-    // niveau d'accès que le reste des collections ci-dessus.
     match /settings/{settingId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
     }
 
-    // 7. Games collection — état partagé des mini-jeux du Fun Center (ex.
-    // "games/tourneeGenerale" : historique du jour des joueurs déjà tirés
-    // au sort pour la tournée générale, voir src/lib/tourneeGenerale.js).
-    // Même niveau d'accès que le reste des collections ci-dessus.
     match /games/{gameId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
     }
 
-    // 8. Killer missions collection — mission personnelle du jour de chaque
-    // joueur pour le jeu "Killer" du Fun Center (un document par joueur et
-    // par jour), voir src/lib/killer.js. Même niveau d'accès que le reste :
-    // la base ne distingue pas les joueurs entre eux (voir remarque
-    // ci-dessous), c'est l'application qui ne demande/affiche jamais la
-    // mission d'un autre joueur.
     match /killerMissions/{missionId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
     }
 
-    // 9. MVP votes collection — votes pour le jeu "Homme du match" du Game
-    // Center (un document par match, voir src/lib/mvp.js). Même niveau
-    // d'accès que le reste : la base ne distingue pas les joueurs entre eux
-    // (voir remarque ci-dessous), c'est l'application qui empêche un joueur
-    // de voter deux fois pour le même match (transaction Firestore).
     match /mvpVotes/{matchId} {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn();
     }
 
-    // 10. Admin relations — préférences et incompatibilités entre joueurs de
-    // l'outil "Liens entre joueurs" (Administration). Ce sont des confidences
-    // faites à l'administrateur : verrouillée pour tout navigateur, comme
-    // player_credentials. Seul le SDK Admin (fonction serveur
-    // api/admin-relations.js, qui vérifie que l'appelant est administrateur)
-    // peut y lire et écrire.
+    match /clubs/{clubId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+    }
+
+    // Confidences « Liens entre joueurs » : serveur uniquement
     match /adminRelations/{docId} {
       allow read, write: if false;
     }
-
-    // Remarque : "isSignedIn()" est vrai dès qu'un visiteur charge le site,
-    // même sans code PIN valide, car l'app se connecte automatiquement à
-    // Firebase de façon anonyme (voir src/firebase.js). Cela bloque l'accès
-    // direct à la base par un script/robot qui ne charge jamais le site,
-    // mais ne distingue pas un joueur d'un administrateur au niveau de la
-    // base de données : cette distinction reste gérée côté application
-    // uniquement. Une isolation plus stricte (empêcher un joueur non-admin
-    // d'écrire dans les documents d'un autre joueur, par exemple) nécessite
-    // une vraie authentification Firebase par compte (email ou téléphone)
-    // avec des rôles ("custom claims"), ce qui est une évolution plus lourde
-    // à prévoir séparément si le besoin s'en fait sentir.
   }
 }
