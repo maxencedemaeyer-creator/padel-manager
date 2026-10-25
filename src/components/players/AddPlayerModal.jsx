@@ -7,12 +7,16 @@ import { db } from "../../firebase";
 import { cn } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES, levelDisplayLabel } from "../../lib/constants";
 import { useAppData } from "../../context/AppContext";
+import { getOwnerId, updateRoles } from "../../lib/roles";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function AddPlayerModal({ onClose }) {
-  const { players, archivedPlayers, sessionToken } = useAppData();
+  const { players, archivedPlayers, sessionToken, connectedPlayer } = useAppData();
+  // 25/10/2026 (rôles, étape 1) : seul l'admin principal peut créer un
+  // nouvel administrateur (le serveur le revérifie).
+  const amOwner = Boolean(connectedPlayer) && getOwnerId(players) === connectedPlayer.id;
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -127,9 +131,9 @@ export function AddPlayerModal({ onClose }) {
       const playerRef = await addDoc(collection(db, "players"), {
         name: form.name.trim(),
         email: form.email.trim(),
-        isAdmin: form.isAdmin,
-        isCreditor: form.isCreditor,
-        isTest: form.isTest,
+        // Rôles (admin, créancier) et étiquette "test" : jamais écrits ici
+        // (la base le refuse depuis le 25/10/2026) — attribués juste après
+        // via le serveur (api/manage-roles.js).
         creditBalance: 0,
         level: form.level,
         levelSortValue: levelInfo ? levelInfo.value : 0,
@@ -153,6 +157,19 @@ export function AddPlayerModal({ onClose }) {
       const data = await response.json();
       if (!data.ok) {
         throw new Error(data.error || "Échec de l'enregistrement du code PIN.");
+      }
+      const roleChanges = {};
+      if (form.isAdmin && amOwner) roleChanges.isAdmin = true;
+      if (form.isCreditor) roleChanges.isCreditor = true;
+      if (form.isTest) roleChanges.isTest = true;
+      try {
+        await updateRoles(sessionToken, [{ playerId: playerRef.id, changes: roleChanges }]);
+      } catch (roleError) {
+        alert(
+          "Le joueur a bien été créé, mais ses rôles n'ont pas pu être enregistrés : " +
+            roleError.message +
+            "\nVous pouvez les cocher à nouveau depuis sa fiche."
+        );
       }
       onClose();
     } catch (error) {
@@ -302,15 +319,17 @@ export function AddPlayerModal({ onClose }) {
       </div>
 
       <div className="flex flex-col gap-2 mb-2">
-        <label className="flex items-center gap-2.5 text-sm">
-          <input
-            type="checkbox"
-            checked={form.isAdmin}
-            onChange={(e) => setF("isAdmin", e.target.checked)}
-            className="w-4 h-4 accent-[var(--color-lime)]"
-          />
-          Administrateur (gestion complète du club)
-        </label>
+        {amOwner && (
+          <label className="flex items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={form.isAdmin}
+              onChange={(e) => setF("isAdmin", e.target.checked)}
+              className="w-4 h-4 accent-[var(--color-lime)]"
+            />
+            Administrateur (gestion complète du club)
+          </label>
+        )}
         <label className="flex items-center gap-2.5 text-sm">
           <input
             type="checkbox"
