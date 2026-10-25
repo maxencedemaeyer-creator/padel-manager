@@ -44,7 +44,7 @@ function StatusBadge({ match, now }) {
 }
 
 export function CourtPanel({ match, now }) {
-  const { isAdmin, connectedPlayer, players, matches, presenceLockHours } = useAppData();
+  const { isAdmin, perms, connectedPlayer, players, matches, presenceLockHours } = useAppData();
   const [showEnd, setShowEnd] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showDateTime, setShowDateTime] = useState(false);
@@ -64,15 +64,15 @@ export function CourtPanel({ match, now }) {
   // passer par un admin (voir le bouton ⚙️ plus bas, et
   // MatchSettingsModals.jsx → CourtSettingsMenu `dateOnly`).
   const isMatchCreditor = isPlayerMatchCreditor(match, matches, players, connectedPlayer.id);
-  const canManageTBDDate = !isAdmin && tbd && isMatchCreditor;
+  const canManageTBDDate = !perms.editMatchSettings && tbd && isMatchCreditor;
   const scoreEntered = hasMatchScore(match);
   // Seuls les matchs de la saison en cours ("Saison") ont un système de
   // paiement/créances ; les matchs ponctuels ajoutés en plus n'en ont pas.
   const trackPayments = match.type === "Saison";
-  const canManagePayments = trackPayments && (isAdmin || connectedPlayer.isCreditor === true);
+  const canManagePayments = trackPayments && perms.managePayments;
   // L'assignation reste possible même après la fin du match (ex. match créé
   // rétroactivement) — seul un admin peut le faire.
-  const canAssign = isAdmin;
+  const canAssign = perms.composeCourts;
 
   // Auto-inscription : un joueur non-admin peut s'ajouter lui-même sur une
   // place libre d'un match PAS ENCORE commencé, et se désinscrire ensuite —
@@ -87,8 +87,8 @@ export function CourtPanel({ match, now }) {
   );
   const withinSelfRegWindow = daysUntilMatch(match, now) <= SELF_REGISTRATION_WINDOW_DAYS;
   const canSelfJoin =
-    !isAdmin && timing === "upcoming" && !isParticipant && !alreadyElsewhereToday;
-  const canSelfLeave = !isAdmin && timing === "upcoming" && isParticipant;
+    perms.selfRegisterOnCourt && timing === "upcoming" && !isParticipant && !alreadyElsewhereToday;
+  const canSelfLeave = perms.selfRegisterOnCourt && timing === "upcoming" && isParticipant;
 
   const selfJoin = async (def) => {
     if (!withinSelfRegWindow) {
@@ -275,7 +275,7 @@ export function CourtPanel({ match, now }) {
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge match={match} now={now} />
           </div>
-          {(isAdmin || canManageTBDDate) && (
+          {(perms.editMatchSettings || canManageTBDDate) && (
             <button
               type="button"
               onClick={() => setShowSettingsMenu(true)}
@@ -362,7 +362,7 @@ export function CourtPanel({ match, now }) {
         {renderSlot(COURT_SLOT_DEFS[3])}
       </div>
 
-      {isAdmin && finished && (
+      {perms.editAnyScore && finished && (
         <Button
           variant="secondary"
           className="w-full !py-2 !text-xs"
@@ -376,7 +376,7 @@ export function CourtPanel({ match, now }) {
       {showSettingsMenu && (
         <CourtSettingsMenu
           onClose={() => setShowSettingsMenu(false)}
-          dateOnly={!isAdmin}
+          dateOnly={!perms.editMatchSettings}
           onPickDateTime={() => {
             setShowSettingsMenu(false);
             setShowDateTime(true);
