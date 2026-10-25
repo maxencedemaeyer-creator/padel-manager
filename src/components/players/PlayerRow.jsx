@@ -125,7 +125,7 @@ function resultBadge(entry) {
 }
 
 function RankingHistoryModal({ player, matches, onClose }) {
-  const { isAdmin } = useAppData();
+  const { perms } = useAppData();
   const state = getPlayerRatingState(player);
   const reliabilityPct = reliabilityPercent(state.reliability);
   // `true` : inclut aussi les matchs joués sans score (bonus d'assiduité seul).
@@ -242,7 +242,7 @@ function RankingHistoryModal({ player, matches, onClose }) {
               </div>
               {/* Message technique : réservé à l'admin (seul à pouvoir lancer le
                   « Recalcul du niveau »). Les joueurs voient l'historique sans ce texte. */}
-              {session.reordered && isAdmin && (
+              {session.reordered && perms.seeLevelTechNotes && (
                 <p className="text-[10px] italic text-amber-700 mt-1.5 px-1">
                   ⚠️ Les manches de cette soirée ont été encodées dans un ordre inhabituel : elles
                   sont affichées dans l'ordre du calcul. Un « Recalcul du niveau » (Administration)
@@ -306,14 +306,14 @@ function PlayerInfoModal({ player, onClose }) {
 }
 
 export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
-  const { isAdmin, matches, rankingEnabled } = useAppData();
+  const { perms, matches, rankingEnabled } = useAppData();
   const [showEdit, setShowEdit] = useState(false);
   const [showRankingHistory, setShowRankingHistory] = useState(false);
   // Fiche "infos" (main, côté, classement, fédération) — admin uniquement.
   const [showInfo, setShowInfo] = useState(false);
   // Seul l'admin peut ouvrir la fiche complète depuis "Équipe" — un joueur
   // modifie désormais son propre code PIN depuis "Mon profil".
-  const canEdit = isAdmin;
+  const canEdit = perms.editPlayers;
   const playerStats = computePlayerStats(player.id, matches);
   // "Nx homme du match" — nombre de fois élu (voir jeu du Fun Center,
   // lib/mvp.js), compté une fois par PlayersView et transmis en prop. La
@@ -329,7 +329,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   // placeholder. Un joueur non classé (pas de classement officiel P100,
   // P200…) n'a pas encore de niveau : il garde exactement la même pastille
   // que les autres, avec "N.C." à la place du nombre (modif. 21/09/2026).
-  const showRanking = isAdmin || rankingEnabled;
+  const showRanking = perms.seeLevelAlways || rankingEnabled;
   const rankingState = getPlayerRatingState(player);
   // Historique de niveau (icône horloge) : désormais visible par TOUS les
   // joueurs (09/10/2026, c'était réservé à l'admin). Il suit la même règle que
@@ -352,7 +352,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
   // Bloc de droite (refonte du 19/10/2026) : la pastille Niveau 🎾 quitte la
   // ligne du nom et vient ici, avec en dessous le bouton historique (et, pour
   // l'admin, le bouton "i" qui regroupe main / côté / classement / fédération).
-  const showRightBlock = showRanking || isAdmin;
+  const showRightBlock = showRanking || perms.seePlayerDetails;
   const smallBtnClass =
     "h-7 flex-1 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-dim)] flex items-center justify-center active:scale-95 transition-transform hover:text-[var(--color-lime)] hover:border-[var(--color-lime)]/50";
 
@@ -367,7 +367,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
                 (le Niveau 🎾 est désormais dans le bloc de droite). */}
             <div className="flex items-center gap-1 flex-wrap">
               <span className="font-semibold text-sm truncate">{player.name}</span>
-              {player.isCreditor && isAdmin && (
+              {player.isCreditor && perms.seeCreditorBadge && (
                 <Badge tone="blue" className="!px-1.5 !py-0.5 !text-[9px]">
                   Créancier
                 </Badge>
@@ -377,7 +377,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
                   Admin
                 </Badge>
               )}
-              {player.isTest && isAdmin && (
+              {player.isTest && perms.seeTestAccounts && (
                 <Badge tone="danger" className="!px-1.5 !py-0.5 !text-[9px]">
                   Test
                 </Badge>
@@ -426,7 +426,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
                     </Badge>
                   </div>
                 )}
-                {(showHistoryCell || isAdmin) && (
+                {(showHistoryCell || perms.seePlayerDetails) && (
                   <div className="flex gap-1.5">
                     {showHistoryCell && (
                       <button
@@ -439,7 +439,7 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
                         <Icon.History className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {isAdmin && (
+                    {perms.seePlayerDetails && (
                       <button
                         type="button"
                         onClick={() => setShowInfo(true)}
