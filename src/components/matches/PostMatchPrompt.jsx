@@ -12,7 +12,7 @@ import { useAppData } from "../../context/AppContext";
 import { PostMatchModal } from "./PostMatchModal";
 
 export function PostMatchPrompt() {
-  const { connectedPlayer, isAdmin, matches } = useAppData();
+  const { connectedPlayer, perms, matches } = useAppData();
   const now = useNow();
   // Fermetures de la session en cours — volontairement pas persisté : le
   // rappel réapparaîtra à la prochaine ouverture du site tant que le score
@@ -35,7 +35,7 @@ export function PostMatchPrompt() {
     const isParticipant = (m.participants || []).some(
       (p) => p.playerId === connectedPlayer.id
     );
-    return isAdmin || connectedPlayer.isCreditor === true || isParticipant;
+    return perms.scoreReminderAll || isParticipant;
   });
 
   // Priorité aux matchs où le joueur connecté a lui-même joué, puis au plus
