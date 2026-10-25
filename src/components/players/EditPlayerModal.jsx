@@ -16,7 +16,8 @@ import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
 
 export function EditPlayerModal({ player, onClose }) {
-  const { isAdmin, players, connectedPlayer, sessionToken } = useAppData();
+  const { perms, players, connectedPlayer, sessionToken } = useAppData();
+  const isAdmin = perms.isAdmin;
 
   // Champs de jeu — modifiables par le joueur lui-même ou par l'admin
   const [dominantHand, setDominantHand] = useState(player.dominantHand || "Droitier");
@@ -67,7 +68,7 @@ export function EditPlayerModal({ player, onClose }) {
   // change le code PIN d'un autre administrateur.
   const amOwner = Boolean(connectedPlayer) && getOwnerId(players) === connectedPlayer.id;
   const canEditAdminFlag = amOwner && !isSelf;
-  const canEditRoles = isAdmin && (!isSelf || amOwner);
+  const canEditRoles = perms.manageRoles && (!isSelf || amOwner);
   const canEditPin = isSelf || player.isAdmin !== true || amOwner;
   const oldLevelInfo = LEVELS.find((l) => l.label === (player.level || "Pas de niveau"));
   const newLevelInfo = LEVELS.find((l) => l.label === level);
@@ -383,7 +384,7 @@ export function EditPlayerModal({ player, onClose }) {
         )}
       </Field>
 
-      {isAdmin && (
+      {perms.editPlayerAdminFields && (
         <div className="flex flex-col gap-2 mb-2">
           {!canEditRoles && (
             <p className="text-[11px] text-[var(--color-text-faint)]">
