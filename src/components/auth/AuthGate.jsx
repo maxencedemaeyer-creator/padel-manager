@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, SESSION_KEY, SESSION_TOKEN_KEY } from "../../firebase";
 import { cn, isPlayerAdmin } from "../../lib/utils";
 import { getPermissions } from "../../lib/permissions";
+import { setActivityLogToken } from "../../lib/activityLog";
 import { usePlayers } from "../../hooks/useFirestoreData";
 import { AppDataContext } from "../../context/AppContext";
 import Icon from "../icons/Icon";
@@ -321,6 +322,12 @@ export function AuthGate({ children }) {
       }
     } catch (e) {}
   }, []);
+
+  // Journal d'activité (étape 4 des rôles) : le module qui envoie les lignes
+  // au serveur a besoin du jeton de connexion (gardé en mémoire seulement).
+  useEffect(() => {
+    setActivityLogToken(sessionToken);
+  }, [sessionToken]);
 
   const logout = useCallback(() => {
     setConnectedPlayer(null);
