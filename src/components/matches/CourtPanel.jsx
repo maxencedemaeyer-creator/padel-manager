@@ -18,6 +18,7 @@ import {
 } from "../../lib/matchLogic";
 import { isPresenceFrozen } from "../../lib/availability";
 import { useAppData } from "../../context/AppContext";
+import { canEditExistingScore } from "../../lib/permissions";
 import Icon from "../icons/Icon";
 import { Card, Badge, Button } from "../ui";
 import { PlayerSlotCard } from "./PlayerSlotCard";
@@ -93,7 +94,7 @@ export function CourtPanel({ match, now }) {
   const selfJoin = async (def) => {
     if (!withinSelfRegWindow) {
       alert(
-        "Vous ne pouvez pas encore vous inscrire à ce match. Veuillez contacter Maxence ou un administrateur pour vous inscrire à ce match."
+        "Vous ne pouvez pas encore vous inscrire à ce match. Contactez le coach ou l'administrateur pour vous inscrire à ce match."
       );
       return;
     }
@@ -362,7 +363,7 @@ export function CourtPanel({ match, now }) {
         {renderSlot(COURT_SLOT_DEFS[3])}
       </div>
 
-      {perms.editAnyScore && finished && (
+      {canEditExistingScore(perms, match) && finished && (
         <Button
           variant="secondary"
           className="w-full !py-2 !text-xs"
@@ -377,6 +378,7 @@ export function CourtPanel({ match, now }) {
         <CourtSettingsMenu
           onClose={() => setShowSettingsMenu(false)}
           dateOnly={!perms.editMatchSettings}
+          canDelete={perms.deleteMatch}
           onPickDateTime={() => {
             setShowSettingsMenu(false);
             setShowDateTime(true);
