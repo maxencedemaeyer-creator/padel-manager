@@ -314,7 +314,9 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
                 </div>
                 {isGroupOpen && (
                   <div className="border-t border-orange-100 bg-orange-50/40">
-                    {!readOnly && (
+                    {/* 25/10/2026 : jamais d'action sur ses PROPRES dettes
+                        (un autre créancier ou l'admin les règle). */}
+                    {!readOnly && group.playerId !== creditorId && (
                       <div className="flex items-center gap-1.5 flex-wrap px-3.5 py-2.5 border-b border-orange-100/70">
                         {isConfirmingGroup ? (
                           <>
@@ -356,7 +358,7 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
                           item={item}
                           players={players}
                           effectiveViewerId={effectiveViewerId}
-                          readOnly={readOnly}
+                          readOnly={readOnly || item.playerId === creditorId}
                           isConfirming={confirmingKey === item.key}
                           isSaving={savingKey === item.key}
                           onConfirmStart={() => setConfirmingKey(item.key)}
@@ -386,7 +388,7 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
                   item={item}
                   players={players}
                   effectiveViewerId={effectiveViewerId}
-                  readOnly={readOnly}
+                  readOnly={readOnly || item.playerId === creditorId}
                   isConfirming={confirmingKey === item.key}
                   isSaving={savingKey === item.key}
                   onConfirmStart={() => setConfirmingKey(item.key)}
