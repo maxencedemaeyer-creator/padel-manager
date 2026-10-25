@@ -25,13 +25,13 @@ import Icon from "../icons/Icon";
 import { Button, Modal } from "../ui";
 
 export function LevelHistoryIntro() {
-  const { connectedPlayer, isAdmin, rankingEnabled, setView } = useAppData();
+  const { connectedPlayer, perms, rankingEnabled, setView } = useAppData();
   // Fermeture immédiate côté écran, sans attendre la réponse de Firebase.
   const [closed, setClosed] = useState(false);
   const saving = useRef(false);
 
   if (!connectedPlayer || closed) return null;
-  if (!isAdmin && !rankingEnabled) return null;
+  if (!perms.seeLevelAlways && !rankingEnabled) return null;
   if (connectedPlayer.seenFeatures && connectedPlayer.seenFeatures.levelHistory) return null;
 
   const markSeenAndClose = (goToTeam = false) => {
