@@ -38,6 +38,7 @@ import {
   setInvitedPlayers,
 } from "../../lib/convocation";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal } from "../ui";
 
@@ -962,6 +963,13 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
     setOpenId(null);
     try {
       await setSessionAvailability(sessionMatches, playerId, status);
+      // Journal (étape 4 des rôles) : présence modifiée par quelqu'un
+      // d'autre que le joueur lui-même.
+      const STATUS_LABELS = { present: "présent", absent: "absent", unknown: "ne sait pas encore", [RESERVE_STATUS]: "en réserve" };
+      logActivity(
+        "presence",
+        `${playerName(players, playerId)} mis « ${STATUS_LABELS[status] || status} » — ${matchLabel(sessionMatches[0])}`
+      );
       if (status === "present") {
         const player = players.find((p) => p.id === playerId);
         if (player) await autoPlacePresentPlayer(sessionMatches, matches, player);
@@ -980,6 +988,10 @@ export function ManagePresenceModal({ sessionMatches, onClose }) {
     setOpenId(null);
     try {
       await resetSessionAvailability(sessionMatches, playerId);
+      logActivity(
+        "presence",
+        `Réponse de ${playerName(players, playerId)} effacée (redevient « en attente ») — ${matchLabel(sessionMatches[0])}`
+      );
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
     } finally {
