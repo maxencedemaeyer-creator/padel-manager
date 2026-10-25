@@ -54,13 +54,23 @@ export function BottomNav({ view, setView }) {
   const perTab = (navWidth - 16) / tabs.length;
   const compact = perTab < 68;
 
+  // (25/10/2026) La barre n'est plus "flottante" : elle est collée en bas
+  // de l'écran sur toute la largeur, comme une app native.
+  // - iPhone (encoche / Dynamic Island) : le fond descend jusqu'au bord,
+  //   mais les icônes restent au-dessus du petit trait blanc (zone système).
+  // - Android (gestes ou 3 boutons) : simple petite marge de 6 px.
+  // - Téléphone à l'horizontale : les onglets évitent l'encoche sur les côtés.
+  // - Ordinateur : la barre prend toute la largeur, onglets centrés.
   const content = (
     <nav
-      className={cn(
-        "pm-bottom-nav fixed left-1/2 -translate-x-1/2 z-30 bottom-[max(0.9rem,env(safe-area-inset-bottom))] w-[calc(100%-1.5rem)] max-w-md backdrop-blur-2xl backdrop-saturate-150 border rounded-full shadow-[0_12px_32px_-8px_rgba(0,0,0,0.5)] flex px-2 py-1.5",
-        "bg-[#0B1A33]/80 border-white/15"
-      )}
+      className="pm-bottom-nav fixed inset-x-0 bottom-0 z-30 bg-[#0B1A33]/95 backdrop-blur-2xl backdrop-saturate-150 border-t border-white/10 pt-1"
+      style={{
+        paddingBottom: "max(6px, env(safe-area-inset-bottom))",
+        paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
+        paddingRight: "max(0.5rem, env(safe-area-inset-right))",
+      }}
     >
+      <div className="flex w-full max-w-md mx-auto">
       {tabs.map((t) => {
         const active = view === t.id;
         const IconEl = t.icon;
@@ -94,6 +104,7 @@ export function BottomNav({ view, setView }) {
           </button>
         );
       })}
+      </div>
     </nav>
   );
   // Portail : la barre est attachée directement à <body>, donc jamais
