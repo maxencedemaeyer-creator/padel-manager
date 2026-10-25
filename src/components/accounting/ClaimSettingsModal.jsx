@@ -19,6 +19,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { parseFeeInput, formatClaimPeriodLabel } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
+import { logActivity } from "../../lib/activityLog";
 import { Modal, Field, Button, inputClass } from "../ui";
 
 export function ClaimSettingsModal({ creditorId, creditorName, abonnement, onClose }) {
@@ -60,6 +61,11 @@ export function ClaimSettingsModal({ creditorId, creditorName, abonnement, onClo
           )
         : [...existing, { playerId: creditorId, advancedAmount: parsedAmount }];
       await updateDoc(doc(db, "abonnements", abonnement.id), { creditors: updated });
+      const previous = existing.find((c) => c.playerId === creditorId);
+      logActivity(
+        "money",
+        `Créance de ${creditorName} modifiée : ${parsedAmount.toLocaleString("fr-FR")} €${previous ? ` (avant : ${(previous.advancedAmount || 0).toLocaleString("fr-FR")} €)` : ""}${abonnement.label ? ` — ${abonnement.label}` : ""}`
+      );
       onClose();
     } catch (err) {
       setError("Erreur Firestore : " + err.message);
