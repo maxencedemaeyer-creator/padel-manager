@@ -156,20 +156,41 @@ export default async function handler(req, res) {
       } else if (session.playerId !== playerId) {
         const acting = await getActingAdmin(db, session);
         if (!acting) {
-          res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
-          return;
-        }
-        // 25/10/2026 (rôles, étape 1) : le code d'un administrateur ne peut
-        // être changé que par lui-même ou par l'admin principal.
-        const targetSnap = await db.collection("players").doc(playerId).get();
-        if (targetSnap.exists && targetSnap.data().isAdmin === true) {
-          const ownerId = await getOwnerId(db);
-          if (ownerId !== acting.id) {
-            res.status(403).json({
-              ok: false,
-              error: "Seul l'administrateur principal peut changer le code d'un administrateur.",
-            });
+          // Coach (25/10/2026, étape 3 des rôles) : il peut ajouter un
+          // joueur, et donc lui donner son PREMIER code — uniquement pour un
+          // joueur qui n'a encore aucun code (fiche toute neuve), qui n'est
+          // ni admin ni coach, et sans toucher à la connexion secrète. Il ne
+          // peut jamais changer le code d'un joueur existant.
+          const coachSnap = await db.collection("players").doc(session.playerId).get();
+          const isCoach =
+            coachSnap.exists && coachSnap.data().isCoach === true && coachSnap.data().archived !== true;
+          let allowedForCoach = false;
+          if (isCoach && accessCode !== undefined && secondaryTestCode === undefined && secondaryTestPlayerId === undefined) {
+            const [targetSnap, credSnap] = await Promise.all([
+              db.collection("players").doc(playerId).get(),
+              db.collection("player_credentials").doc(playerId).get(),
+            ]);
+            const t = targetSnap.exists ? targetSnap.data() : null;
+            const hasCode = (credSnap.exists && credSnap.data().accessCode) || (t && t.accessCode);
+            allowedForCoach = Boolean(t) && !hasCode && t.isAdmin !== true && t.isCoach !== true;
+          }
+          if (!allowedForCoach) {
+            res.status(403).json({ ok: false, error: "Action réservée à l'administrateur." });
             return;
+          }
+        } else {
+          // 25/10/2026 (rôles, étape 1) : le code d'un administrateur ne peut
+          // être changé que par lui-même ou par l'admin principal.
+          const targetSnap = await db.collection("players").doc(playerId).get();
+          if (targetSnap.exists && targetSnap.data().isAdmin === true) {
+            const ownerId = await getOwnerId(db);
+            if (ownerId !== acting.id) {
+              res.status(403).json({
+                ok: false,
+                error: "Seul l'administrateur principal peut changer le code d'un administrateur.",
+              });
+              return;
+            }
           }
         }
       }
