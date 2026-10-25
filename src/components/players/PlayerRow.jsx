@@ -377,6 +377,11 @@ export function PlayerRow({ player, mvpCount = 0, sessionCount = 0 }) {
                   Admin
                 </Badge>
               )}
+              {player.isCoach === true && (
+                <Badge tone="paid" className="!px-1.5 !py-0.5 !text-[9px]">
+                  Coach
+                </Badge>
+              )}
               {player.isTest && perms.seeTestAccounts && (
                 <Badge tone="danger" className="!px-1.5 !py-0.5 !text-[9px]">
                   Test
