@@ -22,7 +22,7 @@
 // Tout est vérifié AVANT d'écrire : soit toute la demande passe, soit rien
 // n'est modifié.
 // ─────────────────────────────────────────────────────────────────────────
-import { getAdminDb, verifySessionToken } from "./_firebaseAdmin.js";
+import { getAdminDb, FieldValue, verifySessionToken } from "./_firebaseAdmin.js";
 import { EDITABLE_ROLE_FIELDS, getOwnerId, getActingAdmin } from "./_roles.js";
 
 function fail(res, status, error) {
@@ -103,6 +103,10 @@ export default async function handler(req, res) {
         data[field] = value;
       }
 
+      // Nouvelle nomination comme coach : la fenêtre « Tu es désormais
+      // coach ! » (CoachIntro.jsx) doit réapparaître, même si la personne
+      // l'avait déjà vue lors d'une nomination précédente.
+      if (data.isCoach === true) data["seenFeatures.coachIntro"] = FieldValue.delete();
       if (Object.keys(data).length > 0) writes.push({ ref: targetRef, data });
     }
 
