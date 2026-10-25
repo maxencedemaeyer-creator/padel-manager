@@ -21,6 +21,7 @@ import { db } from "../../firebase";
 import { getCreditorAccounting, getAllCreditorPlayerIds } from "../../lib/stats";
 import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
+import { logActivity, matchLabel, playerName as playerNameOf } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
 import { Modal, EmptyState } from "../ui";
 import { PlayerAvatar } from "../players/PlayerAvatar";
@@ -59,6 +60,13 @@ export function AssignCreditorModal({ matchId, playerId, playerName, fee, curren
         Array.isArray(match.participants) ? match.participants : []
       ).map((p) => (p.playerId === playerId ? updater(p) : p));
       await updateDoc(doc(db, "matches", matchId), { participants: updatedParticipants });
+      const after = updatedParticipants.find((p) => p.playerId === playerId);
+      logActivity(
+        "payment",
+        after && after.paidStatus === "owed"
+          ? `Dette de ${playerName} attribuée à ${playerNameOf(players, after.creditorId)} — ${matchLabel(match)}`
+          : `Attribution de la dette de ${playerName} retirée — ${matchLabel(match)}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
