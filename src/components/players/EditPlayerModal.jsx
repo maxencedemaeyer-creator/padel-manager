@@ -10,6 +10,7 @@ import { cn, normalizeSide } from "../../lib/utils";
 import { LEVELS, HAND_OPTIONS, SIDE_OPTIONS, FEDERATION_OPTIONS, AVATAR_COLOR_CHOICES, levelDisplayLabel } from "../../lib/constants";
 import { getScoreBase, getPlayerRatingState, computeLevelChangeRecalibration } from "../../lib/levelRating";
 import { useAppData } from "../../context/AppContext";
+import { getOwnerId, updateRoles } from "../../lib/roles";
 import Icon from "../icons/Icon";
 import { Modal, Field, Button, inputClass } from "../ui";
 import { AvatarPicker } from "./AvatarPicker";
@@ -59,6 +60,15 @@ export function EditPlayerModal({ player, onClose }) {
   // réutilisé aussi dans le JSX plus bas (zone de danger).
   const isSelf = connectedPlayer && player.id === connectedPlayer.id;
   const isAdminEditingOther = isAdmin && !isSelf;
+  // Rôles (25/10/2026, étape 1 — sécurité) : ce qui suit ne fait que régler
+  // l'AFFICHAGE ; le serveur (api/manage-roles.js, api/manage-pin.js)
+  // revérifie tout. Personne ne modifie ses propres rôles, sauf l'admin
+  // principal ; seul l'admin principal nomme/retire un administrateur ou
+  // change le code PIN d'un autre administrateur.
+  const amOwner = Boolean(connectedPlayer) && getOwnerId(players) === connectedPlayer.id;
+  const canEditAdminFlag = amOwner && !isSelf;
+  const canEditRoles = isAdmin && (!isSelf || amOwner);
+  const canEditPin = isSelf || player.isAdmin !== true || amOwner;
   const oldLevelInfo = LEVELS.find((l) => l.label === (player.level || "Pas de niveau"));
   const newLevelInfo = LEVELS.find((l) => l.label === level);
   const levelActuallyChanged = level !== (player.level || "Pas de niveau");
@@ -145,11 +155,11 @@ export function EditPlayerModal({ player, onClose }) {
         email: email.trim(),
         emoji,
         avatarColor,
-        isAdmin: playerIsAdmin,
-        isCreditor,
-        isTest,
+        // isOccasional reste une simple étiquette, modifiable directement.
+        // isAdmin / isCreditor / isTest / isGuest passent par le serveur
+        // (voir plus bas, `roleChanges`) : la base refuse désormais de les
+        // recevoir depuis le navigateur.
         isOccasional,
-        isGuest,
       };
 
       // Ranking — recalibrage §4.6 : uniquement si le niveau officiel change
@@ -170,14 +180,27 @@ export function EditPlayerModal({ player, onClose }) {
         payload.internalScoreReliability = newReliability;
       }
 
+      // Rôles d'abord : si le serveur refuse, rien d'autre n'est enregistré.
+      const roleChanges = {};
+      if (canEditAdminFlag && playerIsAdmin !== (player.isAdmin === true)) roleChanges.isAdmin = playerIsAdmin;
+      if (canEditRoles) {
+        if (isCreditor !== (player.isCreditor === true)) roleChanges.isCreditor = isCreditor;
+        if (isTest !== (player.isTest === true)) roleChanges.isTest = isTest;
+        if (isGuest !== (player.isGuest === true)) roleChanges.isGuest = isGuest;
+      }
+      await updateRoles(sessionToken, [{ playerId: player.id, changes: roleChanges }]);
+
       await updateDoc(doc(db, "players", player.id), payload);
 
       // Codes PIN : uniquement si un changement a été explicitement demandé
       // (nouveau code saisi, nouveau code secondaire saisi, ou suppression
       // du code secondaire cochée) — jamais écrits sur la fiche ci-dessus.
       const pinUpdate = {};
-      if (accessCode.length === 4) pinUpdate.accessCode = accessCode;
-      if (clearSecondary) {
+      if (accessCode.length === 4 && canEditPin) pinUpdate.accessCode = accessCode;
+      if (!isSelf) {
+        // Connexion secrète : uniquement sur sa propre fiche (bloc masqué
+        // sinon) — rien à envoyer.
+      } else if (clearSecondary) {
         pinUpdate.secondaryTestCode = null;
         pinUpdate.secondaryTestPlayerId = null;
       } else {
@@ -269,6 +292,12 @@ export function EditPlayerModal({ player, onClose }) {
         />
       </Field>
 
+      {!canEditPin ? (
+        <p className="text-[11px] text-[var(--color-text-faint)] mb-4">
+          🔒 Le code PIN d'un administrateur ne peut être changé que par lui-même ou par
+          l'administrateur principal.
+        </p>
+      ) : (
       <Field label="Code PIN (4 chiffres)">
         <div className="flex gap-2">
           <input
@@ -299,6 +328,7 @@ export function EditPlayerModal({ player, onClose }) {
           </p>
         )}
       </Field>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Main dominante">
@@ -355,19 +385,31 @@ export function EditPlayerModal({ player, onClose }) {
 
       {isAdmin && (
         <div className="flex flex-col gap-2 mb-2">
-          <label className="flex items-center gap-2.5 text-sm">
+          {!canEditRoles && (
+            <p className="text-[11px] text-[var(--color-text-faint)]">
+              🔒 Vous ne pouvez pas modifier vos propres rôles.
+            </p>
+          )}
+          <label className={cn("flex items-center gap-2.5 text-sm", !canEditAdminFlag && "opacity-50")}>
             <input
               type="checkbox"
               checked={playerIsAdmin}
+              disabled={!canEditAdminFlag}
               onChange={(e) => setPlayerIsAdmin(e.target.checked)}
               className="w-4 h-4 accent-[var(--color-lime)]"
             />
             Administrateur (gestion complète du club)
           </label>
-          <label className="flex items-center gap-2.5 text-sm">
+          {!canEditAdminFlag && canEditRoles && (
+            <p className="text-[11px] text-[var(--color-text-faint)] -mt-1 ml-6">
+              Seul l'administrateur principal peut nommer ou retirer un administrateur.
+            </p>
+          )}
+          <label className={cn("flex items-center gap-2.5 text-sm", !canEditRoles && "opacity-50")}>
             <input
               type="checkbox"
               checked={isCreditor}
+              disabled={!canEditRoles}
               onChange={(e) => setIsCreditor(e.target.checked)}
               className="w-4 h-4 accent-[var(--color-lime)]"
             />
@@ -379,10 +421,11 @@ export function EditPlayerModal({ player, onClose }) {
               sa génération ou depuis l'onglet Administration — plus ici.
             </p>
           )}
-          <label className="flex items-center gap-2.5 text-sm">
+          <label className={cn("flex items-center gap-2.5 text-sm", !canEditRoles && "opacity-50")}>
             <input
               type="checkbox"
               checked={isTest}
+              disabled={!canEditRoles}
               onChange={(e) => setIsTest(e.target.checked)}
               className="w-4 h-4 accent-[var(--color-lime)]"
             />
@@ -397,10 +440,11 @@ export function EditPlayerModal({ player, onClose }) {
             />
             Joueur occasionnel
           </label>
-          <label className="flex items-center gap-2.5 text-sm">
+          <label className={cn("flex items-center gap-2.5 text-sm", !canEditRoles && "opacity-50")}>
             <input
               type="checkbox"
               checked={isGuest}
+              disabled={!canEditRoles}
               onChange={(e) => setIsGuest(e.target.checked)}
               className="w-4 h-4 accent-[var(--color-lime)]"
             />
@@ -426,13 +470,14 @@ export function EditPlayerModal({ player, onClose }) {
             </p>
           )}
 
+          {isSelf && (
           <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
             <p className="text-xs font-semibold text-[var(--color-text-dim)] mb-1">
               Connexion secrète (optionnel)
             </p>
             <p className="text-[11px] text-[var(--color-text-faint)] mb-2">
               Un second code PIN sur CETTE fiche connecte directement vers un
-              autre profil (ex. un compte test) — sans qu'aucune nouvelle
+              profil coché « Compte test » — sans qu'aucune nouvelle
               carte n'apparaisse jamais sur l'écran de connexion. Pour les
               mêmes raisons de sécurité que ci-dessus, le code existant (s'il
               y en a un) ne s'affiche pas ici — laissez les champs vides pour
@@ -461,13 +506,14 @@ export function EditPlayerModal({ player, onClose }) {
                   onChange={(e) => setSecondaryTestPlayerId(e.target.value)}
                 >
                   <option value="">— Choisir un joueur —</option>
+                  {/* 25/10/2026 : seuls les comptes cochés « Compte test » peuvent
+                      être ouverts par une connexion secrète (vérifié aussi
+                      par le serveur). */}
                   {players
-                    .filter((p) => p.id !== player.id)
+                    .filter((p) => p.id !== player.id && p.isTest === true)
                     .map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.isTest ? " (test)" : ""}
-                        {p.isOccasional ? " (occasionnel)" : ""}
+                        {p.name} (test)
                       </option>
                     ))}
                 </select>
@@ -483,6 +529,7 @@ export function EditPlayerModal({ player, onClose }) {
               Retirer le code secondaire existant (s'il y en a un)
             </label>
           </div>
+          )}
 
           <div className="pt-3 mt-1 border-t border-[var(--color-border)]">
             <p className="text-xs font-semibold text-[var(--color-danger)] mb-1">
