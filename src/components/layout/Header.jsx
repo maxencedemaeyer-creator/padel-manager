@@ -152,8 +152,8 @@ export function WithdrawalAlertsModal({ alerts, onClose }) {
 // bleu) + pastille rouge du nombre d'alertes non lues. Ne s'affiche que
 // pour l'admin — les autres joueurs ne voient rien et ne lisent rien.
 export function AdminAlertsBell() {
-  const { isAdmin } = useAppData();
-  if (!isAdmin) return null;
+  const { perms } = useAppData();
+  if (!perms.seeWithdrawalAlerts) return null;
   return <AdminAlertsBellInner />;
 }
 
