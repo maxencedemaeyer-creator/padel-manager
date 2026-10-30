@@ -5,7 +5,8 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { getCreditorAccounting, getAllCreditorPlayerIds } from "../../lib/stats";
+import { getCreditorRemainingNet, getAllCreditorPlayerIds, round2 } from "../../lib/stats";
+import { cn } from "../../lib/utils";
 import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
@@ -89,8 +90,26 @@ export function PaymentModal({ match, participant, onClose }) {
     }
   };
 
+  // Aperçu de l'effet du choix AVANT de valider (30/10/2026, suite au cas
+  // de Donald) : le « reste net à récupérer » de ce créancier, tel qu'il
+  // apparaît dans sa comptabilité, avant → après ce paiement. Encaisser une
+  // place fait toujours baisser son reste net du prix de la place (s'il
+  // tombe sous 0, il a encaissé plus que sa créance : l'écart se règle
+  // ensuite par un versement à un autre créancier, voir le bilan de
+  // l'abonnement). Aucun appel à Firebase : calcul sur les données déjà
+  // chargées.
+  const fee = match.matchFeePerPlayer || 0;
+  const alreadyPaidTo =
+    participant.paidStatus === "paid" ? participant.creditorId || null : null;
+  const previewFor = (creditorId) => {
+    const before = getCreditorRemainingNet(creditorId, matches, players, abonnements);
+    const after = alreadyPaidTo === creditorId ? before : round2(before - fee);
+    return { before, after };
+  };
+
   const renderCreditorButton = (c) => {
-    const adjustedBalance = getCreditorAccounting(c.id, matches).totalPaidAllTime;
+    const { before, after } = previewFor(c.id);
+    const isSelf = c.id === participant.playerId;
     return (
       <button
         key={c.id}
@@ -102,8 +121,26 @@ export function PaymentModal({ match, participant, onClose }) {
         <span className="flex-1 text-left">
           <span className="block text-sm font-semibold">{c.name}</span>
           <span className="block text-xs text-[var(--color-text-dim)]">
-            Solde actuel : {adjustedBalance.toLocaleString("fr-FR")} €
+            Reste net : {before.toLocaleString("fr-FR")} € →{" "}
+            <span
+              className={cn(
+                "font-semibold",
+                after < 0 ? "text-orange-600" : after === 0 ? "text-emerald-600" : "text-[var(--color-text)]"
+              )}
+            >
+              {after.toLocaleString("fr-FR")} €
+            </span>
           </span>
+          {isSelf && (
+            <span className="block text-[10px] text-[var(--color-text-faint)] mt-0.5">
+              Sa place est payée avec sa propre créance.
+            </span>
+          )}
+          {after < 0 && (
+            <span className="block text-[10px] text-orange-600 mt-0.5">
+              Aura encaissé plus que sa créance : à reverser à un autre créancier.
+            </span>
+          )}
         </span>
         <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)]" />
       </button>
