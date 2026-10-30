@@ -1245,11 +1245,12 @@ function RenameCourtsModal({ abonnement, matches, club, onClose }) {
 // haut. Purement visuel : aucune fonctionnalité ni donnée n'a changé.
 // ─────────────────────────────────────────────────────────────────────────
 const ADMIN_SECTIONS = [
-  { id: "admin-team", label: "Équipe", icon: Icon.Users },
-  { id: "admin-level", label: "Niveau", icon: Icon.Chart },
-  { id: "admin-accounting", label: "Comptabilité", icon: Icon.Coin },
-  { id: "admin-subscriptions", label: "Abonnements", icon: Icon.Calendar },
-  { id: "admin-site", label: "Réglages", icon: Icon.Settings },
+  // `short` = libellé affiché sur téléphone (les 5 boutons tiennent sur une ligne).
+  { id: "admin-team", label: "Équipe", short: "Équipe", icon: Icon.Users },
+  { id: "admin-level", label: "Niveau", short: "Niveau", icon: Icon.Chart },
+  { id: "admin-accounting", label: "Comptabilité", short: "Compta", icon: Icon.Coin },
+  { id: "admin-subscriptions", label: "Abonnements", short: "Abos", icon: Icon.Calendar },
+  { id: "admin-site", label: "Réglages", short: "Réglages", icon: Icon.Settings },
 ];
 
 // Rubrique : titre + icône, puis les cartes empilées avec un espacement
@@ -1383,7 +1384,9 @@ export function AdminView() {
       </div>
 
       {/* Onglets des rubriques : seule la rubrique sélectionnée est affichée */}
-      <div className="flex gap-2 overflow-x-auto pb-1 mb-6 -mx-4 px-4 [scrollbar-width:none]">
+      {/* Téléphone : 5 colonnes égales, icône au-dessus du libellé court.
+          Ordinateur : pastilles en ligne avec le libellé complet. */}
+      <div className="grid grid-cols-5 gap-1.5 mb-6 sm:flex sm:flex-wrap sm:gap-2">
         {ADMIN_SECTIONS.map((sec) => {
           const isActive = activeSection === sec.id;
           return (
@@ -1393,13 +1396,16 @@ export function AdminView() {
               onClick={() => goTo(sec.id)}
               aria-pressed={isActive}
               className={cn(
-                "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all",
+                "min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-2xl text-[11px] leading-none font-semibold transition-all",
+                "sm:flex-row sm:gap-1.5 sm:px-3.5 sm:rounded-full sm:text-xs",
                 isActive
                   ? "bg-white text-[#4361EE] shadow-md"
                   : "bg-white/15 hover:bg-white/25 text-white"
               )}
             >
-              <sec.icon className="w-3.5 h-3.5" /> {sec.label}
+              <sec.icon className="w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0" />
+              <span className="sm:hidden whitespace-nowrap">{sec.short}</span>
+              <span className="hidden sm:inline whitespace-nowrap">{sec.label}</span>
             </button>
           );
         })}
