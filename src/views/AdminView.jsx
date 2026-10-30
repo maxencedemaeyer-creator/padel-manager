@@ -24,6 +24,9 @@ import { Card, Button, EmptyState, Switch, Modal, Field, inputClass } from "../c
 import { CreateSeasonModal } from "../components/matches/CreateSeasonModal";
 import { ClaimSettingsModal } from "../components/accounting/ClaimSettingsModal";
 import { CreditorAccountingModal } from "../components/accounting/CreditorAccountingModal";
+import { SubscriptionBilanModal } from "../components/accounting/SubscriptionBilanModal";
+import { TransferModal } from "../components/accounting/TransferModal";
+import { computeAbonnementBilan, getSavedBilans, isBilanOutdated } from "../lib/settlement";
 import { ManageClubsModal } from "../components/clubs/ManageClubsModal";
 import { PlayerAvatar } from "../components/players/PlayerAvatar";
 import { PlayerLinksCard } from "../components/admin/PlayerLinksCard";
@@ -648,10 +651,22 @@ function PresenceLockSettingCard({ value }) {
 //   seuls les matchs pas encore terminés changent de terrain, exactement
 //   comme un vrai changement de terrain physique décidé à partir d'une
 //   certaine date (voir RenameCourtsModal ci-dessous).
+//
+// Chantier du 30/10/2026 (bilan et clôture) : « Clôturer » ouvre d'abord le
+// bilan de l'abonnement (SubscriptionBilanModal.jsx) — écart de chaque
+// créancier, ligne de contrôle, versements proposés pour remettre à
+// l'équilibre — et la clôture enregistre une photo figée de ce bilan (v1).
+// La clôture n'est plus bloquée par des matchs à venir : l'admin peut faire
+// une « clôture forcée », ces matchs restant visibles et payables dans
+// l'onglet Matchs. Pastille verte « Prêt à clôturer » quand tout est joué et
+// payé ; pastille orange « Bilan modifié depuis la clôture » sur un
+// abonnement archivé dont les chiffres ont bougé depuis la dernière version
+// enregistrée (à valider dans le bilan).
 function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
   const [tab, setTab] = useState("active"); // "active" | "archived"
   const [deleteTarget, setDeleteTarget] = useState(null); // info d'un abonnement, ou null
   const [renameTarget, setRenameTarget] = useState(null); // info d'un abonnement, ou null
+  const [bilanTargetId, setBilanTargetId] = useState(null); // id d'un abonnement, ou null
   const [busyId, setBusyId] = useState(null);
 
   // Simplifié le 04/09/2026 : réutilise getUnpaidPastParticipations (source
@@ -681,6 +696,7 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
     const creditorNames = (a.creditors || [])
       .map((c) => players.find((p) => p.id === c.playerId)?.name)
       .filter(Boolean);
+    const bilan = computeAbonnementBilan(a, matches, players);
     return {
       abonnement: a,
       relatedMatchIds: related.map((m) => m.id),
@@ -690,6 +706,10 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
       paidAmount,
       club,
       creditorNames,
+      readyToClose: bilan.readyToClose,
+      balanced: bilan.balanced,
+      bilanOutdated: isBilanOutdated(a, bilan),
+      savedBilansCount: getSavedBilans(a).length,
     };
   });
 
@@ -697,21 +717,20 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
   const archivedList = withInfo.filter((x) => x.abonnement.archived);
   const visibleList = tab === "active" ? activeList : archivedList;
 
-  const toggleArchive = async (info) => {
-    const willArchive = !info.abonnement.archived;
-    if (willArchive && info.unfinishedCount > 0) return; // bouton normalement désactivé, garde-fou
+  // La clôture passe désormais par le bilan (SubscriptionBilanModal) ; ce
+  // bouton direct ne sert plus qu'à RÉACTIVER un abonnement archivé. Les
+  // bilans déjà enregistrés sont conservés.
+  const reactivate = async (info) => {
     const sure = window.confirm(
-      willArchive
-        ? `Clôturer cet abonnement ? Ses ${info.matchCount} match${info.matchCount > 1 ? "s" : ""} seront masqués de l'onglet Matchs pour tout le monde. Rien n'est supprimé — vous pourrez réactiver l'abonnement à tout moment.`
-        : `Réactiver cet abonnement ? Ses ${info.matchCount} match${info.matchCount > 1 ? "s" : ""} redeviendront visibles dans l'onglet Matchs.`
+      `Réactiver cet abonnement ? Ses ${info.matchCount} match${info.matchCount > 1 ? "s" : ""} redeviendront visibles dans l'onglet Matchs. Les bilans déjà enregistrés sont conservés.`
     );
     if (!sure) return;
     setBusyId(info.abonnement.id);
     try {
-      await updateDoc(doc(db, "abonnements", info.abonnement.id), { archived: willArchive });
+      await updateDoc(doc(db, "abonnements", info.abonnement.id), { archived: false });
       logActivity(
         "money",
-        `Abonnement ${willArchive ? "clôturé" : "réactivé"}${info.abonnement.label ? ` — ${info.abonnement.label}` : ""} (${info.matchCount} match${info.matchCount > 1 ? "s" : ""})`
+        `Abonnement réactivé${info.abonnement.label ? ` — ${info.abonnement.label}` : ""} (${info.matchCount} match${info.matchCount > 1 ? "s" : ""})`
       );
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -723,8 +742,9 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
   return (
     <>
       <p className="text-[11px] text-[var(--color-text-faint)]">
-        Clôturez un abonnement terminé et déjà réglé pour ranger ses matchs (rien n'est perdu), ou
-        supprimez définitivement un abonnement créé par erreur (et tous ses matchs avec).
+        « Bilan & clôture » montre qui doit quoi à qui, propose les versements pour remettre à
+        l'équilibre, puis clôture l'abonnement en enregistrant le bilan (rien n'est perdu). «
+        Supprimer » efface définitivement un abonnement créé par erreur (et tous ses matchs avec).
       </p>
 
       <div className="flex bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full p-1 w-fit">
@@ -784,6 +804,16 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
                         : "Aucun créancier"}
                     </p>
                   </div>
+                  {tab === "active" && info.readyToClose && (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                      Prêt à clôturer
+                    </span>
+                  )}
+                  {tab === "archived" && info.bilanOutdated && (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 text-[10px] font-bold">
+                      Bilan modifié depuis la clôture
+                    </span>
+                  )}
                 </div>
 
                 {tab === "active" && info.unpaidAmount > 0 && (
@@ -794,21 +824,35 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
                 )}
                 {tab === "active" && info.unfinishedCount > 0 && (
                   <p className="text-[11px] text-[var(--color-text-faint)]">
-                    Clôture indisponible : {info.unfinishedCount} match
-                    {info.unfinishedCount > 1 ? "s" : ""} pas encore terminé
-                    {info.unfinishedCount > 1 ? "s" : ""}.
+                    {info.unfinishedCount} match{info.unfinishedCount > 1 ? "s" : ""} à venir —
+                    clôture forcée possible (ils resteront visibles et payables).
+                  </p>
+                )}
+                {tab === "archived" && info.savedBilansCount === 0 && (
+                  <p className="text-[11px] text-[var(--color-text-faint)]">
+                    Clôturé avant l'arrivée des bilans : ouvrez « Bilan » pour l'enregistrer.
                   </p>
                 )}
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
                   <Button
-                    variant="secondary"
+                    variant={tab === "active" && info.readyToClose ? "primary" : "secondary"}
                     className="!py-1.5 !px-3 !text-xs"
-                    disabled={busy || (tab === "active" && info.unfinishedCount > 0)}
-                    onClick={() => toggleArchive(info)}
+                    disabled={busy}
+                    onClick={() => setBilanTargetId(a.id)}
                   >
-                    {tab === "active" ? "Clôturer" : "Réactiver"}
+                    {tab === "active" ? "Bilan & clôture" : "Bilan"}
                   </Button>
+                  {tab === "archived" && (
+                    <Button
+                      variant="secondary"
+                      className="!py-1.5 !px-3 !text-xs"
+                      disabled={busy}
+                      onClick={() => reactivate(info)}
+                    >
+                      Réactiver
+                    </Button>
+                  )}
                   <Button
                     variant="danger"
                     className="!py-1.5 !px-3 !text-xs"
@@ -845,6 +889,13 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
           matches={matches}
           club={renameTarget.club}
           onClose={() => setRenameTarget(null)}
+        />
+      )}
+      {bilanTargetId && (
+        <SubscriptionBilanModal
+          abonnementId={bilanTargetId}
+          canManage
+          onClose={() => setBilanTargetId(null)}
         />
       )}
     </>
@@ -1134,6 +1185,9 @@ export function AdminView() {
   // ouvre CreditorAccountingModal (copie visuelle exacte de "Ma comptabilité"
   // pour ce créancier, sans aucune action possible depuis ici).
   const [viewingCreditor, setViewingCreditor] = useState(null);
+  // « Versement entre créanciers » (30/10/2026) — ouvert depuis la
+  // rubrique Comptabilité, à tout moment, sans attendre la clôture.
+  const [showTransfer, setShowTransfer] = useState(false);
   // Corrigé le 02/09/2026 (audit paiements) : inclut aussi un joueur dont la
   // case "Créancier" a depuis été décochée mais qui a réellement financé un
   // abonnement (présent dans `abonnement.creditors[]`) — sinon il disparaît
@@ -1268,6 +1322,15 @@ export function AdminView() {
             génération (un créancier peut cumuler plusieurs abonnements). « Solde » = total perçu
             via les matchs, calculé automatiquement.
           </p>
+          {creditors.length > 1 && (abonnements || []).length > 0 && (
+            <Button
+              variant="secondary"
+              className="!py-1.5 !px-3 !text-xs mt-2"
+              onClick={() => setShowTransfer(true)}
+            >
+              Versement entre créanciers
+            </Button>
+          )}
         </div>
         {creditors.length === 0 ? (
           <EmptyState
@@ -1434,6 +1497,7 @@ export function AdminView() {
           onClose={() => setViewingCreditor(null)}
         />
       )}
+      {showTransfer && <TransferModal onClose={() => setShowTransfer(false)} />}
     </div>
   );
 }
