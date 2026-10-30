@@ -43,6 +43,7 @@ export function BackupCard() {
     rankingEnabled,
     presenceLockHours,
   } = useAppData();
+  const [open, setOpen] = useState(false);
   const [done, setDone] = useState(null);
   const [error, setError] = useState("");
 
@@ -109,19 +110,35 @@ export function BackupCard() {
   };
 
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-3">
+    <Card className="p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 text-left"
+        aria-expanded={open}
+      >
         <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-emerald-500/15 text-emerald-600">
           <Icon.Shield className="w-5 h-5" />
         </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">Sauvegarde des données</p>
-          <p className="text-[11px] text-[var(--color-text-dim)] mt-0.5">
-            Copie complète (joueurs, matchs, paiements, abonnements) dans un fichier, sur cet
-            appareil. À faire avant chaque mise à jour importante.
-          </p>
-        </div>
-      </div>
+        <span className="flex-1 min-w-0">
+          <span className="block font-semibold text-sm">Sauvegarde des données</span>
+          <span className="block text-[11px] text-[var(--color-text-dim)] mt-0.5">
+            Télécharger une copie complète de l'app
+          </span>
+        </span>
+        <Icon.Chevron
+          className={
+            "w-4 h-4 text-[var(--color-text-faint)] transition-transform shrink-0" +
+            (open ? " rotate-90" : "")
+          }
+        />
+      </button>
+      {open && (
+        <div className="mt-4">
+      <p className="text-[11px] text-[var(--color-text-dim)]">
+        Copie complète (joueurs, matchs, paiements, abonnements) dans un fichier, sur cet
+        appareil. À faire avant chaque mise à jour importante.
+      </p>
       <Button className="w-full mt-3" onClick={download}>
         Télécharger la sauvegarde
       </Button>
@@ -133,6 +150,8 @@ export function BackupCard() {
         </p>
       )}
       {error && <p className="text-[11px] text-rose-600 mt-2">{error}</p>}
+        </div>
+      )}
     </Card>
   );
 }
