@@ -396,6 +396,72 @@ export function getCreditorClaims(creditorId, abonnements, matches) {
   return { claims, total };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Versements entre créanciers (chantier du 30/10/2026, demande de Max après
+// le cas réel de Donald). Un versement est un transfert d'argent RÉEL d'un
+// créancier vers un autre, pour remettre deux comptabilités à l'équilibre
+// (ex. Donald a encaissé 2 parts qui revenaient à Max). Il est rangé dans
+// le document de l'abonnement concerné (`abonnement.transfers[]`), qui est
+// déjà chargé par l'app : aucune lecture Firebase en plus, une seule
+// écriture par versement.
+//
+// Effet sur le « reste net à récupérer » : celui qui VERSE a désormais moins
+// d'argent en poche, son reste net AUGMENTE du montant ; celui qui REÇOIT a
+// encaissé de l'argent, son reste net DIMINUE du montant.
+// ─────────────────────────────────────────────────────────────────────────
+export function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+export function getAbonnementTransfers(abonnement) {
+  return Array.isArray(abonnement?.transfers)
+    ? abonnement.transfers.filter((t) => t && t.fromId && t.toId && Number(t.amount) > 0)
+    : [];
+}
+
+export function getCreditorTransfers(creditorId, abonnements) {
+  let inTotal = 0;
+  let outTotal = 0;
+  const list = [];
+  (abonnements || []).forEach((a) => {
+    getAbonnementTransfers(a).forEach((t) => {
+      if (t.fromId !== creditorId && t.toId !== creditorId) return;
+      const amount = round2(t.amount);
+      const direction = t.fromId === creditorId ? "out" : "in";
+      if (direction === "out") outTotal += amount;
+      else inTotal += amount;
+      list.push({
+        ...t,
+        amount,
+        direction,
+        abonnementId: a.id,
+        abonnementLabel: a.label || null,
+      });
+    });
+  });
+  // Le plus récent en premier.
+  list.sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
+  return { inTotal: round2(inTotal), outTotal: round2(outTotal), list };
+}
+
+// « Reste net à récupérer » d'un créancier, exactement le chiffre du grand
+// bloc bleu de sa comptabilité (CreditorAccountingPanel.jsx) :
+// Créance − Sa saison − Total perçu des autres + Versé − Reçu.
+// Utilisé aussi par la fenêtre « À quel créancier ce joueur a-t-il payé ? »
+// (PaymentModal.jsx) pour montrer l'effet d'un paiement AVANT de le valider.
+export function getCreditorRemainingNet(creditorId, matches, players, abonnements) {
+  const acc = getCreditorAccounting(creditorId, matches || [], players || []);
+  const { total: advanced } = getCreditorClaims(creditorId, abonnements, matches || []);
+  const { inTotal, outTotal } = getCreditorTransfers(creditorId, abonnements);
+  return round2(
+    advanced -
+      (acc.selfReimbursed + acc.selfUpcomingCoveredValue) -
+      acc.totalPaidAllTime +
+      outTotal -
+      inTotal
+  );
+}
+
 // Nombre de matchs à venir (comptés en MATCHS individuels — un match par
 // terrain — jamais en sessions, contrairement à d'autres compteurs de cette
 // page) pour lesquels ce créancier EST créancier d'un abonnement, qu'il y
