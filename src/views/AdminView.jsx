@@ -1138,7 +1138,10 @@ const ADMIN_SECTIONS = [
 
 // Rubrique : titre + icône, puis les cartes empilées avec un espacement
 // régulier (la marge propre à chaque carte est neutralisée ici).
-function AdminSection({ id, icon: SectionIcon, title, subtitle, grid = false, children }) {
+// Depuis le 30/10/2026 : une seule rubrique est affichée à la fois (celle
+// du bouton sélectionné en haut) — les autres ne sont pas rendues du tout.
+function AdminSection({ id, activeId, icon: SectionIcon, title, subtitle, grid = false, children }) {
+  if (activeId && activeId !== id) return null;
   return (
     <section id={id} className="mb-8 scroll-mt-4">
       <div className="flex items-center gap-2.5 mb-3">
@@ -1224,8 +1227,10 @@ export function AdminView() {
     { label: "Impayés", value: unpaidCount, icon: Icon.Coin },
   ];
 
-  const goTo = (id) =>
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Rubrique affichée (30/10/2026) — « Équipe » par défaut à l'ouverture.
+  // Simple état d'affichage : rien n'est enregistré (ni local, ni Firebase).
+  const [activeSection, setActiveSection] = useState(ADMIN_SECTIONS[0].id);
+  const goTo = (id) => setActiveSection(id);
 
   return (
     <div className="px-4 pt-4 pb-28 max-w-3xl mx-auto">
@@ -1261,23 +1266,33 @@ export function AdminView() {
         ))}
       </div>
 
-      {/* Sommaire : accès rapide aux rubriques */}
+      {/* Onglets des rubriques : seule la rubrique sélectionnée est affichée */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-6 -mx-4 px-4 [scrollbar-width:none]">
-        {ADMIN_SECTIONS.map((sec) => (
-          <button
-            key={sec.id}
-            type="button"
-            onClick={() => goTo(sec.id)}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
-          >
-            <sec.icon className="w-3.5 h-3.5" /> {sec.label}
-          </button>
-        ))}
+        {ADMIN_SECTIONS.map((sec) => {
+          const isActive = activeSection === sec.id;
+          return (
+            <button
+              key={sec.id}
+              type="button"
+              onClick={() => goTo(sec.id)}
+              aria-pressed={isActive}
+              className={cn(
+                "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all",
+                isActive
+                  ? "bg-white text-[#4361EE] shadow-md"
+                  : "bg-white/15 hover:bg-white/25 text-white"
+              )}
+            >
+              <sec.icon className="w-3.5 h-3.5" /> {sec.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* 1. Équipe — joueurs, coach, convocations */}
       <AdminSection
         id="admin-team"
+        activeId={activeSection}
         icon={Icon.Users}
         title="Équipe"
         subtitle="Joueurs, coach, liens et convocations"
@@ -1294,6 +1309,7 @@ export function AdminView() {
       {/* 2. Niveau — affichage, alertes et recalcul */}
       <AdminSection
         id="admin-level"
+        activeId={activeSection}
         icon={Icon.Chart}
         title="Niveau"
         subtitle="Visibilité, écarts à surveiller et recalcul"
@@ -1306,6 +1322,7 @@ export function AdminView() {
       {/* 3. Comptabilité — soldes des créanciers */}
       <AdminSection
         id="admin-accounting"
+        activeId={activeSection}
         icon={Icon.Coin}
         title="Comptabilité"
         subtitle="Créances et soldes des créanciers"
@@ -1433,6 +1450,7 @@ export function AdminView() {
       {/* 4. Abonnements & clubs */}
       <AdminSection
         id="admin-subscriptions"
+        activeId={activeSection}
         icon={Icon.Calendar}
         title="Abonnements & clubs"
         subtitle="Créer, clôturer ou supprimer un abonnement"
@@ -1468,6 +1486,7 @@ export function AdminView() {
       {/* 5. Réglages du site */}
       <AdminSection
         id="admin-site"
+        activeId={activeSection}
         icon={Icon.Settings}
         title="Réglages du site"
         subtitle="Accès à l'app et fonctionnalités visibles"
