@@ -232,10 +232,19 @@ export function isPlayerMatchCreditor(match, allMatches, players, playerId) {
 // entièrement réglée sans polluer la liste au quotidien. Un match sans
 // `abonnementId` (match ponctuel créé à la volée, ou donnée très ancienne)
 // n'est jamais concerné.
+//
+// Ajusté le 30/10/2026 (clôture forcée) : l'admin peut désormais clôturer
+// un abonnement alors qu'il lui reste des matchs à venir (ex. un terrain
+// déplacé à une date lointaine). Ces matchs-là restent TOUJOURS visibles
+// (et donc payables) dans l'onglet Matchs ; seuls les matchs déjà terminés
+// d'un abonnement clôturé sont rangés.
 export function excludeArchivedSeasonMatches(matches, abonnements) {
   const archivedIds = new Set(
     (abonnements || []).filter((a) => a.archived === true).map((a) => a.id)
   );
   if (archivedIds.size === 0) return matches;
-  return matches.filter((m) => !m.abonnementId || !archivedIds.has(m.abonnementId));
+  return matches.filter(
+    (m) =>
+      !m.abonnementId || !archivedIds.has(m.abonnementId) || getMatchTiming(m) !== "finished"
+  );
 }
