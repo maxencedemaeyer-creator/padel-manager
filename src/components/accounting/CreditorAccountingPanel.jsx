@@ -147,6 +147,38 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
     [unpaidPast]
   );
 
+  // Chantier "impayés dépliables" (30/10/2026) — uniquement de l'affichage,
+  // aucun calcul ni aucune écriture Firebase en plus. Le bandeau "Attention…"
+  // n'apparaît que s'il existe au moins un impayé dans le club ; il devient
+  // dépliable. Un créancier est "concerné" s'il a au moins une dette
+  // attribuée À LUI, ou s'il reste au moins une dette À ATTRIBUER (un impayé
+  // non attribué peut être réglé à n'importe quel créancier, il concerne donc
+  // tout le monde). Concerné → déplié par défaut ; sinon replié par défaut.
+  // L'état choisi n'est pas mémorisé (revient au défaut à chaque ouverture).
+  // Une fois déplié : "Doit me payer" → "À attribuer" → "Chez les autres
+  // créanciers".
+  const myDebtGroups = debtGroups.filter((g) => g.creditorId === creditorId);
+  const otherDebtGroups = debtGroups.filter((g) => g.creditorId !== creditorId);
+  const myOwedCount = myDebtGroups.reduce((s, g) => s + g.count, 0);
+  const toAssignCount = ungroupedDebts.length;
+  const isConcerned = myOwedCount > 0 || toAssignCount > 0;
+  // null = pas encore touché → suit le défaut (concerné ou non).
+  const [unpaidOpenChoice, setUnpaidOpenChoice] = useState(null);
+  const isUnpaidOpen = unpaidOpenChoice ?? isConcerned;
+  // "Sessions impayées" : un joueur pour un jeudi = une session impayée.
+  const unpaidSessionsCount = new Set(unpaidPast.map((p) => `${p.playerId}|${p.date}`)).size;
+  // Dans la vue admin (lecture seule), on parle du créancier consulté.
+  const creditorFirstName =
+    (players.find((p) => p.id === creditorId)?.name || "").split(" ")[0] || "ce créancier";
+  const unpaidSummary = (() => {
+    if (!isConcerned) return readOnly ? `Rien ne concerne ${creditorFirstName}.` : "Rien ne vous concerne.";
+    const parts = [];
+    if (myOwedCount > 0)
+      parts.push(`${myOwedCount} à percevoir par ${readOnly ? creditorFirstName : "vous"}`);
+    if (toAssignCount > 0) parts.push(`${toAssignCount} à attribuer`);
+    return `Dont ${parts.join(" · ")}.`;
+  })();
+
   // Bloc 4 — remboursements par les autres joueurs.
   const totalReceivedAll = totalPaidPastMatches + totalPaidUpcomingMatches;
   const pastSessionsReceivedCount = new Set(paymentsReceived.map((p) => p.sessionKey)).size;
@@ -263,38 +295,8 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
     }
   };
 
-  return (
-    <>
-      {/* 1. Bannière d'alerte / suivi des paiements */}
-      <div
-        className={cn(
-          "flex items-start gap-3 p-4 rounded-2xl border",
-          allSettled ? "bg-emerald-50 border-emerald-200 mb-5" : "bg-orange-50 border-orange-200 mb-3"
-        )}
-      >
-        {allSettled ? (
-          <Icon.CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-        ) : (
-          <Icon.AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
-        )}
-        <p className={cn("text-sm font-medium", allSettled ? "text-emerald-800" : "text-orange-800")}>
-          {allSettled
-            ? "Tout est à jour ! Tous les matchs passés ont été réglés."
-            : `Attention : ${unpaidAmount.toLocaleString("fr-FR")} € sont actuellement en attente de paiement pour des matchs déjà joués (${unpaidCount} joueur${unpaidCount > 1 ? "s" : ""} n'${unpaidCount > 1 ? "ont" : "a"} pas encore réglé).`}
-        </p>
-      </div>
-
-      {/* 1bis. Détail nominatif des impayés — qui doit quoi, pour quel match.
-          Boutons d'action masqués en lecture seule (mode admin).
-          Chantier du 18/09/2026 : les dettes explicitement assignées ("Doit
-          payer à…") sont désormais regroupées par paire (joueur, créancier)
-          en une carte cumulée ("Untel doit encore payer : N matchs · X €"),
-          repliable pour retrouver le détail match par match. Les dettes pas
-          encore assignées restent affichées à l'unité en dessous, sous "En
-          attente d'attribution" — voir groupDebtsByDebtor, lib/stats.js. */}
-      {!allSettled && (
-        <div ref={unpaidListRef} className="flex flex-col gap-2 mb-5">
-          {debtGroups.map((group) => {
+  // Carte cumulée d'une paire (joueur, créancier attribué).
+  const renderDebtGroup = (group) => {
             const isGroupOpen = openGroupKeys.has(group.groupKey);
             const isConfirmingGroup = confirmingGroupKey === group.groupKey;
             const isSavingGroup = savingGroupKey === group.groupKey;
@@ -329,7 +331,7 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
                         → Doit payer à {creditorName}
                       </span>
                       <span className="block text-xs text-slate-400 mt-0.5">
-                        {group.count} match{group.count > 1 ? "s" : ""} non réglé
+                        {group.count} session{group.count > 1 ? "s" : ""} non réglée
                         {group.count > 1 ? "s" : ""}
                       </span>
                     </span>
@@ -409,31 +411,90 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
                 )}
               </div>
             );
-          })}
+  };
 
-          {ungroupedDebts.length > 0 && (
-            <>
-              {debtGroups.length > 0 && (
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-2 mb-0.5 px-1">
-                  En attente d'attribution
-                </p>
+  return (
+    <>
+      {/* 1. Bandeau "Attention…" dépliable (30/10/2026) — masqué s'il n'y a
+          aucun impayé dans le club. Voir le commentaire du chantier plus haut. */}
+      {!allSettled && (
+        <div ref={unpaidListRef} className="mb-5 scroll-mt-4">
+          <button
+            type="button"
+            onClick={() => setUnpaidOpenChoice(!isUnpaidOpen)}
+            aria-expanded={isUnpaidOpen}
+            className="w-full flex items-start gap-3 p-4 rounded-2xl border bg-orange-50 border-orange-200 text-left hover:bg-orange-100/60 transition-colors"
+          >
+            <Icon.AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-orange-800">
+                {`Attention : ${unpaidAmount.toLocaleString("fr-FR")} € sont actuellement en attente de paiement pour des matchs déjà joués (${unpaidSessionsCount} session${unpaidSessionsCount > 1 ? "s" : ""} impayée${unpaidSessionsCount > 1 ? "s" : ""}).`}
+              </span>
+              <span className="block text-xs font-medium text-orange-700/80 mt-1">
+                {unpaidSummary}
+              </span>
+            </span>
+            <Icon.Chevron
+              className={cn(
+                "w-4 h-4 text-orange-600 shrink-0 mt-1 transition-transform",
+                isUnpaidOpen ? "-rotate-90" : "rotate-90"
               )}
-              {ungroupedDebts.map((item) => (
-                <DebtItemRow
-                  key={item.key}
-                  item={item}
-                  players={players}
-                  effectiveViewerId={effectiveViewerId}
-                  readOnly={readOnly || item.playerId === creditorId}
-                  isConfirming={confirmingKey === item.key}
-                  isSaving={savingKey === item.key}
-                  onConfirmStart={() => setConfirmingKey(item.key)}
-                  onConfirmCancel={() => setConfirmingKey(null)}
-                  onMarkAsPaid={() => markAsPaid(item)}
-                  onAssign={() => setAssigningKey(item.key)}
-                />
-              ))}
-            </>
+            />
+          </button>
+
+          {isUnpaidOpen && (
+            <div className="flex flex-col gap-2 mt-3">
+              {myDebtGroups.length > 0 && (
+                <>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5 px-1">
+                    {readOnly ? `Doit payer à ${creditorFirstName}` : "Doit me payer"}
+                  </p>
+                  {myDebtGroups.map(renderDebtGroup)}
+                </>
+              )}
+
+              {ungroupedDebts.length > 0 && (
+                <>
+                  <p
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5 px-1",
+                      myDebtGroups.length > 0 && "mt-2"
+                    )}
+                  >
+                    À attribuer
+                  </p>
+                  {ungroupedDebts.map((item) => (
+                    <DebtItemRow
+                      key={item.key}
+                      item={item}
+                      players={players}
+                      effectiveViewerId={effectiveViewerId}
+                      readOnly={readOnly || item.playerId === creditorId}
+                      isConfirming={confirmingKey === item.key}
+                      isSaving={savingKey === item.key}
+                      onConfirmStart={() => setConfirmingKey(item.key)}
+                      onConfirmCancel={() => setConfirmingKey(null)}
+                      onMarkAsPaid={() => markAsPaid(item)}
+                      onAssign={() => setAssigningKey(item.key)}
+                    />
+                  ))}
+                </>
+              )}
+
+              {otherDebtGroups.length > 0 && (
+                <>
+                  <p
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5 px-1",
+                      (myDebtGroups.length > 0 || ungroupedDebts.length > 0) && "mt-2"
+                    )}
+                  >
+                    Chez les autres créanciers
+                  </p>
+                  {otherDebtGroups.map(renderDebtGroup)}
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -508,9 +569,13 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
         {!allSettled && (
           <button
             type="button"
-            onClick={() =>
-              unpaidListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-            }
+            onClick={() => {
+              setUnpaidOpenChoice(true);
+              setTimeout(
+                () => unpaidListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                0
+              );
+            }}
             className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[11px] font-semibold hover:bg-orange-100 transition-colors shrink-0"
             title="Voir le détail des impayés plus haut"
           >
