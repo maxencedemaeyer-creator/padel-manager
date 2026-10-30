@@ -18,7 +18,7 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { getCreditorAccounting, getAllCreditorPlayerIds } from "../../lib/stats";
+import { getCreditorRemainingNet, getAllCreditorPlayerIds } from "../../lib/stats";
 import { getSessionCreditorIds } from "../../lib/matchLogic";
 import { useAppData } from "../../context/AppContext";
 import { logActivity, matchLabel, playerName as playerNameOf } from "../../lib/activityLog";
@@ -82,7 +82,12 @@ export function AssignCreditorModal({ matchId, playerId, playerName, fee, curren
 
   const renderCreditorButton = (c) => {
     const isCurrent = currentOwedTo === c.id;
-    const adjustedBalance = getCreditorAccounting(c.id, matches).totalPaidAllTime;
+    // Corrigé le 30/10/2026 (remarque de Max) : on affichait ici le total
+    // des paiements DÉJÀ reçus (« Solde actuel »), trompeur pour choisir à
+    // qui attribuer une dette. On affiche désormais ce qu'il RESTE à ce
+    // créancier à percevoir pour clôturer sa saison — exactement le chiffre
+    // du bloc bleu « Reste net à récupérer » de sa comptabilité.
+    const remaining = getCreditorRemainingNet(c.id, matches, players, abonnements);
     return (
       <button
         key={c.id}
@@ -101,7 +106,11 @@ export function AssignCreditorModal({ matchId, playerId, playerName, fee, curren
             )}
           </span>
           <span className="block text-xs text-[var(--color-text-dim)]">
-            Solde actuel : {adjustedBalance.toLocaleString("fr-FR")} €
+            {remaining > 0
+              ? `Reste à percevoir : ${remaining.toLocaleString("fr-FR")} €`
+              : remaining === 0
+              ? "Créance entièrement récupérée"
+              : `A encaissé ${(-remaining).toLocaleString("fr-FR")} € de trop`}
           </span>
         </span>
         <Icon.Chevron className="w-4 h-4 text-[var(--color-text-faint)]" />
