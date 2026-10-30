@@ -29,10 +29,14 @@ import { cn, formatDateFR, formatClaimPeriodLabel } from "../../lib/utils";
 import {
   getCreditorAccounting,
   getCreditorClaims,
+  getCreditorTransfers,
   getUnpaidPastParticipations,
   groupDebtsByDebtor,
   participantsOf,
+  round2,
 } from "../../lib/stats";
+import { getSavedBilans } from "../../lib/settlement";
+import { SubscriptionBilanModal, abonnementDisplayName } from "./SubscriptionBilanModal";
 import { useAppData } from "../../context/AppContext";
 import { logActivity, matchLabel, playerName } from "../../lib/activityLog";
 import Icon from "../icons/Icon";
@@ -151,8 +155,31 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
   ).size;
   const totalSessionsReceivedCount = pastSessionsReceivedCount + upcomingSessionsReceivedCount;
 
+  // Versements entre créanciers (30/10/2026) : argent réellement remis à un
+  // autre créancier (« versé ») ou reçu d'un autre créancier (« reçu »)
+  // pour remettre les comptes à l'équilibre — voir TransferModal.jsx.
+  const {
+    inTotal: transfersIn,
+    outTotal: transfersOut,
+    list: transfers,
+  } = useMemo(() => getCreditorTransfers(creditorId, abonnements), [creditorId, abonnements]);
+
+  // Bilans enregistrés des abonnements dont il est créancier (clôture).
+  const closedBilans = useMemo(
+    () =>
+      (abonnements || []).filter(
+        (a) =>
+          (a.creditors || []).some((c) => c.playerId === creditorId) &&
+          getSavedBilans(a).length > 0
+      ),
+    [abonnements, creditorId]
+  );
+  const [bilanAbonnementId, setBilanAbonnementId] = useState(null);
+
   // Bloc 5 — synthèse.
-  const remainingNet = advanced - selfSeasonTotal - totalReceivedAll;
+  const remainingNet = round2(
+    advanced - selfSeasonTotal - totalReceivedAll + transfersOut - transfersIn
+  );
 
   // Marque le joueur concerné comme ayant payé sa part de ce match. Si la
   // dette a déjà été assignée à un créancier précis via "Doit payer à..."
@@ -655,6 +682,52 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
         />
       )}
 
+      {/* 4bis. Versements entre créanciers (30/10/2026) — visible seulement
+          s'il y en a. */}
+      {transfers.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+            Versements entre créanciers
+          </p>
+          <div className="flex flex-col gap-2 mb-5">
+            {transfers.map((t) => {
+              const otherId = t.direction === "out" ? t.toId : t.fromId;
+              const otherName = players.find((p) => p.id === otherId)?.name || "un créancier";
+              return (
+                <div
+                  key={t.id || `${t.fromId}-${t.toId}-${t.at}`}
+                  className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-slate-700 leading-tight">
+                      {t.direction === "out" ? `Versé à ${otherName}` : `Reçu de ${otherName}`}
+                    </span>
+                    <span className="block text-[10px] text-slate-400 mt-0.5 leading-snug">
+                      {[
+                        t.at ? formatDateFR(String(t.at).slice(0, 10)) : null,
+                        t.note,
+                        t.abonnementLabel,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "pm-mono font-bold text-sm shrink-0",
+                      t.direction === "out" ? "text-orange-600" : "text-emerald-600"
+                    )}
+                  >
+                    {t.direction === "out" ? "−" : "+"}
+                    {t.amount.toLocaleString("fr-FR")} €
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {/* 5. Synthèse — reste net à récupérer. */}
       <div
         className="rounded-2xl shadow-md p-5 mb-6 text-white"
@@ -677,7 +750,15 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
           Créance {advanced.toLocaleString("fr-FR")} € − Sa saison{" "}
           {selfSeasonTotal.toLocaleString("fr-FR")} € − Total perçu des autres{" "}
           {totalReceivedAll.toLocaleString("fr-FR")} €
+          {transfersOut > 0 && ` + Versé ${transfersOut.toLocaleString("fr-FR")} €`}
+          {transfersIn > 0 && ` − Reçu ${transfersIn.toLocaleString("fr-FR")} €`}
         </p>
+        {remainingNet < 0 && (
+          <p className="text-[11px] text-white/90 mt-2 font-semibold">
+            Montant négatif : il a encaissé plus que sa créance — la différence revient à un autre
+            créancier (voir le bilan de l'abonnement).
+          </p>
+        )}
       </div>
 
       {/* 6. Consommation personnelle hors abonnement — matchs joués mais non
@@ -792,6 +873,47 @@ export function CreditorAccountingPanel({ creditorId, readOnly = false, viewerId
             })}
           </div>
         </>
+      )}
+
+      {/* 7. Bilans des abonnements clôturés (30/10/2026) — consultables et
+          enregistrables en PDF, uniquement ceux dont il est créancier. */}
+      {closedBilans.length > 0 && (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mt-5 mb-2">
+            Bilans des abonnements clôturés
+          </p>
+          <div className="flex flex-col gap-2">
+            {closedBilans.map((a) => {
+              const versions = getSavedBilans(a);
+              const last = versions[versions.length - 1];
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setBilanAbonnementId(a.id)}
+                  className="w-full bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 text-left hover:border-sky-300 transition-colors"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-slate-700 leading-tight">
+                      {abonnementDisplayName(a, clubs)}
+                    </span>
+                    <span className="block text-[10px] text-slate-400 mt-0.5">
+                      {versions.length} version{versions.length > 1 ? "s" : ""} · dernière le{" "}
+                      {last?.createdAt ? formatDateFR(String(last.createdAt).slice(0, 10)) : "?"}
+                    </span>
+                  </span>
+                  <Icon.Chevron className="w-4 h-4 text-slate-300 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {bilanAbonnementId && (
+        <SubscriptionBilanModal
+          abonnementId={bilanAbonnementId}
+          onClose={() => setBilanAbonnementId(null)}
+        />
       )}
     </>
   );
