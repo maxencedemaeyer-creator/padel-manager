@@ -34,6 +34,72 @@ import { PlayerPinsCard } from "../components/admin/PlayerPinsCard";
 import { BackupCard } from "../components/admin/BackupCard";
 import { ActivityLogCard } from "../components/admin/ActivityLogCard";
 
+// ─────────────────────────────────────────────────────────────────────────
+// Présentation commune des cartes du centre Admin (30/10/2026) : chaque
+// carte est un bandeau compact (icône, titre, courte explication, chevron)
+// sur lequel on clique pour déplier la fonctionnalité — même style que
+// « Liens entre joueurs » et « Codes PIN ». Purement visuel.
+// ─────────────────────────────────────────────────────────────────────────
+function AdminCardHeader({ icon: HeaderIcon, iconClass, title, subtitle, open, rotate = true }) {
+  return (
+    <>
+      <span
+        className={cn(
+          "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+          iconClass || "bg-sky-100 text-sky-700"
+        )}
+      >
+        <HeaderIcon className="w-5 h-5" />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block font-semibold text-sm">{title}</span>
+        {subtitle && (
+          <span className="block text-[11px] text-[var(--color-text-dim)] mt-0.5">{subtitle}</span>
+        )}
+      </span>
+      <Icon.Chevron
+        className={cn(
+          "w-4 h-4 text-[var(--color-text-faint)] transition-transform shrink-0",
+          rotate && open && "rotate-90"
+        )}
+      />
+    </>
+  );
+}
+
+// Carte dépliable : le contenu n'apparaît qu'après un clic sur le bandeau.
+function AdminFoldCard({ icon, iconClass, title, subtitle, className, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className={cn("p-4 sm:p-5", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 text-left"
+        aria-expanded={open}
+      >
+        <AdminCardHeader icon={icon} iconClass={iconClass} title={title} subtitle={subtitle} open={open} />
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </Card>
+  );
+}
+
+// Carte-action : même bandeau, mais le clic ouvre directement une fenêtre.
+function AdminActionCard({ icon, iconClass, title, subtitle, onClick }) {
+  return (
+    <Card className="p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full flex items-center gap-3 text-left"
+      >
+        <AdminCardHeader icon={icon} iconClass={iconClass} title={title} subtitle={subtitle} rotate={false} />
+      </button>
+    </Card>
+  );
+}
+
 // Carte "Game Center" — interrupteur pour rendre l'onglet accessible à tous
 // les joueurs (par défaut, réservé à l'admin). Écrit directement dans
 // settings/appConfig ; le changement est répercuté partout en temps réel
@@ -312,10 +378,20 @@ function RankingRecalcCard({ players, matches }) {
   }
 
   return (
-    <Card className={cn("p-4 sm:p-5 mb-6", recommended && "border-amber-200 bg-amber-50/70")}>
-      <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-        <Icon.Refresh className="w-4 h-4 text-[var(--color-lime)]" /> Recalcul du niveau
-      </h3>
+    <>
+    <AdminFoldCard
+      icon={Icon.Refresh}
+      iconClass={recommended ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}
+      title="Recalcul du niveau"
+      subtitle={
+        applied.loading
+          ? "Rejouer tout l'historique avec les règles actuelles"
+          : recommended
+            ? "⚠️ Recalcul conseillé — le calcul a changé"
+            : `À jour avec la version ${RANKING_ENGINE_VERSION} du calcul`
+      }
+      className={recommended ? "border-amber-200 bg-amber-50/70" : ""}
+    >
       <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
         Rejoue tout l'historique des matchs officiels notés avec les règles de calcul actuelles
         (version {RANKING_ENGINE_VERSION}), en repartant du classement officiel actuel de chaque
@@ -349,6 +425,7 @@ function RankingRecalcCard({ players, matches }) {
           <Icon.CheckCircle className="w-3.5 h-3.5" /> {result}
         </p>
       )}
+    </AdminFoldCard>
       {preview && (
         <RankingRecalcPreviewModal
           preview={preview}
@@ -357,7 +434,7 @@ function RankingRecalcCard({ players, matches }) {
           busy={busy}
         />
       )}
-    </Card>
+    </>
   );
 }
 
@@ -375,10 +452,13 @@ function RankingDivergenceCard({ players }) {
   if (flagged.length === 0) return null;
 
   return (
-    <Card className="p-4 sm:p-5 mb-6 border-amber-200 bg-amber-50/70">
-      <h3 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-        <Icon.AlertCircle className="w-4 h-4 text-amber-600" /> Écarts de niveau
-      </h3>
+    <AdminFoldCard
+      icon={Icon.AlertCircle}
+      iconClass="bg-amber-100 text-amber-700"
+      title="Écarts de niveau"
+      subtitle={`${flagged.length} joueur${flagged.length > 1 ? "s" : ""} à surveiller`}
+      className="border-amber-200 bg-amber-50/70"
+    >
       <p className="text-[11px] text-[var(--color-text-dim)] mb-3">
         Ce n'est pas une preuve d'erreur de déclaration — juste une observation interne au club,
         à interpréter au cas par cas. Ne changez le classement officiel que sur une preuve externe
@@ -406,7 +486,7 @@ function RankingDivergenceCard({ players }) {
           );
         })}
       </div>
-    </Card>
+    </AdminFoldCard>
   );
 }
 
@@ -500,8 +580,16 @@ function PresenceWindowSettingCard({ value }) {
   };
 
   return (
-    <Card className="p-4 sm:p-5 mb-6">
-      <h3 className="font-semibold text-sm mb-1">Fenêtre de convocation</h3>
+    <AdminFoldCard
+      icon={Icon.Calendar}
+      iconClass="bg-indigo-100 text-indigo-700"
+      title="Fenêtre de convocation"
+      subtitle={
+        isUnrestricted
+          ? "Actuellement : toujours ouverte"
+          : `Actuellement : ${value} jour${value > 1 ? "s" : ""} avant chaque match`
+      }
+    >
       <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
         Nombre de jours avant un match à partir duquel les joueurs peuvent
         indiquer leur présence.{" "}
@@ -536,7 +624,7 @@ function PresenceWindowSettingCard({ value }) {
           <Icon.CheckCircle className="w-4 h-4" /> Réglage mis à jour !
         </p>
       )}
-    </Card>
+    </AdminFoldCard>
   );
 }
 
@@ -587,8 +675,14 @@ function PresenceLockSettingCard({ value }) {
   };
 
   return (
-    <Card className="p-4 sm:p-5 mb-6">
-      <h3 className="font-semibold text-sm mb-1">Gel de présence avant match</h3>
+    <AdminFoldCard
+      icon={Icon.History}
+      iconClass="bg-rose-100 text-rose-700"
+      title="Gel de présence avant match"
+      subtitle={
+        isDisabled ? "Actuellement : désactivé" : `Actuellement : ${value} h avant chaque match`
+      }
+    >
       <p className="text-[11px] text-[var(--color-text-dim)] mb-4">
         Nombre d'heures avant un match à partir duquel un joueur présent (titulaire ou réserve) ne
         peut plus changer sa réponse ou se désinscrire lui-même — il doit alors prévenir l'équipe
@@ -623,7 +717,7 @@ function PresenceLockSettingCard({ value }) {
           <Icon.CheckCircle className="w-4 h-4" /> Réglage mis à jour !
         </p>
       )}
-    </Card>
+    </AdminFoldCard>
   );
 }
 
@@ -739,8 +833,25 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
     }
   };
 
+  const toCheckCount =
+    activeList.filter((x) => x.readyToClose).length +
+    archivedList.filter((x) => x.bilanOutdated).length;
+
   return (
     <>
+      <AdminFoldCard
+        icon={Icon.Calendar}
+        iconClass="bg-sky-100 text-sky-700"
+        title="Abonnements"
+        subtitle={[
+          `${activeList.length} actif${activeList.length > 1 ? "s" : ""}`,
+          `${archivedList.length} archivé${archivedList.length > 1 ? "s" : ""}`,
+          toCheckCount > 0 && `${toCheckCount} à traiter`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      >
+      <div className="flex flex-col gap-3">
       <p className="text-[11px] text-[var(--color-text-faint)]">
         « Bilan & clôture » montre qui doit quoi à qui, propose les versements pour remettre à
         l'équilibre, puis clôture l'abonnement en enregistrant le bilan (rien n'est perdu). «
@@ -771,7 +882,7 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
           title={tab === "active" ? "Aucun abonnement actif" : "Aucun abonnement archivé"}
           subtitle={
             tab === "active"
-              ? "Générez-en un avec le bouton « Créer un abonnement » ci-dessus."
+              ? "Générez-en un avec « Créer un abonnement »."
               : "Les abonnements clôturés apparaîtront ici."
           }
         />
@@ -781,7 +892,10 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
             const { abonnement: a } = info;
             const busy = busyId === a.id;
             return (
-              <Card key={a.id} className="p-4 flex flex-col gap-2.5">
+              <div
+                key={a.id}
+                className="p-3.5 flex flex-col gap-2.5 rounded-2xl bg-white/70 border border-black/5"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">
@@ -874,11 +988,13 @@ function AbonnementManagementSection({ abonnements, matches, players, clubs }) {
                     </Button>
                   )}
                 </div>
-              </Card>
+              </div>
             );
           })}
         </div>
       )}
+      </div>
+      </AdminFoldCard>
 
       {deleteTarget && (
         <DeleteAbonnementConfirmModal info={deleteTarget} onClose={() => setDeleteTarget(null)} />
@@ -1327,28 +1443,27 @@ export function AdminView() {
         title="Comptabilité"
         subtitle="Créances et soldes des créanciers"
       >
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <h4 className="font-semibold text-sm text-white">Soldes des créanciers</h4>
-            <span className="pm-mono text-sm font-bold text-white">
-              Total : {totalBalance.toLocaleString("fr-FR")} €
-            </span>
-          </div>
+        {creditors.length > 1 && (abonnements || []).length > 0 && (
+          <AdminActionCard
+            icon={Icon.Coin}
+            iconClass="bg-amber-100 text-amber-700"
+            title="Versement entre créanciers"
+            subtitle="Enregistrer un versement d'un créancier à un autre"
+            onClick={() => setShowTransfer(true)}
+          />
+        )}
+        <AdminFoldCard
+          icon={Icon.Shield}
+          iconClass="bg-emerald-100 text-emerald-700"
+          title="Soldes des créanciers"
+          subtitle={`${creditors.length} créancier${creditors.length > 1 ? "s" : ""} · Total perçu : ${totalBalance.toLocaleString("fr-FR")} €`}
+        >
+        <div className="flex flex-col gap-3">
           <p className="text-[11px] text-[var(--color-text-faint)]">
             « Créance de départ » = investissement initial, défini par abonnement lors de sa
             génération (un créancier peut cumuler plusieurs abonnements). « Solde » = total perçu
             via les matchs, calculé automatiquement.
           </p>
-          {creditors.length > 1 && (abonnements || []).length > 0 && (
-            <Button
-              variant="secondary"
-              className="!py-1.5 !px-3 !text-xs mt-2"
-              onClick={() => setShowTransfer(true)}
-            >
-              Versement entre créanciers
-            </Button>
-          )}
-        </div>
         {creditors.length === 0 ? (
           <EmptyState
             icon={<Icon.Coin className="w-6 h-6" />}
@@ -1363,7 +1478,7 @@ export function AdminView() {
                 const { claims, total } = getCreditorClaims(c.id, abonnements, matches);
 
                 return (
-                  <Card key={c.id} className="p-4 flex flex-col gap-3">
+                  <div key={c.id} className="p-3.5 flex flex-col gap-3 rounded-2xl bg-white/70 border border-black/5">
                     <button
                       type="button"
                       onClick={() => setViewingCreditor(c)}
@@ -1440,11 +1555,13 @@ export function AdminView() {
                         {(creditorRawTotals.get(c.id) || 0).toLocaleString("fr-FR")} €
                       </span>
                     </div>
-                  </Card>
+                  </div>
                 );
               })}
           </div>
         )}
+        </div>
+        </AdminFoldCard>
       </AdminSection>
 
       {/* 4. Abonnements & clubs */}
@@ -1455,26 +1572,20 @@ export function AdminView() {
         title="Abonnements & clubs"
         subtitle="Créer, clôturer ou supprimer un abonnement"
       >
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant="secondary"
-            className="!py-2 !px-3"
-            onClick={() => setShowCreateSeason(true)}
-          >
-            <span className="flex items-center gap-1.5">
-              <Icon.Plus className="w-4 h-4" /> Créer un abonnement
-            </span>
-          </Button>
-          <Button
-            variant="secondary"
-            className="!py-2 !px-3"
-            onClick={() => setShowManageClubs(true)}
-          >
-            <span className="flex items-center gap-1.5">
-              <Icon.Shield className="w-4 h-4" /> Gérer les clubs
-            </span>
-          </Button>
-        </div>
+        <AdminActionCard
+          icon={Icon.Plus}
+          iconClass="bg-lime-100 text-lime-700"
+          title="Créer un abonnement"
+          subtitle="Générer une nouvelle série de matchs avec ses créanciers"
+          onClick={() => setShowCreateSeason(true)}
+        />
+        <AdminActionCard
+          icon={Icon.Shield}
+          iconClass="bg-slate-200 text-slate-700"
+          title="Gérer les clubs"
+          subtitle="Ajouter, modifier ou supprimer un club"
+          onClick={() => setShowManageClubs(true)}
+        />
         <AbonnementManagementSection
           abonnements={abonnements}
           matches={matches}
