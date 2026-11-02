@@ -17,8 +17,14 @@
 // Depuis le 31/08/2026 : une connexion réussie émet aussi un jeton de
 // session signé (voir _firebaseAdmin.js) que le navigateur renvoie ensuite
 // à manage-pin.js pour prouver son identité avant de changer un code PIN.
+//
+// Depuis le 02/11/2026 : POST { action: "refresh", token } renouvelle un
+// jeton encore valide (60 jours de plus). L'app l'appelle d'elle-même à
+// l'ouverture quand il reste moins de 30 jours : un joueur qui utilise l'app
+// régulièrement ne voit donc plus jamais « Session invalide ou expirée ».
+// Aucune lecture ni écriture Firebase (simple calcul de signature).
 // ─────────────────────────────────────────────────────────────────────────
-import { getAdminDb, FieldValue, signSessionToken } from "./_firebaseAdmin.js";
+import { getAdminDb, FieldValue, signSessionToken, verifySessionToken } from "./_firebaseAdmin.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -27,6 +33,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Renouvellement d'un jeton encore valide (voir en-tête).
+    if (req.body && req.body.action === "refresh") {
+      const session = verifySessionToken(req.body.token);
+      if (!session) {
+        res.status(200).json({ ok: false });
+        return;
+      }
+      res.status(200).json({ ok: true, sessionToken: signSessionToken(session.playerId) });
+      return;
+    }
+
     const { playerId, pin } = req.body || {};
     if (!playerId || typeof pin !== "string" || pin.length !== 4) {
       res.status(400).json({ ok: false, error: "Requête invalide." });
