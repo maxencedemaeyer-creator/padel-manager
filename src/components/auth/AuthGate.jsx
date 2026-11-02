@@ -29,14 +29,23 @@ function readTokenExpiry(token) {
   }
 }
 
+// Couleurs du thème sombre de l'écran de connexion : les textes « dim » et
+// « faint » utilisés par les composants deviennent des blancs transparents.
+const AUTH_DARK_VARS = {
+  "--color-text": "#FFFFFF",
+  "--color-text-dim": "rgba(255,255,255,0.65)",
+  "--color-text-faint": "rgba(255,255,255,0.45)",
+  "--color-border": "rgba(255,255,255,0.14)",
+};
+
 export function PlayerTile({ player, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all"
+      className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-sm hover:bg-white/[0.1] hover:border-[var(--color-lime)]/60 active:scale-[0.97] transition-all"
     >
       <PlayerAvatar player={player} size={56} />
-      <span className="text-xs font-semibold text-center leading-tight">
+      <span className="text-xs font-semibold text-center leading-tight text-white">
         {player.name}
       </span>
     </button>
@@ -97,8 +106,8 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
         <Icon.Chevron className="w-4 h-4 rotate-180" /> Retour
       </button>
 
-      <PlayerAvatar player={player} size={64} className="mb-3" />
-      <p className="pm-display font-bold text-lg mb-1">{player.name}</p>
+      <PlayerAvatar player={player} size={72} className="mb-3 ring-4 ring-white/10" />
+      <p className="pm-display font-bold text-lg mb-1 text-white">{player.name}</p>
       <p className="text-xs text-[var(--color-text-dim)] mb-6">
         Entrez votre code à 4 chiffres
       </p>
@@ -118,7 +127,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
                 ? "border-[var(--color-danger)] bg-[var(--color-danger)]"
                 : i < digits.length
                 ? "border-[var(--color-lime)] bg-[var(--color-lime)]"
-                : "border-[var(--color-border)] bg-transparent"
+                : "border-white/30 bg-transparent"
             )}
           />
         ))}
@@ -134,7 +143,7 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
           <button
             key={d}
             onClick={() => press(d)}
-            className="pm-mono aspect-square rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xl font-bold hover:border-[var(--color-lime)]/50 active:scale-95 transition-all"
+            className="pm-mono aspect-square rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-sm text-white hover:bg-white/[0.1] text-xl font-bold hover:border-[var(--color-lime)]/50 active:scale-95 transition-all"
           >
             {d}
           </button>
@@ -142,13 +151,13 @@ export function PinKeypad({ player, players, onBack, onSuccess }) {
         <div />
         <button
           onClick={() => press("0")}
-          className="pm-mono aspect-square rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xl font-bold hover:border-[var(--color-lime)]/50 active:scale-95 transition-all"
+          className="pm-mono aspect-square rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-sm text-white hover:bg-white/[0.1] text-xl font-bold hover:border-[var(--color-lime)]/50 active:scale-95 transition-all"
         >
           0
         </button>
         <button
           onClick={backspace}
-          className="aspect-square rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-dim)] active:scale-95 transition-all"
+          className="aspect-square rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-sm text-white hover:bg-white/[0.1] flex items-center justify-center text-[var(--color-text-dim)] active:scale-95 transition-all"
         >
           <Icon.Backspace className="w-5 h-5" />
         </button>
@@ -237,18 +246,20 @@ export function BootstrapAdmin() {
   );
 }
 
-// Bandeau "Padel Manager" affiché en haut de l'écran de sélection du profil
-// (avant connexion) — même style que l'en-tête de l'app une fois connecté,
-// mais sans la pastille joueur ni le bouton de déconnexion (inexistants
-// tant que personne n'est identifié). Sert uniquement la cohérence visuelle.
-function AuthBrandHeader() {
+// Logo + nom de l'app, centrés en haut de l'écran de sélection du profil
+// (02/11/2026 : thème sombre, comme le reste de l'app et l'écran
+// d'ouverture — remplace l'ancien bandeau blanc).
+function AuthBrand() {
   return (
-    <header className="sticky top-0 z-30 flex items-center px-5 py-4 bg-[var(--color-nav)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
-      <div className="flex items-center gap-2">
-        <Icon.Ball className="w-5 h-5 text-[var(--color-lime)]" />
-        <span className="pm-display font-extrabold text-base">Padel Manager</span>
-      </div>
-    </header>
+    <div className="flex flex-col items-center text-center mb-8 pm-rise">
+      <img
+        src="/icon-192.png"
+        alt=""
+        className="w-20 h-20 rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/15 mb-4"
+      />
+      <h1 className="pm-display font-extrabold text-3xl text-white">Padel Manager</h1>
+      <p className="text-sm text-white/60 mt-1.5">Sélectionnez votre profil pour vous connecter</p>
+    </div>
   );
 }
 
@@ -411,16 +422,21 @@ export function AuthGate({ children }) {
   // Le bandeau "Padel Manager" n'apparaît que sur l'écran de sélection du
   // profil (clic sur son nom) — pas sur la création du 1er compte admin, ni
   // sur le clavier PIN, qui gardent leur mise en page centrée d'origine.
-  const showBrandHeader = players.length > 0 && !selectedForPin;
-
+  // (02/11/2026) Fond bleu foncé « pm-app », identique à l'app connectée.
   return (
-    <div className="pm-root min-h-screen flex flex-col">
+    <div className="pm-root pm-app min-h-screen flex flex-col" style={AUTH_DARK_VARS}>
       {/* Écran de connexion prêt : fin de l'écran d'ouverture (effet de zoom). */}
       <SplashDone />
-      {showBrandHeader && <AuthBrandHeader />}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10">
         {players.length === 0 ? (
-          <BootstrapAdmin />
+          // Création du tout premier compte (écran quasi jamais vu) : carte
+          // claire, pour garder les champs de saisie lisibles.
+          <div
+            className="w-full max-w-sm rounded-3xl bg-[#EEF2FB] p-6"
+            style={{ "--color-text": "#14213D", "--color-text-dim": "#5C6B8A", "--color-text-faint": "#93A0BC", "--color-border": "#E3E8F5", color: "#14213D" }}
+          >
+            <BootstrapAdmin />
+          </div>
         ) : selectedForPin ? (
           <PinKeypad
             player={selectedForPin}
@@ -429,11 +445,9 @@ export function AuthGate({ children }) {
             onSuccess={login}
           />
         ) : (
-          <div className="w-full max-w-sm pm-rise">
-            <p className="text-sm text-[var(--color-text-dim)] mb-7">
-              Sélectionnez votre profil pour vous connecter
-            </p>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="w-full max-w-sm sm:max-w-xl">
+            <AuthBrand />
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 pm-rise">
               {players
                 .filter((p) => !p.isTest && !p.isOccasional)
                 .map((p) => (
@@ -445,7 +459,7 @@ export function AuthGate({ children }) {
               (showOccasionalLogin ? (
                 <div className="mt-5 pt-5 border-t border-[var(--color-border)]">
                   <p className="text-xs text-[var(--color-text-dim)] mb-3">Joueurs occasionnels</p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                     {occasionalPlayers.map((p) => (
                       <PlayerTile key={p.id} player={p} onClick={() => setSelectedForPin(p)} />
                     ))}
