@@ -9,7 +9,12 @@ import { db } from "../../firebase";
 import { cn, formatDateFR } from "../../lib/utils";
 import { useAppData } from "../../context/AppContext";
 import { logActivity, matchLabel } from "../../lib/activityLog";
-import { hasMatchScore, getCourtSlots } from "../../lib/matchLogic";
+import {
+  hasMatchScore,
+  getCourtSlots,
+  getMatchTiming,
+  groupMatchesBySession,
+} from "../../lib/matchLogic";
 import { COURT_SLOT_DEFS } from "../../lib/constants";
 import { getRounds } from "../../lib/rounds";
 import { addSessionResyncToBatch } from "../../lib/sessionResync";
@@ -202,8 +207,34 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         playerUpdates = result.playerUpdates;
       }
 
+      // Ajouté le 02/11/2026 : placer un joueur sur la composition (admin ou
+      // coach) vaut réponse « Présent » s'il n'avait pas encore répondu ou
+      // avait répondu « Je ne sais pas encore ». Écrit sur TOUS les terrains
+      // de la session (même règle que setSessionAvailability), dans le même
+      // envoi Firebase — aucune écriture supplémentaire. Jamais sur un match
+      // déjà terminé (remplacement après coup) ; un joueur « absent » ne peut
+      // de toute façon pas être placé, et un joueur « en réserve » garde son
+      // statut (il compte déjà comme présent).
+      const currentStatus = availability[player.id];
+      const shouldMarkPresent =
+        getMatchTiming(match) !== "finished" &&
+        (currentStatus === undefined || currentStatus === "unknown");
+      const otherSessionMatchIds = [];
+      if (shouldMarkPresent) {
+        matchUpdate[`availability.${player.id}`] = "present";
+        const session =
+          groupMatchesBySession(matches).find((group) => group.some((m) => m.id === match.id)) ||
+          [];
+        session.forEach((m) => {
+          if (m.id !== match.id) otherSessionMatchIds.push(m.id);
+        });
+      }
+
       const batch = writeBatch(db);
       batch.update(doc(db, "matches", match.id), matchUpdate);
+      otherSessionMatchIds.forEach((id) => {
+        batch.update(doc(db, "matches", id), { [`availability.${player.id}`]: "present" });
+      });
       Object.entries(playerUpdates).forEach(([playerId, update]) => {
         const playerRef = doc(db, "players", playerId);
         if (update === UNRANK_PLAYER) {
