@@ -15,6 +15,20 @@ import { Field, Button, inputClass } from "../ui";
 import { SplashHold, SplashDone } from "../../lib/splash";
 import { PlayerAvatar } from "../players/PlayerAvatar";
 
+// Date d'expiration (en ms) lue dans le jeton de session, ou null.
+// Le contenu du jeton est lisible (seule la signature est secrète).
+const REFRESH_BEFORE_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
+function readTokenExpiry(token) {
+  try {
+    if (!token || !token.includes(".")) return null;
+    const b64 = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64 + "===".slice((b64.length + 3) % 4)));
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export function PlayerTile({ player, onClick }) {
   return (
     <button
@@ -272,15 +286,38 @@ export function AuthGate({ children }) {
       const savedId = localStorage.getItem(SESSION_KEY);
       if (savedId) {
         const found = players.find((p) => p.id === savedId);
-        if (found) {
+        const savedToken = localStorage.getItem(SESSION_TOKEN_KEY) || null;
+        const tokenExp = readTokenExpiry(savedToken);
+        if (found && tokenExp && tokenExp > Date.now()) {
           setConnectedPlayer(found);
-          // Le jeton de session (voir api/_firebaseAdmin.js) n'existe pas
-          // pour les sessions ouvertes avant ce correctif (31/08/2026) : la
-          // personne reste connectée normalement, mais devra se
-          // déconnecter/reconnecter une fois pour retrouver l'accès aux
-          // actions protégées (changer son code PIN, ajouter/modifier un
-          // joueur) — voir manage-pin.js.
-          setSessionToken(localStorage.getItem(SESSION_TOKEN_KEY) || null);
+          setSessionToken(savedToken);
+          // Renouvellement automatique (02/11/2026) : s'il reste moins de
+          // 30 jours, on demande un nouveau jeton au serveur, sans bloquer
+          // l'ouverture de l'app. Aucune lecture/écriture Firebase.
+          if (tokenExp - Date.now() < REFRESH_BEFORE_MS) {
+            fetch("/api/verify-pin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "refresh", token: savedToken }),
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                if (data && data.ok && data.sessionToken) {
+                  setSessionToken(data.sessionToken);
+                  try {
+                    localStorage.setItem(SESSION_TOKEN_KEY, data.sessionToken);
+                  } catch (e) {}
+                }
+              })
+              .catch(() => {});
+          }
+        } else if (found) {
+          // Jeton absent ou expiré : le serveur refuserait toutes les
+          // actions protégées (« Session invalide ou expirée »). On renvoie
+          // donc proprement vers l'écran de connexion — le joueur retape
+          // son code PIN une seule fois.
+          localStorage.removeItem(SESSION_KEY);
+          localStorage.removeItem(SESSION_TOKEN_KEY);
         }
       }
     } catch (e) {
