@@ -205,7 +205,7 @@ export function CourtSettingsMenu({
                 className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-sky-300 text-left text-sm font-medium"
               >
                 <Icon.Users className="w-4 h-4 text-[var(--color-lime)] shrink-0" />
-                Remplacer un joueur
+                Remplacer / échanger des joueurs
               </button>
             )}
             {!scoreOnly && canDelete && (
