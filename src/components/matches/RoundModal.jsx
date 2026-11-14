@@ -373,7 +373,7 @@ export function RoundModal({
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         {scoreOnly
           ? "Encodez le score de cette manche. La composition ne peut pas être modifiée ici."
-          : "Placez les 4 joueurs de cette manche (équipes changées en cours de session), puis encodez son score. La composition de base du match et la comptabilité ne changent pas."}
+          : "Placez les 4 joueurs de cette manche (équipes changées en cours de session), puis encodez son score. Pour corriger les positions, touchez une case et choisissez un joueur déjà placé : les deux échangent leur place. La composition de base du match et la comptabilité ne changent pas."}
       </p>
 
       <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-2">
@@ -502,7 +502,17 @@ export function RoundModal({
             .filter(Boolean)}
           currentId={slots[pickSlot]}
           onPick={(id) => {
-            setSlots((prev) => ({ ...prev, [pickSlot]: id }));
+            // Échange de places (ajouté le 14/11/2026) : choisir un joueur déjà
+            // placé dans cette manche l'échange avec la case touchée (ou l'y
+            // déplace si elle est vide). Les manches supplémentaires ne touchent
+            // jamais la compta ; le niveau est recalculé à l'enregistrement.
+            setSlots((prev) => {
+              const fromKey = COURT_SLOT_DEFS.find(
+                (d) => d.key !== pickSlot && prev[d.key] === id
+              )?.key;
+              if (fromKey) return { ...prev, [pickSlot]: id, [fromKey]: prev[pickSlot] || null };
+              return { ...prev, [pickSlot]: id };
+            });
             setPickSlot(null);
           }}
           onClear={() => {
@@ -521,6 +531,11 @@ export function RoundModal({
 function PlayerPickerModal({ players, sessionIds, takenIds, currentId, onPick, onClear, onClose }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
+  // Joueurs déjà placés dans cette manche : proposés en tête pour un échange.
+  const swappable = takenIds
+    .map((id) => players.find((p) => p.id === id))
+    .filter(Boolean)
+    .filter((p) => !q || String(p.name || "").toLowerCase().includes(q));
   const candidates = players
     .filter((p) => !p.isTest && !takenIds.includes(p.id))
     .filter((p) => !q || String(p.name || "").toLowerCase().includes(q))
@@ -569,6 +584,26 @@ function PlayerPickerModal({ players, sessionIds, takenIds, currentId, onPick, o
         placeholder="Rechercher un joueur"
         className="w-full mb-3 px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-sky-300"
       />
+      {swappable.length > 0 && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
+            Déjà dans cette manche — échanger de place
+          </p>
+          <div className="flex flex-col gap-1.5 mb-3">
+            {swappable.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPick(p.id)}
+                className="w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-xl border border-sky-200 bg-sky-50/60 hover:border-sky-400 text-sm font-medium transition-all"
+              >
+                <span className="min-w-0 truncate">{p.name}</span>
+                <span className="text-[10px] font-semibold text-sky-700 shrink-0">⇄ Échanger</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {inSession.length > 0 && (
         <>
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-faint)] mb-1.5">
@@ -585,7 +620,7 @@ function PlayerPickerModal({ players, sessionIds, takenIds, currentId, onPick, o
           <div className="flex flex-col gap-1.5">{renderList(others)}</div>
         </>
       )}
-      {inSession.length === 0 && others.length === 0 && (
+      {swappable.length === 0 && inSession.length === 0 && others.length === 0 && (
         <p className="text-sm text-[var(--color-text-faint)] italic">Aucun joueur trouvé.</p>
       )}
     </Modal>
