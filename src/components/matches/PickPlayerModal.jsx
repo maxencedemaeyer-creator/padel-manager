@@ -278,12 +278,102 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
     }
   };
 
+  // ── Échange de places (ajouté le 14/11/2026) ─────────────────────────────
+  // Choisir un joueur DÉJÀ sur ce terrain l'échange avec la place touchée
+  // (ou l'y déplace si elle est vide). Seuls `team` et `courtSide` changent :
+  // chaque joueur garde son statut de paiement et son créancier, la compta
+  // n'est donc jamais touchée. Cas typique : la composition réelle diffère de
+  // celle encodée (« c'était Adri & Raphaël contre Donald & Jean ») et il faut
+  // la corriger avant/après l'encodage du score, sans retirer personne.
+  // Si le Niveau du match est déjà calculé et que les équipes changent, il est
+  // recalculé avec la vraie composition (même mécanisme qu'un remplacement).
+  const swap = async (player) => {
+    const other = (match.participants || []).find((p) => p.playerId === player.id);
+    if (!other) return;
+    setSaving(true);
+    try {
+      const newParticipants = (match.participants || []).map((p) => {
+        if (p.playerId === other.playerId) return { ...p, team, courtSide };
+        if (currentParticipant && p.playerId === currentParticipant.playerId) {
+          return { ...p, team: other.team ?? null, courtSide: other.courtSide ?? null };
+        }
+        return p;
+      });
+      const teamsChanged = other.team !== team;
+      const matchUpdate = { participants: newParticipants };
+      let playerUpdates = {};
+      let plainLevelDeltas = null;
+      const needsLevelRecompute = teamsChanged && hasLevelImpact;
+      if (needsLevelRecompute) {
+        const result = recomputeLevelsAfterReplacement({
+          match,
+          newParticipants,
+          players,
+          matches,
+        });
+        if (!result) {
+          alert(
+            "Impossible de recalculer le Niveau de ce match avec cette composition. Rien n'a été modifié."
+          );
+          return;
+        }
+        matchUpdate.levelDeltas = result.levelDeltas || deleteField();
+        plainLevelDeltas = result.levelDeltas || null;
+        playerUpdates = result.playerUpdates;
+      }
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, "matches", match.id), matchUpdate);
+      Object.entries(playerUpdates).forEach(([playerId, update]) => {
+        const playerRef = doc(db, "players", playerId);
+        if (update === UNRANK_PLAYER) {
+          batch.update(playerRef, {
+            internalScore: deleteField(),
+            internalScoreReliability: deleteField(),
+          });
+        } else {
+          batch.update(playerRef, update);
+        }
+      });
+      if (needsLevelRecompute) {
+        addSessionResyncToBatch({
+          batch,
+          matches,
+          players,
+          matchId: match.id,
+          roundIndex: 0,
+          matchPatch: {
+            participants: newParticipants,
+            levelDeltas: plainLevelDeltas,
+          },
+          rankingResult: { playerUpdates },
+        });
+      }
+      await batch.commit();
+      logActivity(
+        "composition",
+        currentParticipant
+          ? `${other.name} et ${currentParticipant.name} ont échangé leurs places (paiements inchangés) — ${matchLabel(match)}`
+          : `${other.name} changé de place (paiement inchangé) — ${matchLabel(match)}`
+      );
+      onClose();
+    } catch (error) {
+      alert("Erreur Firestore : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Choisir un joueur assigne immédiatement cette place et referme la fenêtre,
   // sauf si le joueur remplacé a un paiement marqué ou un Niveau déjà calculé :
   // on demande alors d'abord quoi faire (voir le panneau de confirmation).
   const pick = async (player) => {
     if (player.id === currentParticipant?.playerId) {
       onClose();
+      return;
+    }
+    if (takenElsewhereIds.has(player.id)) {
+      await swap(player);
       return;
     }
     if (currentParticipant && (currentPaid || hasLevelImpact)) {
@@ -303,8 +393,8 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
     if (currentParticipant.paidStatus === "paid" || currentParticipant.paidStatus === "owed") {
       const message =
         currentParticipant.paidStatus === "paid"
-          ? `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le retirer effacera cette information de paiement. Continuer ?`
-          : `${currentParticipant.name} avait une dette assignée à un créancier pour ce match. Le retirer effacera cette assignation. Continuer ?`;
+          ? `${currentParticipant.name} avait déjà été marqué comme ayant payé sa part de ce match. Le retirer effacera cette information de paiement.\n\nPour simplement le changer de place, annulez et touchez dans la liste le joueur avec qui l'échanger : la compta n'est alors pas touchée.\n\nRetirer quand même ?`
+          : `${currentParticipant.name} avait une dette assignée à un créancier pour ce match. Le retirer effacera cette assignation.\n\nPour simplement le changer de place, annulez et touchez dans la liste le joueur avec qui l'échanger : la compta n'est alors pas touchée.\n\nRetirer quand même ?`;
       const sure = window.confirm(message);
       if (!sure) return;
     }
@@ -314,7 +404,18 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
         (p) => p.playerId !== currentParticipant.playerId
       );
       await updateDoc(doc(db, "matches", match.id), { participants: remaining });
-      logActivity("composition", `${currentParticipant.name} retiré du terrain — ${matchLabel(match)}`);
+      // Le journal précise désormais (14/11/2026) quand un paiement est effacé,
+      // pour pouvoir retrouver après coup pourquoi un joueur repasse « impayé ».
+      const paymentNote =
+        currentParticipant.paidStatus === "paid"
+          ? " (paiement effacé)"
+          : currentParticipant.paidStatus === "owed"
+          ? " (dette assignée effacée)"
+          : "";
+      logActivity(
+        "composition",
+        `${currentParticipant.name} retiré du terrain${paymentNote} — ${matchLabel(match)}`
+      );
       onClose();
     } catch (error) {
       alert("Erreur Firestore : " + error.message);
@@ -386,7 +487,8 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
       <>
       <p className="text-xs text-[var(--color-text-dim)] mb-2">
         Choisissez un joueur pour cette place — {formatDateFR(match.date)}
-        {match.time ? ` à ${match.time}` : ""}. La fenêtre se referme dès votre choix.
+        {match.time ? ` à ${match.time}` : ""}. La fenêtre se referme dès votre choix. Un joueur
+        déjà sur ce terrain échange sa place avec celle-ci (paiements inchangés).
       </p>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
@@ -413,7 +515,10 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
             const dayConflict = !isCurrent ? conflictByPlayerId.get(p.id) : null;
             const inThisMatch = !isCurrent && takenElsewhereIds.has(p.id);
             const isAbsent = !isCurrent && availability[p.id] === "absent";
-            const disabled = saving || Boolean(dayConflict) || inThisMatch || isAbsent;
+            // Un joueur déjà sur ce terrain reste cliquable : il échange sa place
+            // avec celle-ci (voir swap), même s'il est noté absent ou ailleurs.
+            const disabled =
+              saving || (!inThisMatch && (Boolean(dayConflict) || isAbsent));
             const presenceMeta = PRESENCE_META[availability[p.id]] || NO_RESPONSE_META;
             return (
               <button
@@ -427,6 +532,8 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
                     ? "border-[var(--color-lime)]/60 bg-[var(--color-lime)]/10"
                     : disabled
                     ? "border-[var(--color-border)] bg-[var(--color-surface-2)]/50 opacity-50 cursor-not-allowed"
+                    : inThisMatch
+                    ? "border-sky-200 bg-sky-50/60 hover:border-sky-400"
                     : "border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-sky-300"
                 )}
               >
@@ -442,15 +549,15 @@ export function PickPlayerModal({ match, team, courtSide, currentParticipant, on
                     Actuel
                   </Badge>
                 )}
-                {dayConflict && (
+                {dayConflict && !inThisMatch && (
                   <span className="text-[10px] text-[var(--color-text-faint)] shrink-0 text-right">
                     Déjà sur {dayConflict.location || "un autre terrain"}
                     {dayConflict.time ? ` · ${dayConflict.time}` : ""}
                   </span>
                 )}
-                {!dayConflict && inThisMatch && (
-                  <span className="text-[10px] text-[var(--color-text-faint)] shrink-0">
-                    Déjà sur ce terrain
+                {inThisMatch && (
+                  <span className="text-[10px] font-semibold text-sky-700 shrink-0">
+                    ⇄ Échanger
                   </span>
                 )}
                 {!dayConflict && !inThisMatch && !isCurrent && (
@@ -511,7 +618,7 @@ export function ReplacePlayerModal({ match, onClose }) {
 
   return (
     <Modal
-      title="Remplacer un joueur"
+      title="Remplacer ou échanger"
       onClose={onClose}
       footer={
         <Button variant="secondary" onClick={onClose}>
@@ -522,7 +629,9 @@ export function ReplacePlayerModal({ match, onClose }) {
       <p className="text-xs text-[var(--color-text-dim)] mb-3">
         {formatDateFR(match.date)}
         {match.time ? ` à ${match.time}` : ""}. Touchez la place du joueur à remplacer (par
-        exemple un joueur absent remplacé par un invité).
+        exemple un joueur absent remplacé par un invité), puis choisissez le remplaçant. Pour
+        corriger les positions, choisissez un joueur déjà sur ce terrain : les deux échangent
+        leurs places et la compta n'est pas touchée.
       </p>
       <div className="grid grid-cols-2 gap-2 mb-2">
         {renderSlot(COURT_SLOT_DEFS[0])}
