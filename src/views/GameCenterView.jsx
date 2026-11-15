@@ -58,8 +58,15 @@ export function GameCenterView() {
     // vide"). "dvh" (et non "vh") évite en plus le souci Safari iOS où
     // 100vh dépasse la zone réellement visible quand la barre d'adresse est
     // affichée.
+    // (16/11/2026) Bug "la page défile alors qu'elle tient à l'écran" : la
+    // vue faisait 100dvh MAIS l'app ajoute déjà autour d'elle les marges de
+    // sécurité de l'iPhone (encoche en haut, barre d'accueil en bas — voir
+    // .pm-root / .pm-app dans index.css) → total un peu plus grand que
+    // l'écran. Hauteur désormais FIXE = écran visible moins ces marges, et
+    // rien ne peut dépasser (overflow-hidden). En bas, on réserve juste la
+    // hauteur de la barre de navigation (≈ 4.5rem ; aucune sur ordinateur).
     <div
-      className="relative overflow-hidden px-4 pt-4 pb-28 min-h-[100dvh]"
+      className="relative overflow-hidden px-4 pt-6 pb-[4.5rem] lg:pb-6 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]"
       style={{
         background:
           "radial-gradient(circle at 15% 8%, rgba(168,85,247,0.35), transparent 45%), radial-gradient(circle at 90% 15%, rgba(34,211,238,0.28), transparent 50%), radial-gradient(circle at 50% 100%, rgba(236,72,153,0.16), transparent 55%), linear-gradient(180deg, #0B0B1E 0%, #13132C 55%, #0B0B1E 100%)",
@@ -77,12 +84,12 @@ export function GameCenterView() {
         }}
       />
 
-      <div className="relative flex items-center justify-center gap-2 mb-8">
+      <div className="relative flex items-center justify-center gap-2 mb-6">
         <Icon.Gamepad className="w-5 h-5 text-[var(--color-lime)]" />
         <h2 className="pm-display font-bold text-xl text-white text-center">Game Center</h2>
       </div>
 
-      <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-8 max-w-md mx-auto">
+      <div className="relative grid grid-cols-3 sm:grid-cols-4 gap-x-4 gap-y-6 max-w-md mx-auto">
         <GameApp
           emoji="🍻"
           label="Tournée générale"

@@ -686,7 +686,7 @@ export function MotusGame({ onClose }) {
 
   const rangees = CLAVIERS[parametres.clavier] || CLAVIERS.azerty;
   const boutonEntete =
-    "w-9 h-9 rounded-full flex items-center justify-center text-base font-bold shrink-0";
+    "w-8 h-8 min-[360px]:w-9 min-[360px]:h-9 rounded-full flex items-center justify-center text-sm min-[360px]:text-base font-bold shrink-0";
   const fondBoutonEntete = { background: "rgba(127,127,127,0.2)", color: theme.texte };
 
   const contenu = (
@@ -713,7 +713,7 @@ export function MotusGame({ onClose }) {
 
       {/* En-tête : règles, stats | titre | son, paramètres, fermer */}
       <header
-        className="flex items-center gap-1.5 px-3 py-2 border-b"
+        className="flex items-center gap-1 min-[360px]:gap-1.5 px-2 min-[360px]:px-3 py-2 border-b"
         style={{ borderColor: "rgba(127,127,127,0.3)" }}
       >
         <button type="button" className={boutonEntete} style={fondBoutonEntete} onClick={() => setPanneau("regles")} aria-label="Comment jouer">
@@ -723,7 +723,7 @@ export function MotusGame({ onClose }) {
           📊
         </button>
         <h2
-          className="flex-1 min-w-0 text-center font-black text-xl tracking-[0.08em] whitespace-nowrap"
+          className="flex-1 min-w-0 text-center font-black text-[clamp(1rem,5.2vw,1.5rem)] tracking-[0.06em] whitespace-nowrap"
           style={{ color: ACCENT }}
         >
           🎾 MOTUS
