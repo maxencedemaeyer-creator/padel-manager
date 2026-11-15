@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useAppData } from "../../context/AppContext";
 import { MOTUS_CATEGORIES } from "../../lib/motusLexique";
 import {
+  LEXIQUE_VALIDE,
   MOTUS_ESSAIS_MAX,
   PARAMETRES_DEFAUT,
   STATS_VIDES,
@@ -304,7 +305,7 @@ export function MotusGame({ onClose }) {
   const [secousse, setSecousse] = useState(false);
   const [verification, setVerification] = useState(false); // dictionnaire en cours de consultation
   const [message, setMessage] = useState("");
-  const [panneau, setPanneau] = useState(null); // regles | stats | parametres | fin
+  const [panneau, setPanneau] = useState(null); // regles | stats | parametres | lexique | fin
   const [annonce, setAnnonce] = useState("");
   const [premiereVisite, setPremiereVisite] = useState(false);
   const minuteurs = useRef([]);
@@ -796,6 +797,20 @@ export function MotusGame({ onClose }) {
               )}
             </div>
             <div className="flex items-center gap-2 mt-1 min-h-[2.5rem]">
+              {/* (16/11/2026) Lexique UNIQUEMENT quand le mot à trouver est un
+                  terme espagnol (vocabulaire peu connu des joueurs) : il ne
+                  liste que les termes espagnols, dans l'ordre du fichier
+                  src/lib/motusLexique.js (pas alphabétique). */}
+              {!partie.termine && entree?.categorie === "espagnol" && (
+                <button
+                  type="button"
+                  onClick={() => setPanneau("lexique")}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                  style={{ background: "rgba(127,127,127,0.22)" }}
+                >
+                  📖 Lexique
+                </button>
+              )}
               {partie.termine && (
                 <>
                   <button type="button" onClick={rejouer} className="px-4 py-2 rounded-full text-sm font-bold" style={{ background: ACCENT, color: "#0d2236" }}>
@@ -886,6 +901,19 @@ export function MotusGame({ onClose }) {
             Tes réglages et tes statistiques sont enregistrés sur ton profil : tu les retrouves sur
             tous tes appareils.
           </p>
+        </Panneau>
+      )}
+
+      {panneau === "lexique" && (
+        <Panneau titre="🇪🇸 Lexique espagnol" onClose={fermerPanneau} theme={theme}>
+          <div className="space-y-1.5">
+            {LEXIQUE_VALIDE.filter((e) => e.categorie === "espagnol").map((e) => (
+              <div key={e.mot} className="text-xs leading-snug">
+                <b className="font-mono text-sm">{e.mot}</b>{" "}
+                <span style={{ color: theme.texteDoux }}>— {e.definition}</span>
+              </div>
+            ))}
+          </div>
         </Panneau>
       )}
 
