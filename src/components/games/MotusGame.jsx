@@ -349,6 +349,13 @@ export function MotusGame({ onClose }) {
           const n = nouvellePartie(mots, p?.mot);
           p = n.partie;
           mots = n.motsJoues;
+          // (16/11/2026) Le mot tiré est enregistré TOUT DE SUITE, avant même
+          // le 1er essai : quitter puis rouvrir le jeu repropose la même
+          // grille (sinon on pourrait "choisir" son mot en rouvrant le jeu
+          // jusqu'à tomber sur un mot facile).
+          if (playerId) {
+            enregistrerMotus(playerId, { partie: p, motsJoues: mots }).catch(() => {});
+          }
         }
         setMotsJoues(mots);
         setPartie(p);
@@ -495,7 +502,6 @@ export function MotusGame({ onClose }) {
 
     // Sauvegarde Firebase : 1 écriture par essai (+ stats en fin de partie).
     const champs = { partie: suivante };
-    if (ligne === 0) champs.motsJoues = motsJoues;
     let nouvellesStats = null;
     if (termine) {
       nouvellesStats = statsApresPartie(stats, suivante);
@@ -535,6 +541,9 @@ export function MotusGame({ onClose }) {
 
   const rejouer = () => {
     const nv = nouvellePartie(motsJoues, solution);
+    // Enregistré tout de suite (voir chargement) : la nouvelle grille est
+    // "réservée" même si le joueur quitte sans jouer.
+    sauver({ partie: nv.partie, motsJoues: nv.motsJoues });
     setMotsJoues(nv.motsJoues);
     setPartie(nv.partie);
     setSaisie(nv.partie.mot[0]);
