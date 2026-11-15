@@ -8,12 +8,16 @@
 // depuis l'onglet Administration (voir src/views/AdminView.jsx et
 // src/hooks/useFirestoreData.js → useAppSettings).
 // ─────────────────────────────────────────────────────────────────────────
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import Icon from "../components/icons/Icon";
 import { TourneeGeneraleModal } from "../components/games/TourneeGeneraleModal";
 import { KillerModal } from "../components/games/KillerModal";
 import { BrickBreakerModal } from "../components/games/BrickBreakerModal";
 import { MvpVoteModal } from "../components/games/MvpVoteModal";
+
+// MOTUS (15/11/2026) : chargé seulement à l'ouverture du jeu, pour que son
+// lexique n'alourdisse jamais le Game Center ni le reste de l'app.
+const MotusGame = lazy(() => import("../components/games/MotusGame"));
 
 // Une "app" du Game Center : icône carrée façon iPhone (dégradé propre au
 // jeu, reflet, ombre portée) + nom affiché en dessous, comme sur un écran
@@ -103,6 +107,12 @@ export function GameCenterView() {
           gradient="linear-gradient(160deg, #FDE68A 0%, #F59E0B 55%, #B45309 100%)"
           onClick={() => setOpenGame("mvp")}
         />
+        <GameApp
+          emoji="🔠"
+          label="Motus"
+          gradient="linear-gradient(160deg, #4ADE80 0%, #1FA84A 50%, #1F4E79 100%)"
+          onClick={() => setOpenGame("motus")}
+        />
       </div>
 
       {openGame === "tournee-generale" && (
@@ -113,6 +123,11 @@ export function GameCenterView() {
         <BrickBreakerModal onClose={() => setOpenGame(null)} />
       )}
       {openGame === "mvp" && <MvpVoteModal onClose={() => setOpenGame(null)} />}
+      {openGame === "motus" && (
+        <Suspense fallback={null}>
+          <MotusGame onClose={() => setOpenGame(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }
